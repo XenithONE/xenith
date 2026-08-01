@@ -1,0 +1,10 @@
+# Normalize line endings: LF in the repository, native in the working tree.
+* text=auto eol=lf
+
+# Xenith sources are always LF — the canonical formatter emits LF and the
+# formatter's idempotence tests compare bytes.
+*.xn text eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary

@@ -1,0 +1,27 @@
+# Rust
+/compiler/target/
+/tools/target/
+**/*.rs.bk
+*.pdb
+
+# Insta snapshot review artifacts
+**/*.snap.new
+
+# Xenith build output
+/build/
+*.xnc
+
+# Benchmark scratch (results/ IS committed — see bench/ai/README.md)
+/bench/ai/scratch/
+/bench/ai/.cache/
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
