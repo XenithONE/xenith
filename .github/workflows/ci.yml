@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+# The AI benchmark deliberately does not run here. It shells out to
+# subscription CLIs that are not available to hosted runners, so those runs
+# happen locally and their reports are committed under bench/ai/results/.
+# See bench/ai/README.md.
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: compiler
+
+      - name: Build
+        run: cargo build --workspace --all-targets
+        working-directory: compiler
+
+      - name: Test
+        run: cargo test --workspace
+        working-directory: compiler
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: compiler
+
+      - name: Format
+        run: cargo fmt --all --check
+        working-directory: compiler
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets
+        working-directory: compiler
