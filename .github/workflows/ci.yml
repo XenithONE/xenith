@@ -61,3 +61,23 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets
         working-directory: compiler
+
+  examples:
+    name: examples
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: compiler
+
+      # Examples are documentation, and documentation rots. Checking them here
+      # means one cannot quietly stop parsing or drift out of canonical form.
+      - name: Check
+        run: cargo run --manifest-path compiler/Cargo.toml -p xenith -- check examples/*.xn
+
+      - name: Formatted
+        run: cargo run --manifest-path compiler/Cargo.toml -p xenith -- fmt --check examples/*.xn

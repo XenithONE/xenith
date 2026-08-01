@@ -13,10 +13,12 @@
 //! [`Module`]: ast::Module
 
 pub mod ast;
+pub mod format;
 pub mod lexer;
 pub mod parser;
 pub mod token;
 
+pub use format::{FormatError, format};
 pub use lexer::{Lexed, lex};
 pub use parser::{Parsed, parse};
 pub use token::{RESERVED_WORDS, Token, TokenKind, is_reserved, keyword_kind};

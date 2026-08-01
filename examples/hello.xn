@@ -1,0 +1,21 @@
+// The smallest complete Xenith program.
+//
+// `main` receives its capabilities as parameters. There is no ambient
+// environment to reach for, so a function that is not handed `Io` cannot
+// write to the console -- and its signature says so.
+
+use std.io;
+
+/// Greet someone by name.
+///
+/// This function takes no capability and declares no effects, so its signature
+/// proves it cannot perform IO, read the clock, or allocate a socket. That is
+/// checkable by reading one line.
+fn greeting(name: String) -> String {
+    "Hello, ".concat(other: name)
+}
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    io.write(text: greeting(name: "world"))?;
+    return unit;
+}

@@ -584,11 +584,31 @@ fn lambdas_parse_with_and_without_parameters() {
 #[test]
 fn a_missing_semicolon_is_reported_with_an_insertion_fix() {
     let parsed = parse("fn f() { let a = 1 let b = 2; }");
-    assert_eq!(parsed.diagnostics[0].code, DiagCode::MissingSemicolon);
-    let fix = parsed.diagnostics[0].fix.as_ref().expect("fix expected");
+    let diagnostic = &parsed.diagnostics[0];
+    assert_eq!(diagnostic.code, DiagCode::MissingSemicolon);
+    let fix = diagnostic.fix.as_ref().expect("fix expected");
     assert_eq!(fix.edits[0].replacement, ";");
     // Inserted where the punctuation belongs, not at the token that exposed it.
     assert_eq!(fix.edits[0].span.start, 18);
+}
+
+#[test]
+fn a_caret_for_omitted_punctuation_points_where_the_fix_inserts() {
+    // A caret and a fix that disagree send the reader -- or a model applying
+    // the fix -- to two different places.
+    for source in [
+        "fn f() { let a = 1 let b = 2; }",
+        "fn f() { g(a: 1 b: 2); }",
+        "use std.io",
+    ] {
+        for diagnostic in &parse(source).diagnostics {
+            let Some(fix) = &diagnostic.fix else { continue };
+            assert_eq!(
+                diagnostic.span.start, fix.edits[0].span.start,
+                "caret and fix disagree for {source:?}"
+            );
+        }
+    }
 }
 
 #[test]

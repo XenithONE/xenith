@@ -438,3 +438,266 @@ pub struct FieldPattern {
     pub pattern: Option<Pattern>,
     pub span: Span,
 }
+
+// ------------------------------------------------------- structural equality
+
+/// Set every span in the tree to [`Span::EMPTY`].
+///
+/// Two programs that differ only in layout parse to trees that differ only in
+/// spans, so clearing the spans turns the derived `PartialEq` into structural
+/// equality. The formatter relies on this to prove it has not changed the
+/// meaning of the code it rewrote — see `design/0005-canonical-formatting.md`.
+///
+/// Documentation spans are cleared too: comments are checked separately, by
+/// text, because their positions legitimately move during formatting.
+pub fn normalize_spans(module: &mut Module) {
+    module.span = Span::EMPTY;
+    for item in &mut module.items {
+        normalize_item(item);
+    }
+}
+
+fn normalize_item(item: &mut Item) {
+    item.span = Span::EMPTY;
+    item.docs.clear();
+    match &mut item.kind {
+        ItemKind::Use(u) => normalize_path(&mut u.path),
+        ItemKind::Const(c) => {
+            normalize_ident(&mut c.name);
+            normalize_type(&mut c.ty);
+            normalize_expr(&mut c.value);
+        }
+        ItemKind::Fn(f) => {
+            normalize_ident(&mut f.name);
+            f.generics.iter_mut().for_each(normalize_ident);
+            for param in &mut f.params {
+                param.span = Span::EMPTY;
+                normalize_ident(&mut param.name);
+                normalize_type(&mut param.ty);
+            }
+            if let Some(ty) = &mut f.return_type {
+                normalize_type(ty);
+            }
+            if let Some(effects) = &mut f.effects {
+                normalize_effects(effects);
+            }
+            if let Some(body) = &mut f.body {
+                normalize_block(body);
+            }
+        }
+        ItemKind::Struct(s) => {
+            normalize_ident(&mut s.name);
+            s.generics.iter_mut().for_each(normalize_ident);
+            for field in &mut s.fields {
+                field.span = Span::EMPTY;
+                field.docs.clear();
+                normalize_ident(&mut field.name);
+                normalize_type(&mut field.ty);
+            }
+        }
+        ItemKind::Enum(e) => {
+            normalize_ident(&mut e.name);
+            e.generics.iter_mut().for_each(normalize_ident);
+            for variant in &mut e.variants {
+                variant.span = Span::EMPTY;
+                variant.docs.clear();
+                normalize_ident(&mut variant.name);
+                variant.payload.iter_mut().for_each(normalize_type);
+            }
+        }
+        ItemKind::Error => {}
+    }
+}
+
+fn normalize_ident(ident: &mut Ident) {
+    ident.span = Span::EMPTY;
+}
+
+fn normalize_path(path: &mut Path) {
+    path.span = Span::EMPTY;
+    path.segments.iter_mut().for_each(normalize_ident);
+}
+
+fn normalize_effects(effects: &mut EffectSet) {
+    effects.span = Span::EMPTY;
+    effects.effects.iter_mut().for_each(normalize_path);
+}
+
+fn normalize_type(ty: &mut Type) {
+    ty.span = Span::EMPTY;
+    match &mut ty.kind {
+        TypeKind::Named { path, args } => {
+            normalize_path(path);
+            args.iter_mut().for_each(normalize_type);
+        }
+        TypeKind::Fn {
+            params,
+            ret,
+            effects,
+        } => {
+            params.iter_mut().for_each(normalize_type);
+            normalize_type(ret);
+            if let Some(effects) = effects {
+                normalize_effects(effects);
+            }
+        }
+        TypeKind::Unit | TypeKind::Hole { .. } | TypeKind::Error => {}
+    }
+}
+
+fn normalize_block(block: &mut Block) {
+    block.span = Span::EMPTY;
+    block.stmts.iter_mut().for_each(normalize_stmt);
+    if let Some(tail) = &mut block.tail {
+        normalize_expr(tail);
+    }
+}
+
+fn normalize_stmt(stmt: &mut Stmt) {
+    stmt.span = Span::EMPTY;
+    match &mut stmt.kind {
+        StmtKind::Let {
+            pattern, ty, init, ..
+        } => {
+            normalize_pattern(pattern);
+            if let Some(ty) = ty {
+                normalize_type(ty);
+            }
+            normalize_expr(init);
+        }
+        StmtKind::Expr(expr) => normalize_expr(expr),
+        StmtKind::Return(value) => {
+            if let Some(value) = value {
+                normalize_expr(value);
+            }
+        }
+        StmtKind::While { cond, body } => {
+            normalize_expr(cond);
+            normalize_block(body);
+        }
+        StmtKind::For {
+            pattern,
+            iter,
+            body,
+        } => {
+            normalize_pattern(pattern);
+            normalize_expr(iter);
+            normalize_block(body);
+        }
+        StmtKind::Break | StmtKind::Continue | StmtKind::Error => {}
+    }
+}
+
+fn normalize_expr(expr: &mut Expr) {
+    expr.span = Span::EMPTY;
+    match &mut expr.kind {
+        ExprKind::Path(path) => normalize_path(path),
+        ExprKind::Unary { operand, .. } => normalize_expr(operand),
+        ExprKind::Binary { lhs, rhs, .. } => {
+            normalize_expr(lhs);
+            normalize_expr(rhs);
+        }
+        ExprKind::Assign { target, value, .. } => {
+            normalize_expr(target);
+            normalize_expr(value);
+        }
+        ExprKind::Call { callee, args } => {
+            normalize_expr(callee);
+            args.iter_mut().for_each(normalize_arg);
+        }
+        ExprKind::MethodCall {
+            receiver,
+            method,
+            args,
+        } => {
+            normalize_expr(receiver);
+            normalize_ident(method);
+            args.iter_mut().for_each(normalize_arg);
+        }
+        ExprKind::Field { receiver, name } => {
+            normalize_expr(receiver);
+            normalize_ident(name);
+        }
+        ExprKind::Await(inner) | ExprKind::Try(inner) => normalize_expr(inner),
+        ExprKind::If {
+            cond,
+            then_block,
+            else_branch,
+        } => {
+            normalize_expr(cond);
+            normalize_block(then_block);
+            if let Some(branch) = else_branch {
+                normalize_expr(branch);
+            }
+        }
+        ExprKind::Match { scrutinee, arms } => {
+            normalize_expr(scrutinee);
+            for arm in arms {
+                arm.span = Span::EMPTY;
+                normalize_pattern(&mut arm.pattern);
+                if let Some(guard) = &mut arm.guard {
+                    normalize_expr(guard);
+                }
+                normalize_expr(&mut arm.body);
+            }
+        }
+        ExprKind::Block(block) => normalize_block(block),
+        ExprKind::StructLit { path, fields } => {
+            normalize_path(path);
+            for field in fields {
+                field.span = Span::EMPTY;
+                normalize_ident(&mut field.name);
+                normalize_expr(&mut field.value);
+            }
+        }
+        ExprKind::Lambda { params, body, .. } => {
+            for param in params {
+                param.span = Span::EMPTY;
+                normalize_ident(&mut param.name);
+                normalize_type(&mut param.ty);
+            }
+            normalize_expr(body);
+        }
+        ExprKind::Int(_)
+        | ExprKind::Float(_)
+        | ExprKind::Str(_)
+        | ExprKind::Char(_)
+        | ExprKind::Bool(_)
+        | ExprKind::Unit
+        | ExprKind::Hole { .. }
+        | ExprKind::Error => {}
+    }
+}
+
+fn normalize_arg(arg: &mut Arg) {
+    arg.span = Span::EMPTY;
+    if let Some(name) = &mut arg.name {
+        normalize_ident(name);
+    }
+    normalize_expr(&mut arg.value);
+}
+
+fn normalize_pattern(pattern: &mut Pattern) {
+    pattern.span = Span::EMPTY;
+    match &mut pattern.kind {
+        PatternKind::Binding(ident) => normalize_ident(ident),
+        PatternKind::Literal(expr) => normalize_expr(expr),
+        PatternKind::Path(path) => normalize_path(path),
+        PatternKind::Variant { path, elements } => {
+            normalize_path(path);
+            elements.iter_mut().for_each(normalize_pattern);
+        }
+        PatternKind::Struct { path, fields } => {
+            normalize_path(path);
+            for field in fields {
+                field.span = Span::EMPTY;
+                normalize_ident(&mut field.name);
+                if let Some(pattern) = &mut field.pattern {
+                    normalize_pattern(pattern);
+                }
+            }
+        }
+        PatternKind::Or(alternatives) => alternatives.iter_mut().for_each(normalize_pattern),
+        PatternKind::Wildcard | PatternKind::Error => {}
+    }
+}

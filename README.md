@@ -2,9 +2,10 @@
 
 **An experimental general-purpose language designed so that a compiler can guide an LLM to correct code.**
 
-> ⚠️ **Status: pre-alpha, design phase.** Nothing compiles yet. There is no toolchain to install.
-> This repository currently contains design documents and a specification draft.
-> If you are looking for a language you can use today, this is not it.
+> ⚠️ **Status: pre-alpha.** Xenith programs do not run. There is no standard library, no type
+> checker and no backend. What exists is the front end — the compiler lexes, parses and formats,
+> and the `xenith` command has `check`, `fmt` and `explain`. If you are looking for a language you
+> can use today, this is not it.
 
 ---
 
@@ -116,6 +117,28 @@ Requires a recent stable Rust toolchain.
 
 ```bash
 cargo build --manifest-path compiler/Cargo.toml
+```
+
+## What works today
+
+```bash
+cargo run --manifest-path compiler/Cargo.toml -p xenith -- check examples/scores.xn
+```
+
+`check` parses and reports problems; `--json` emits them as data, with byte spans and applicable
+fixes. `explain XN1002` prints the rule behind a code. `fmt` rewrites source into canonical form —
+it takes no options, and it verifies its own output before writing, refusing rather than risking a
+silent change of meaning.
+
+Diagnostics look like this, with the caret at the position the fix edits:
+
+```console
+$ xenith check broken.xn
+broken.xn:2:14: error[XN1002]: expected `;`
+2 |     let a = 1
+  |              ^
+  fix: insert `;`
+  run `xenith explain XN1002` for the rule
 ```
 
 ## License

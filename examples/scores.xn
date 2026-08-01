@@ -1,0 +1,60 @@
+// Pattern matching, error handling, and the naming rules.
+//
+// There is no `null` and no exception. A function that can fail says so in its
+// return type, and `?` is the only way to propagate.
+
+/// A player and their current score.
+struct Player {
+    name: String,
+    var score: Int,
+}
+
+enum Rank {
+    Bronze,
+    Silver,
+    Gold,
+}
+
+enum ScoreError {
+    /// The score would exceed what an `Int` can hold.
+    Overflow,
+    /// No player is registered under that name.
+    NotFound(String),
+}
+
+/// `match` must be exhaustive, so adding a `Rank` breaks every place that
+/// decides on one -- which is the point.
+fn describe(rank: Rank) -> String {
+    match rank {
+        Rank.Gold => "gold",
+        Rank.Silver => "silver",
+        Rank.Bronze => "bronze",
+    }
+}
+
+fn rank_of(score: Int) -> Rank {
+    if score >= 1000 {
+        Rank.Gold
+    } else if score >= 100 {
+        Rank.Silver
+    } else {
+        Rank.Bronze
+    }
+}
+
+/// `try_` marks a function that returns `Result`; `checked_add` returns an
+/// `Option` because overflow traps rather than wrapping. Both spellings are
+/// fixed by the naming rules, so a reader -- or a model -- can guess them.
+fn try_award(player: Player, points: Int) -> Result<Player, ScoreError> {
+    let total = player.score.checked_add(other: points).to_result(error: ScoreError.Overflow)?;
+    var updated = player;
+    updated.score = total;
+    Ok(updated)
+}
+
+/// A hole is a legal program element. This compiles, and `xenith goals` will
+/// report the type required here, the bindings in scope, and the effects
+/// permitted -- so the next step does not have to be guessed.
+fn try_find(name: String) -> Result<Player, ScoreError> {
+    ??lookup
+}

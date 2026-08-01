@@ -161,8 +161,17 @@ impl<'a> Parser<'a> {
             return true;
         }
         let found = self.peek();
-        let span = self.span();
         let message = format!("expected {}, found {}", kind.describe(), found.describe());
+        let literal = punctuation_text(kind);
+
+        // Omitted punctuation belongs at the end of the previous token, not at
+        // the start of the token that exposed the omission. Point the caret
+        // there too: a caret and a fix that disagree send the reader — or a
+        // model applying the fix — to two different places.
+        let span = match literal {
+            Some(_) => Span::at(self.prev_span().end),
+            None => self.span(),
+        };
 
         let mut diagnostic = if kind == TokenKind::Semi {
             Diagnostic::error(DiagCode::MissingSemicolon, span, "expected `;`")
@@ -170,13 +179,10 @@ impl<'a> Parser<'a> {
             Diagnostic::error(DiagCode::ExpectedToken, span, message)
         };
 
-        if let Some(literal) = punctuation_text(kind) {
-            // Insert at the end of the previous token: that is where the
-            // missing punctuation belongs, not at the start of the token that
-            // exposed the problem.
+        if let Some(literal) = literal {
             diagnostic = diagnostic.with_fix(Fix::single(
                 format!("insert `{literal}`"),
-                Edit::insert(self.prev_span().end, literal),
+                Edit::insert(span.start, literal),
             ));
         }
         self.diagnostics.push(diagnostic);
