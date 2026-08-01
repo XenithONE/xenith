@@ -8,3 +8,5 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
+xenith-diag = { workspace = true }
+xenith-syntax = { workspace = true }

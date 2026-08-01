@@ -259,6 +259,10 @@ version = "0.0.0"
 [[package]]
 name = "xenith-sema"
 version = "0.0.0"
+dependencies = [
+ "xenith-diag",
+ "xenith-syntax",
+]
 
 [[package]]
 name = "xenith-syntax"

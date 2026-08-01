@@ -55,7 +55,7 @@ agy の主張（関数の色分けはLLM最頻出バグの1つ）は正しい。
 **`Task.spawn` は効果である。** spawn は並行な仕事を作り、キャンセルと資源所有を変えるため。
 spawn には **capability（`Scope`）と効果（`Task.spawn`）の両方**が要る。
 
-```xenith
+```xenith,planned
 async fn fetch_pair(
     tasks: Tasks,
     http: Shared<Http>,
@@ -81,7 +81,7 @@ uses {Task.spawn, Http.get} {
 
 ゲームのフレーム更新は、効果集合が空であることを署名で証明できる：
 
-```xenith
+```xenith,planned
 fn tick(world: World) -> World uses {} {
     // IO も spawn もできないことがコンパイラに保証されている
 }
@@ -134,7 +134,7 @@ Sender<T> / Receiver<T>    T: Transfer
 
 `ShareSafe` が自動導出されるのは、**深く不変な集約**と上記の同期プリミティブのみ。
 
-```xenith
+```xenith,planned
 // OK — 排他値を子へムーブ（アフィン）
 scope.spawn(job: async move || { consume(buffer: owned_buf) })?;
 
@@ -156,7 +156,7 @@ scope.spawn(job: async move || { bad.set(value: 1) })?;
 
 **ロックガードは `!Transfer` かつ `!Suspend`。** したがって：
 
-```xenith
+```xenith,planned
 let guard = counter.lock();
 some_io().await;          // error: ロックガードは中断点を跨げない
 ```

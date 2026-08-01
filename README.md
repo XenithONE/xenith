@@ -32,7 +32,9 @@ unnecessary.
 **Partial programs are legal.** A hole compiles:
 
 ```xenith
-let response: Result<Response, HttpError> = ?response
+fn fetch(client: Client, request: Request) -> Result<Response, HttpError> uses {Net.send} {
+    ??response
+}
 ```
 
 The compiler then answers, as machine-readable data, what would fit there:
@@ -56,7 +58,7 @@ The unit of work becomes *fill one hole*, not *rewrite the module*. Compiler out
 
 ```xenith
 fn load_config(fs: Fs, path: Path) -> Result<Config, ConfigError> uses {Fs.read} {
-    let text = fs.try_read_text(path: path)?
+    let text = fs.try_read_text(path: path)?;
     Config.try_parse(text: text)
 }
 ```

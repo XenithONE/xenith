@@ -1,14 +1,12 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+//! Name resolution, type checking, effect checking — and the hole goals that
+//! the rest of the project exists to produce.
+//!
+//! The checker is bidirectional: `check` pushes an expected type down the tree,
+//! `synth` reads a type back up. That shape is chosen for one reason above all
+//! — in checking mode the required type is available at *every* position, so a
+//! hole's goal falls out of the ordinary traversal instead of needing a
+//! separate machine. See `design/0006-type-checking.md`.
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub mod ty;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub use ty::{DefId, EffectSet, HoleId, Type, TypeName};
