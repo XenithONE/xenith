@@ -145,6 +145,23 @@ applicable fixes — an undeclared effect, for instance, carries the edit that w
 a code. `fmt` rewrites source into canonical form — it takes no options, and it verifies its own
 output before writing, refusing rather than risking a silent change of meaning.
 
+The compiler also answers direct questions. `query type-at` reports the type at any position —
+expression, binding name, or hole — with the scope and effect budget around it. `query producers`
+is the anti-hallucination query: instead of guessing a function name, ask what can make the type
+you need.
+
+```console
+$ xenith query producers examples/scores.xn "Result<Player, ScoreError>"
+producers of Result<Player, ScoreError>:
+  function  try_award(player: Player, points: Int) -> Result<Player, ScoreError>
+  function  try_find(name: String) -> Result<Player, ScoreError>
+  variant   Err(ScoreError)
+  variant   Ok(Player)
+```
+
+Both take `--json`. Partial programs answer like any other — a query is a hole the author did not
+have to write, and it rides the same traversal that answers `goals`.
+
 Diagnostics look like this, with the caret at the position the fix edits:
 
 ```console

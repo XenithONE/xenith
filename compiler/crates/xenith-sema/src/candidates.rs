@@ -307,7 +307,12 @@ fn apply_payload(
 }
 
 /// One-way structural match binding `Type::Param`s in `ret` from `expected`.
-fn return_matches(ret: &Type, expected: &Type, bindings: &mut Vec<(String, Type)>) -> bool {
+/// Shared with the `producers` query, which asks the same question.
+pub(crate) fn return_matches(
+    ret: &Type,
+    expected: &Type,
+    bindings: &mut Vec<(String, Type)>,
+) -> bool {
     match (ret, expected) {
         (Type::Param(name), _) => {
             if let Some((_, bound)) = bindings.iter().find(|(n, _)| n == name) {

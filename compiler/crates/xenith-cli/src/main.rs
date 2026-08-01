@@ -65,6 +65,42 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Ask the compiler a question about a file.
+    ///
+    /// A query is a hole the author did not have to write: the answer comes
+    /// from the same traversal that answers `goals`, so partial programs
+    /// answer like any other.
+    Query {
+        #[command(subcommand)]
+        question: QueryCommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum QueryCommand {
+    /// The type of the expression at a position, and what surrounds it.
+    TypeAt {
+        path: PathBuf,
+        /// Position as line:column, one-based, counting characters.
+        #[arg(long)]
+        at: String,
+        /// Emit the answer as JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Everything in the module that can produce a given type.
+    ///
+    /// This is the anti-hallucination query: instead of guessing a function
+    /// name, ask which ones return `Result<Player, ScoreError>`.
+    Producers {
+        path: PathBuf,
+        /// The type, spelled as in source: "Result<Player, ScoreError>".
+        #[arg(value_name = "TYPE")]
+        type_text: String,
+        /// Emit the answer as JSON.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 fn main() -> ExitCode {
@@ -73,6 +109,14 @@ fn main() -> ExitCode {
         Command::Fmt { paths, check } => fmt(&paths, check),
         Command::Explain { code } => explain(code.as_deref()),
         Command::Goals { paths, json } => goals(&paths, json),
+        Command::Query { question } => match question {
+            QueryCommand::TypeAt { path, at, json } => type_at(&path, &at, json),
+            QueryCommand::Producers {
+                path,
+                type_text,
+                json,
+            } => producers(&path, &type_text, json),
+        },
     }
 }
 
@@ -236,6 +280,143 @@ fn goals(paths: &[PathBuf], json: bool) -> ExitCode {
         ExitCode::FAILURE
     } else {
         ExitCode::SUCCESS
+    }
+}
+
+fn type_at(path: &Path, at: &str, json: bool) -> ExitCode {
+    let mut failed = false;
+    let Some(source) = read(path, &mut failed) else {
+        return ExitCode::FAILURE;
+    };
+
+    let Some((line, column)) = parse_position(at) else {
+        eprintln!("--at takes line:column, one-based — for example --at 59:5");
+        return ExitCode::FAILURE;
+    };
+    let index = LineIndex::new(&source);
+    let Some(offset) = offset_of(&source, &index, line, column) else {
+        eprintln!("{}:{line}:{column} is outside the file", path.display());
+        return ExitCode::FAILURE;
+    };
+
+    let parsed = parse(&source);
+    let Some(probe) = xenith_sema::type_at(&parsed.module, offset) else {
+        eprintln!(
+            "{}:{line}:{column} is not inside an expression — try a position on a value",
+            path.display()
+        );
+        return ExitCode::FAILURE;
+    };
+
+    if json {
+        let rendered = serde_json::json!({
+            "file": path.display().to_string(),
+            "line": line,
+            "column": column,
+            "type": probe.ty,
+            "enclosing_function": probe.enclosing_function,
+            "in_scope": probe
+                .in_scope
+                .iter()
+                .map(|(name, ty)| serde_json::json!({ "name": name, "type": ty }))
+                .collect::<Vec<_>>(),
+            "allowed_effects": probe.allowed_effects,
+        });
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&rendered).unwrap_or_default()
+        );
+    } else {
+        println!("{}:{line}:{column} — {}", path.display(), probe.ty);
+        println!("  in {}", probe.enclosing_function);
+        if probe.in_scope.is_empty() {
+            println!("  in scope: (nothing)");
+        } else {
+            let listed: Vec<String> = probe
+                .in_scope
+                .iter()
+                .map(|(name, ty)| format!("{name}: {ty}"))
+                .collect();
+            println!("  in scope: {}", listed.join(", "));
+        }
+        if probe.allowed_effects.is_empty() {
+            println!("  effects:  none permitted");
+        } else {
+            println!("  effects:  {}", probe.allowed_effects.join(", "));
+        }
+    }
+    ExitCode::SUCCESS
+}
+
+fn producers(path: &Path, type_text: &str, json: bool) -> ExitCode {
+    let mut failed = false;
+    let Some(source) = read(path, &mut failed) else {
+        return ExitCode::FAILURE;
+    };
+    let parsed = parse(&source);
+
+    let found = match xenith_sema::producers(&parsed.module, type_text) {
+        Ok(found) => found,
+        Err(message) => {
+            eprintln!("{message}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    if json {
+        let rendered: Vec<serde_json::Value> = found
+            .iter()
+            .map(|p| {
+                serde_json::json!({
+                    "kind": p.kind,
+                    "symbol": p.symbol,
+                    "signature": p.signature,
+                    "effects": p.effects,
+                })
+            })
+            .collect();
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&rendered).unwrap_or_default()
+        );
+    } else if found.is_empty() {
+        println!("nothing in {} produces {type_text}", path.display());
+    } else {
+        println!("producers of {type_text}:");
+        for producer in &found {
+            println!("  {:<9} {}", producer.kind, producer.signature);
+        }
+    }
+    ExitCode::SUCCESS
+}
+
+/// `"59:5"` → `(59, 5)`.
+fn parse_position(text: &str) -> Option<(u32, u32)> {
+    let (line, column) = text.split_once(':')?;
+    let line = line.trim().parse().ok()?;
+    let column = column.trim().parse().ok()?;
+    if line == 0 || column == 0 {
+        return None;
+    }
+    Some((line, column))
+}
+
+/// One-based line and character column to a byte offset.
+fn offset_of(source: &str, index: &LineIndex, line: u32, column: u32) -> Option<u32> {
+    let start = index.line_start(line)?;
+    let text = index.line_text(source, line)?;
+    let mut seen = 0u32;
+    for (byte_offset, _) in text.char_indices() {
+        seen += 1;
+        if seen == column {
+            return Some(start + byte_offset as u32);
+        }
+    }
+    // One past the last character addresses the end of the line.
+    if column == seen + 1 {
+        Some(start + text.len() as u32)
+    } else {
+        None
     }
 }
 

@@ -45,10 +45,31 @@ pub struct Analysis {
     pub goals: Vec<Goal>,
 }
 
+/// What the checker knew about the innermost expression containing a probed
+/// offset — the payload of `xenith query type-at`.
+#[derive(Clone, Debug)]
+pub struct Probe {
+    pub span: Span,
+    pub ty: String,
+    pub enclosing_function: String,
+    pub in_scope: Vec<(String, String)>,
+    pub allowed_effects: Vec<String>,
+}
+
 pub fn analyze(module: &ast::Module) -> Analysis {
+    analyze_at(module, None).0
+}
+
+/// Analyse, additionally capturing the checker's state at `offset`.
+///
+/// The probe rides the ordinary traversal — the same claim as holes: the
+/// answer to "what is required here?" is the checker's current state, and a
+/// query is just a hole the author did not have to write.
+pub fn analyze_at(module: &ast::Module, offset: Option<u32>) -> (Analysis, Option<Probe>) {
     let (table, mut diagnostics) = def::collect(module);
     let mut goals = Vec::new();
     let mut next_hole = 0u32;
+    let mut probe = None;
 
     for item in &module.items {
         let ast::ItemKind::Fn(f) = &item.kind else {
@@ -65,12 +86,14 @@ pub fn analyze(module: &ast::Module) -> Analysis {
             diagnostics: &mut diagnostics,
             goals: &mut goals,
             next_hole: &mut next_hole,
+            probe_offset: offset,
+            probe: &mut probe,
         };
         checker.check_fn();
     }
 
     goals.sort_by_key(|g| g.span.start);
-    Analysis { diagnostics, goals }
+    (Analysis { diagnostics, goals }, probe)
 }
 
 struct Binding {
@@ -87,6 +110,9 @@ struct Checker<'a> {
     diagnostics: &'a mut Vec<Diagnostic>,
     goals: &'a mut Vec<Goal>,
     next_hole: &'a mut u32,
+    /// Byte offset being queried by `type-at`, if any.
+    probe_offset: Option<u32>,
+    probe: &'a mut Option<Probe>,
 }
 
 impl<'a> Checker<'a> {
@@ -139,6 +165,30 @@ impl<'a> Checker<'a> {
         let id = HoleId(*self.next_hole);
         *self.next_hole += 1;
         id
+    }
+
+    /// Capture the checker's state for `type-at`, smallest containing span
+    /// wins. Runs on every expression; a `None` probe offset makes it free.
+    fn maybe_probe(&mut self, span: Span, ty: &Type) {
+        let Some(offset) = self.probe_offset else {
+            return;
+        };
+        if !span.contains(offset) {
+            return;
+        }
+        let better = match self.probe.as_ref() {
+            Some(existing) => span.len() <= existing.span.len(),
+            None => true,
+        };
+        if better {
+            *self.probe = Some(Probe {
+                span,
+                ty: self.render(ty),
+                enclosing_function: self.sig.name.clone(),
+                in_scope: self.scope_snapshot(),
+                allowed_effects: self.sig.effects.iter().map(String::from).collect(),
+            });
+        }
     }
 
     /// Snapshot the scope for a goal: innermost occurrence of each name wins.
@@ -443,6 +493,9 @@ impl<'a> Checker<'a> {
     /// Push `expected` into the expression. This is where holes become goals:
     /// the required type is simply present.
     fn check(&mut self, expr: &ast::Expr, expected: &Type) {
+        // For `type-at`: a checked expression's type is what was required of
+        // it. Inner expressions overwrite this with something smaller.
+        self.maybe_probe(expr.span, expected);
         match &expr.kind {
             ast::ExprKind::Hole { name } => {
                 self.fresh_hole();
@@ -502,6 +555,12 @@ impl<'a> Checker<'a> {
 
     /// Read a type out of the expression with nothing pushed down.
     fn synth(&mut self, expr: &ast::Expr) -> Type {
+        let ty = self.synth_inner(expr);
+        self.maybe_probe(expr.span, &ty);
+        ty
+    }
+
+    fn synth_inner(&mut self, expr: &ast::Expr) -> Type {
         match &expr.kind {
             ast::ExprKind::Int(_) => Type::Int,
             ast::ExprKind::Float(_) => Type::Float,
@@ -1573,6 +1632,9 @@ impl<'a> Checker<'a> {
                         return;
                     }
                 }
+                // `type-at` on a binding name answers with the bound type —
+                // the most natural question to ask about a `let`.
+                self.maybe_probe(ident.span, scrutinee);
                 self.bind(&ident.name, scrutinee.clone(), mutable);
             }
 
