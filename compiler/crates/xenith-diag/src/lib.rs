@@ -122,9 +122,42 @@ pub enum DiagCode {
     MalformedChar,
     /// XN0006 — an identifier that is reserved for a future version of Xenith.
     ReservedKeyword,
+
+    /// XN1001 — a specific token was required here and something else appeared.
+    ExpectedToken,
+    /// XN1002 — a statement ended without its `;`.
+    MissingSemicolon,
+    /// XN1003 — an opening delimiter was never closed.
+    UnclosedDelimiter,
+    /// XN1004 — an expression was required here.
+    ExpectedExpression,
+    /// XN1005 — a type was required here.
+    ExpectedType,
+    /// XN1006 — a pattern was required here.
+    ExpectedPattern,
+    /// XN1007 — a declaration was required at the top level of a module.
+    ExpectedItem,
 }
 
 impl DiagCode {
+    /// Every code, so that tests and `xenith explain --list` never fall out of
+    /// step with the enum.
+    pub const ALL: &'static [DiagCode] = &[
+        DiagCode::UnexpectedCharacter,
+        DiagCode::UnterminatedString,
+        DiagCode::InvalidEscape,
+        DiagCode::MalformedNumber,
+        DiagCode::MalformedChar,
+        DiagCode::ReservedKeyword,
+        DiagCode::ExpectedToken,
+        DiagCode::MissingSemicolon,
+        DiagCode::UnclosedDelimiter,
+        DiagCode::ExpectedExpression,
+        DiagCode::ExpectedType,
+        DiagCode::ExpectedPattern,
+        DiagCode::ExpectedItem,
+    ];
+
     /// The stable textual identifier, for example `"XN0002"`.
     pub fn id(self) -> &'static str {
         match self {
@@ -134,20 +167,18 @@ impl DiagCode {
             DiagCode::MalformedNumber => "XN0004",
             DiagCode::MalformedChar => "XN0005",
             DiagCode::ReservedKeyword => "XN0006",
+            DiagCode::ExpectedToken => "XN1001",
+            DiagCode::MissingSemicolon => "XN1002",
+            DiagCode::UnclosedDelimiter => "XN1003",
+            DiagCode::ExpectedExpression => "XN1004",
+            DiagCode::ExpectedType => "XN1005",
+            DiagCode::ExpectedPattern => "XN1006",
+            DiagCode::ExpectedItem => "XN1007",
         }
     }
 
     pub fn from_id(id: &str) -> Option<DiagCode> {
-        let code = match id {
-            "XN0001" => DiagCode::UnexpectedCharacter,
-            "XN0002" => DiagCode::UnterminatedString,
-            "XN0003" => DiagCode::InvalidEscape,
-            "XN0004" => DiagCode::MalformedNumber,
-            "XN0005" => DiagCode::MalformedChar,
-            "XN0006" => DiagCode::ReservedKeyword,
-            _ => return None,
-        };
-        Some(code)
+        DiagCode::ALL.iter().copied().find(|c| c.id() == id)
     }
 
     /// The long-form explanation shown by `xenith explain <code>`.
@@ -207,6 +238,63 @@ impl DiagCode {
                  usually clearest.\n\n\
                  Reserved words: `trait`, `impl`, `where`, `pub`, `mod`, `loop`, \
                  `defer`, `yield`, `capability`, `effect`, `extern`, `static`, `macro`."
+            }
+            DiagCode::ExpectedToken => {
+                "The grammar requires a specific token at this position and a \
+                 different one appeared.\n\n\
+                 The message names what was required. When the required token is \
+                 punctuation that was simply left out, an applicable fix is attached \
+                 and inserting it is safe."
+            }
+            DiagCode::MissingSemicolon => {
+                "Statements are terminated by `;`.\n\n\
+                 Xenith gives whitespace no meaning at all: newlines and indentation \
+                 never change what a program does. That property is what makes `;` \
+                 mandatory — without a terminator the parser would have to infer \
+                 statement boundaries from line breaks, and reflowing a long line \
+                 could silently change behaviour.\n\n\
+                 A block's value is its final expression, written *without* a \
+                 trailing `;`. Adding one makes the block evaluate to `unit`, which \
+                 is usually reported as a type mismatch rather than here."
+            }
+            DiagCode::UnclosedDelimiter => {
+                "An opening `(`, `[` or `{` has no matching close.\n\n\
+                 The span points at the opening delimiter, which is nearly always \
+                 closer to the real mistake than the end of the file is.\n\n\
+                 Parsing continues past this point, so later errors in the same run \
+                 may be consequences of this one. Fix this first."
+            }
+            DiagCode::ExpectedExpression => {
+                "An expression was required at this position.\n\n\
+                 If you do not yet know what belongs here, write a hole rather than \
+                 leaving it blank: `??` on its own, or `??name` to refer to it later. \
+                 A hole is a legal program element — the code still compiles, and \
+                 `xenith goals` will report the type required here, what is in scope, \
+                 and which effects are permitted."
+            }
+            DiagCode::ExpectedType => {
+                "A type was required at this position.\n\n\
+                 Xenith does not infer types across function boundaries, so every \
+                 parameter, return type and field must be written out. That is \
+                 deliberate: with whole-program inference, changing one expression can \
+                 flip the type of something far away, which makes a program \
+                 unrepairable in small steps.\n\n\
+                 Types may also be holes: `??` asks the compiler what would fit."
+            }
+            DiagCode::ExpectedPattern => {
+                "A pattern was required at this position.\n\n\
+                 Patterns appear in `let`, `var`, `for`, and `match` arms. The forms \
+                 are: a binding (`total`), a wildcard (`_`), a literal (`0`, `\"ok\"`), \
+                 a path (`Rank.Gold`), a variant with fields (`Ok(value)`), a struct \
+                 pattern (`Player { name, score }`), and alternatives joined by `|`."
+            }
+            DiagCode::ExpectedItem => {
+                "Only declarations may appear at the top level of a module.\n\n\
+                 Those are `use`, `const`, `fn`, `struct` and `enum`. Statements and \
+                 expressions belong inside a function body.\n\n\
+                 A program starts at `fn main`, which receives its capabilities as \
+                 parameters — there is no ambient environment to reach for, so there \
+                 is nothing a top-level statement could usefully do."
             }
         }
     }
@@ -366,30 +454,14 @@ mod tests {
 
     #[test]
     fn every_code_round_trips_through_its_id() {
-        let codes = [
-            DiagCode::UnexpectedCharacter,
-            DiagCode::UnterminatedString,
-            DiagCode::InvalidEscape,
-            DiagCode::MalformedNumber,
-            DiagCode::MalformedChar,
-            DiagCode::ReservedKeyword,
-        ];
-        for code in codes {
+        for &code in DiagCode::ALL {
             assert_eq!(DiagCode::from_id(code.id()), Some(code), "{}", code.id());
         }
     }
 
     #[test]
     fn codes_are_unique() {
-        let codes = [
-            DiagCode::UnexpectedCharacter,
-            DiagCode::UnterminatedString,
-            DiagCode::InvalidEscape,
-            DiagCode::MalformedNumber,
-            DiagCode::MalformedChar,
-            DiagCode::ReservedKeyword,
-        ];
-        let mut ids: Vec<&str> = codes.iter().map(|c| c.id()).collect();
+        let mut ids: Vec<&str> = DiagCode::ALL.iter().map(|c| c.id()).collect();
         ids.sort_unstable();
         let count = ids.len();
         ids.dedup();
@@ -398,21 +470,42 @@ mod tests {
 
     #[test]
     fn every_code_has_a_non_empty_explanation() {
-        let codes = [
-            DiagCode::UnexpectedCharacter,
-            DiagCode::UnterminatedString,
-            DiagCode::InvalidEscape,
-            DiagCode::MalformedNumber,
-            DiagCode::MalformedChar,
-            DiagCode::ReservedKeyword,
-        ];
-        for code in codes {
+        for &code in DiagCode::ALL {
             assert!(
                 code.explain().len() > 40,
                 "{} needs a real explanation",
                 code.id()
             );
         }
+    }
+
+    #[test]
+    fn all_lists_every_variant() {
+        // `ALL` drives the tests above, so a variant missing from it would be
+        // silently untested. This match is exhaustive on purpose and has no
+        // `_` arm: adding a variant stops this file compiling until someone
+        // looks here, and the count then catches a variant that was added to
+        // the match but not to `ALL`.
+        let mut seen = 0;
+        for &code in DiagCode::ALL {
+            match code {
+                DiagCode::UnexpectedCharacter
+                | DiagCode::UnterminatedString
+                | DiagCode::InvalidEscape
+                | DiagCode::MalformedNumber
+                | DiagCode::MalformedChar
+                | DiagCode::ReservedKeyword
+                | DiagCode::ExpectedToken
+                | DiagCode::MissingSemicolon
+                | DiagCode::UnclosedDelimiter
+                | DiagCode::ExpectedExpression
+                | DiagCode::ExpectedType
+                | DiagCode::ExpectedPattern
+                | DiagCode::ExpectedItem => seen += 1,
+            }
+        }
+        assert_eq!(seen, 13, "update DiagCode::ALL when adding a variant");
+        assert_eq!(DiagCode::ALL.len(), 13);
     }
 
     #[test]
