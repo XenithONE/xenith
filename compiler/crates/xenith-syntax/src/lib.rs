@@ -1,14 +1,12 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+//! Lexing and parsing for Xenith.
+//!
+//! Both stages are written by hand rather than generated. Diagnostic quality is
+//! a large fraction of what this language is *for* — a model repairs code from
+//! compiler output, so the compiler's output is the product — and generated
+//! parsers do not produce the errors we need.
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub mod lexer;
+pub mod token;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub use lexer::{Lexed, lex};
+pub use token::{RESERVED_WORDS, Token, TokenKind, is_reserved, keyword_kind};
