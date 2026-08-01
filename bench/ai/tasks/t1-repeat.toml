@@ -1,0 +1,19 @@
+name = "repeat"
+tier = 1
+prompt = '''
+Write a complete Xenith program that builds the string "ab" repeated 5 times and prints it
+(that is, it prints ababababab).
+'''
+expected_stdout = "ababababab"
+reference = '''
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    var built = "";
+    var n = 0;
+    while n < 5 {
+        built = built.concat(other: "ab");
+        n = n + 1;
+    }
+    io.write(text: built)?;
+    return Ok(unit);
+}
+'''

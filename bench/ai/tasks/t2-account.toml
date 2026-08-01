@@ -1,0 +1,23 @@
+name = "account"
+tier = 2
+prompt = '''
+Write a complete Xenith program with a struct Account holding an owner name (String) and a
+mutable balance (Int). Starting from balance 0, apply: deposit 100, deposit 250, withdraw 75,
+by mutating the field. Print exactly the final balance.
+'''
+expected_stdout = "275"
+reference = '''
+struct Account {
+    owner: String,
+    var balance: Int,
+}
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    var account = Account { owner: "ada", balance: 0 };
+    account.balance = account.balance + 100;
+    account.balance = account.balance + 250;
+    account.balance = account.balance - 75;
+    io.write(text: account.balance.to_text())?;
+    return Ok(unit);
+}
+'''

@@ -1,0 +1,30 @@
+name = "shapes"
+tier = 2
+prompt = '''
+Write a complete Xenith program with an enum Shape having variants Circle(Int), Rect(Int, Int)
+and Empty. Write a function area(shape: Shape) -> Int where a circle of radius r has area
+3 * r * r (use 3 for pi), a rectangle has width * height, and Empty has 0 — decided with a
+match over the variants. Print exactly the total area of Circle(2) plus Rect(3, 4).
+'''
+expected_stdout = "24"
+reference = '''
+enum Shape {
+    Circle(Int),
+    Rect(Int, Int),
+    Empty,
+}
+
+fn area(shape: Shape) -> Int {
+    match shape {
+        Shape.Circle(r) => 3 * r * r,
+        Shape.Rect(w, h) => w * h,
+        Shape.Empty => 0,
+    }
+}
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    let total = area(shape: Shape.Circle(2)) + area(shape: Shape.Rect(3, 4));
+    io.write(text: total.to_text())?;
+    return Ok(unit);
+}
+'''

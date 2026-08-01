@@ -1,0 +1,21 @@
+name = "multiples"
+tier = 1
+prompt = '''
+Write a complete Xenith program that counts how many integers below 1000 (from 1 to 999) are
+divisible by 3 or by 5, and prints exactly that count.
+'''
+expected_stdout = "466"
+reference = '''
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    var count = 0;
+    var n = 1;
+    while n < 1000 {
+        if n % 3 == 0 || n % 5 == 0 {
+            count = count + 1;
+        }
+        n = n + 1;
+    }
+    io.write(text: count.to_text())?;
+    return Ok(unit);
+}
+'''

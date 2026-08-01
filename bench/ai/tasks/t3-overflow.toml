@@ -1,0 +1,29 @@
+name = "overflow"
+tier = 3
+prompt = '''
+Write a complete Xenith program with an enum MathError having one variant Overflow, and a
+function try_double(n: Int) -> Result<Int, MathError> that returns Ok of n + n, or
+Err(MathError.Overflow) when the addition would overflow — using checked_add and to_result,
+not a manual range test. In main, call try_double on 9223372036854775807 (the largest Int),
+match the result, and print exactly "overflow" when it fails or the doubled value when it
+succeeds.
+'''
+expected_stdout = "overflow"
+reference = '''
+enum MathError {
+    Overflow,
+}
+
+fn try_double(n: Int) -> Result<Int, MathError> {
+    n.checked_add(other: n).to_result(error: MathError.Overflow)
+}
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    let message = match try_double(n: 9_223_372_036_854_775_807) {
+        Ok(value) => value.to_text(),
+        Err(_) => "overflow",
+    };
+    io.write(text: message)?;
+    return Ok(unit);
+}
+'''

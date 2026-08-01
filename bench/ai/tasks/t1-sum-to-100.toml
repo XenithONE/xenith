@@ -1,0 +1,19 @@
+name = "sum-to-100"
+tier = 1
+prompt = '''
+Write a complete Xenith program that computes the sum of the integers from 1 to 100 inclusive
+and prints exactly that number (no other output).
+'''
+expected_stdout = "5050"
+reference = '''
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    var total = 0;
+    var n = 1;
+    while n <= 100 {
+        total = total + n;
+        n = n + 1;
+    }
+    io.write(text: total.to_text())?;
+    return Ok(unit);
+}
+'''

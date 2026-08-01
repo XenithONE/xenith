@@ -1,0 +1,21 @@
+name = "effects"
+tier = 3
+prompt = '''
+Write a complete Xenith program with a helper function announce(io: Io, text: String) that
+writes the given text twice using io.write, declaring its effects correctly, and propagating
+errors with ? and a Result return type. From main, call announce once with the text "hi"
+(so the program prints exactly hihi).
+'''
+expected_stdout = "hihi"
+reference = '''
+fn announce(io: Io, text: String) -> Result<Unit, Error> uses {Io.write} {
+    io.write(text: text)?;
+    io.write(text: text)?;
+    return Ok(unit);
+}
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    announce(io: io, text: "hi")?;
+    return Ok(unit);
+}
+'''

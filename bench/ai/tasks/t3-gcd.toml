@@ -1,0 +1,21 @@
+name = "gcd"
+tier = 3
+prompt = '''
+Write a complete Xenith program with a recursive function gcd(a: Int, b: Int) -> Int using
+Euclid's algorithm (gcd(a, 0) = a; otherwise gcd(b, a % b)). Print exactly gcd(1071, 462).
+'''
+expected_stdout = "21"
+reference = '''
+fn gcd(a: Int, b: Int) -> Int {
+    if b == 0 {
+        a
+    } else {
+        gcd(a: b, b: a % b)
+    }
+}
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    io.write(text: gcd(a: 1071, b: 462).to_text())?;
+    return Ok(unit);
+}
+'''

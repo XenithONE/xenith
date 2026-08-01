@@ -1,0 +1,24 @@
+name = "collatz"
+tier = 2
+prompt = '''
+Write a complete Xenith program that counts the steps of the Collatz sequence starting at 27
+until it reaches 1 (halve even numbers, map odd n to 3*n + 1), and prints exactly the step
+count.
+'''
+expected_stdout = "111"
+reference = '''
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    var n = 27;
+    var steps = 0;
+    while n != 1 {
+        if n % 2 == 0 {
+            n = n / 2;
+        } else {
+            n = 3 * n + 1;
+        }
+        steps = steps + 1;
+    }
+    io.write(text: steps.to_text())?;
+    return Ok(unit);
+}
+'''

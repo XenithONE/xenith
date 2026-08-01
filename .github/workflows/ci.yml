@@ -96,3 +96,8 @@ jobs:
         run: |
           cargo run --manifest-path compiler/Cargo.toml -p xenith -- run examples/hello.xn | tee /tmp/run.txt
           grep -q "Hello, world" /tmp/run.txt
+
+      # Every benchmark task's reference solution must check, run, and print
+      # its expected output. Measuring models against broken tasks lies.
+      - name: Benchmark references
+        run: cargo run --manifest-path compiler/Cargo.toml -p xenith-bench -- verify

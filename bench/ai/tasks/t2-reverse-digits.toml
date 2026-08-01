@@ -1,0 +1,21 @@
+name = "reverse-digits"
+tier = 2
+prompt = '''
+Write a complete Xenith program that reverses the digits of the integer 123456 by repeatedly
+taking n % 10 and n / 10, building the result as a string, and prints exactly the reversed
+digits.
+'''
+expected_stdout = "654321"
+reference = '''
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    var n = 123456;
+    var built = "";
+    while n > 0 {
+        let digit = n % 10;
+        built = built.concat(other: digit.to_text());
+        n = n / 10;
+    }
+    io.write(text: built)?;
+    return Ok(unit);
+}
+'''
