@@ -546,6 +546,23 @@ impl<'a> Checker<'a> {
                 self.require_compatible(&ty, expected, expr.span);
             }
 
+            // Qualified variant construction parses as a method call; in
+            // checking position it deserves the expected type too, so a
+            // generic enum's parameters come from context.
+            ast::ExprKind::MethodCall {
+                receiver,
+                method,
+                args,
+            } => {
+                let ty = match self.qualified_variant_target(receiver, &method.name) {
+                    Some(def) => {
+                        self.call_variant(def, &method.name, args, Some(expected), expr.span)
+                    }
+                    None => self.method_call(receiver, method, args, expr.span),
+                };
+                self.require_compatible(&ty, expected, expr.span);
+            }
+
             _ => {
                 let found = self.synth(expr);
                 self.require_compatible(&found, expected, expr.span);
@@ -1439,6 +1456,28 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// `Grade.Pass(95)` parses as a method call — `.name(` always does — so
+    /// qualified variant construction arrives here, not at `call`. Detect it
+    /// before synthesising the receiver, or the enum's name reports as an
+    /// unknown value.
+    fn qualified_variant_target(
+        &self,
+        receiver: &ast::Expr,
+        method: &str,
+    ) -> Option<crate::ty::DefId> {
+        let ast::ExprKind::Path(path) = &receiver.kind else {
+            return None;
+        };
+        let [single] = path.segments.as_slice() else {
+            return None;
+        };
+        if self.lookup(&single.name).is_some() {
+            return None;
+        }
+        let def = self.defs.lookup(&single.name)?;
+        self.defs.variant_named(def, method).map(|_| def)
+    }
+
     fn method_call(
         &mut self,
         receiver: &ast::Expr,
@@ -1446,6 +1485,10 @@ impl<'a> Checker<'a> {
         args: &[ast::Arg],
         span: Span,
     ) -> Type {
+        if let Some(def) = self.qualified_variant_target(receiver, &method.name) {
+            return self.call_variant(def, &method.name, args, None, span);
+        }
+
         let receiver_ty = self.synth(receiver);
         if receiver_ty.is_unknown() {
             for arg in args {

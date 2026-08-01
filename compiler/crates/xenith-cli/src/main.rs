@@ -73,6 +73,15 @@ enum Command {
         #[command(subcommand)]
         question: QueryCommand,
     },
+    /// Type-check and execute a file's `fn main`.
+    ///
+    /// A file with diagnostics is refused — run `xenith check` first. A file
+    /// with holes runs: reaching one is a precise trap naming the hole, so
+    /// running a partial program tells you which hole to fill next.
+    ///
+    /// Exit codes: 0 = main succeeded; 1 = main returned `Err`;
+    /// 2 = refused (diagnostics); 101 = a runtime trap fired.
+    Run { path: PathBuf },
 }
 
 #[derive(Subcommand)]
@@ -116,7 +125,47 @@ fn main() -> ExitCode {
                 json,
             } => producers(&path, &type_text, json),
         },
+        Command::Run { path } => run(&path),
     }
+}
+
+fn run(path: &Path) -> ExitCode {
+    let mut failed = false;
+    let Some(source) = read(path, &mut failed) else {
+        return ExitCode::from(2);
+    };
+
+    // Running a program with diagnostics would be executing guesses.
+    let analysis = xenith_driver::analyze_source(&source);
+    if !analysis.diagnostics.is_empty() {
+        let index = LineIndex::new(&source);
+        for diagnostic in &analysis.diagnostics {
+            print!("{}", render::diagnostic(path, &source, &index, diagnostic));
+        }
+        eprintln!("{}: not run — fix the diagnostics first", path.display());
+        return ExitCode::from(2);
+    }
+
+    let parsed = parse(&source);
+    let (table, _) = xenith_sema::def::collect(&parsed.module);
+    let outcome = xenith_vm::run(&parsed.module, &table);
+
+    use std::io::Write;
+    let _ = std::io::stdout().write_all(&outcome.stdout);
+    let _ = std::io::stdout().flush();
+
+    if let Some((message, span)) = outcome.error {
+        let index = LineIndex::new(&source);
+        let at = index.line_col(&source, span.start);
+        eprintln!(
+            "{}:{}:{}: runtime error: {message}",
+            path.display(),
+            at.line,
+            at.column
+        );
+    }
+
+    ExitCode::from(u8::try_from(outcome.exit).unwrap_or(101))
 }
 
 fn check(paths: &[PathBuf], json: bool) -> ExitCode {

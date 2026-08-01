@@ -98,7 +98,15 @@ fn the_tool_list_names_all_six_with_schemas() {
         .collect();
     assert_eq!(
         names,
-        ["check", "goals", "type_at", "producers", "fmt", "explain"]
+        [
+            "check",
+            "goals",
+            "type_at",
+            "producers",
+            "fmt",
+            "explain",
+            "run"
+        ]
     );
     for tool in tools {
         assert!(
@@ -244,6 +252,45 @@ fn explain_answers_case_insensitively() {
     assert!(!is_error);
     assert!(text.starts_with("XN4001"), "{text}");
     assert!(text.contains("uses"), "{text}");
+}
+
+#[test]
+fn run_executes_main_and_captures_stdout() {
+    let path = scratch(
+        "run",
+        "fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    \
+             io.write(text: \"hi from xenith\")?;\n    return Ok(unit);\n}\n",
+    );
+    let (is_error, text) = call("run", json!({ "path": path }));
+    assert!(!is_error, "{text}");
+    let parsed: Value = serde_json::from_str(&text).expect("payload is JSON");
+    assert_eq!(parsed["exit_code"], 0);
+    assert_eq!(parsed["stdout"], "hi from xenith");
+}
+
+#[test]
+fn run_refuses_a_file_with_diagnostics() {
+    let path = scratch("run-refuse", "fn main() -> Int {\n    true\n}\n");
+    let (is_error, text) = call("run", json!({ "path": path }));
+    assert!(!is_error);
+    let parsed: Value = serde_json::from_str(&text).expect("payload is JSON");
+    assert_eq!(parsed["exit_code"], 2);
+}
+
+#[test]
+fn run_traps_on_a_hole_and_names_it() {
+    let path = scratch(
+        "run-hole",
+        "fn main() -> Int {\n    let x: Int = ??start;\n    x\n}\n",
+    );
+    let (is_error, text) = call("run", json!({ "path": path }));
+    assert!(!is_error, "{text}");
+    let parsed: Value = serde_json::from_str(&text).expect("payload is JSON");
+    assert_eq!(parsed["exit_code"], 101);
+    assert!(
+        parsed["error"].as_str().expect("error").contains("??start"),
+        "{text}"
+    );
 }
 
 #[test]

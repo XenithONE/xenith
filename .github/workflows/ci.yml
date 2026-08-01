@@ -91,3 +91,8 @@ jobs:
           grep -q "in scope: name: String" /tmp/goals.txt
           grep -q "Ok(??)" /tmp/goals.txt
           grep -q "try_award(player: ??, points: ??)" /tmp/goals.txt
+
+      - name: Run
+        run: |
+          cargo run --manifest-path compiler/Cargo.toml -p xenith -- run examples/hello.xn | tee /tmp/run.txt
+          grep -q "Hello, world" /tmp/run.txt

@@ -2,11 +2,12 @@
 
 **An experimental general-purpose language designed so that a compiler can guide an LLM to correct code.**
 
-> ⚠️ **Status: pre-alpha.** Xenith programs do not run yet — there is no backend and only a
-> provisional prelude. What exists: the front end, a bidirectional type checker with checked
-> effects and sealed properties, and typed holes that answer through `xenith goals`. The `xenith`
-> command has `check`, `fmt`, `explain` and `goals`. If you are looking for a language you can use
-> today, this is not it.
+> ⚠️ **Status: pre-alpha.** Xenith programs parse, type-check and **run** — through a
+> deterministic tree-walking interpreter, with only a provisional prelude. What exists: the front
+> end, a bidirectional checker with checked effects and sealed properties, typed holes that answer
+> through `xenith goals`, compiler queries, execution via `xenith run`, and all of it doubled as
+> an MCP server. What does not: a standard library, modules, concurrency, native code. If you are
+> looking for a language to build software in today, this is not it yet.
 
 ---
 
@@ -162,11 +163,25 @@ producers of Result<Player, ScoreError>:
 Both take `--json`. Partial programs answer like any other — a query is a hole the author did not
 have to write, and it rides the same traversal that answers `goals`.
 
+Programs run:
+
+```console
+$ xenith run examples/hello.xn
+Hello, world
+```
+
+Execution is a tree-walking interpreter, deliberately: peak performance is a non-goal, and what
+the benchmark needs is execution that is correct and deterministic — strict left-to-right
+evaluation, trapping overflow and division by zero, IEEE floats, no undefined behaviour. A file
+with diagnostics is refused; a file with **holes** runs, and reaching one is a precise trap that
+names the hole and points at `goals`. Running a partial program tells you which hole to fill
+next — that is the workflow, not a failure mode.
+
 ## Using from an agent (MCP)
 
-Everything above is also an MCP server: `check`, `goals`, `type_at`, `producers`, `fmt` and
-`explain` as tools over stdio, speaking the same JSON as the CLI — one wire format, defined once
-in `xenith-driver`. To connect it to Claude Code:
+Everything above is also an MCP server: `check`, `goals`, `type_at`, `producers`, `fmt`,
+`explain` and `run` as tools over stdio, speaking the same JSON as the CLI — one wire format,
+defined once in `xenith-driver`. To connect it to Claude Code:
 
 ```bash
 claude mcp add xenith -- cargo run -q --manifest-path compiler/Cargo.toml -p xenith-mcp

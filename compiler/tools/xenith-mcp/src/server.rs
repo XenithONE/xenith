@@ -95,7 +95,15 @@ fn error(id: Value, code: i64, message: &str) -> Value {
 
 // --------------------------------------------------------------------- tools
 
-const TOOL_NAMES: &[&str] = &["check", "goals", "type_at", "producers", "fmt", "explain"];
+const TOOL_NAMES: &[&str] = &[
+    "check",
+    "goals",
+    "type_at",
+    "producers",
+    "fmt",
+    "explain",
+    "run",
+];
 
 /// The tool list is the context a model reads before calling anything, so the
 /// descriptions carry the usage rules — they are product surface, not
@@ -190,6 +198,20 @@ fn tool_definitions() -> Vec<Value> {
                     "code": { "type": "string", "description": "A code such as XN3005." },
                 },
                 "required": ["code"],
+            },
+        }),
+        json!({
+            "name": "run",
+            "description": "Type-check and execute a file's `fn main`, returning captured stdout \
+                and an exit code: 0 = succeeded, 1 = main returned Err, 2 = refused because the \
+                file has diagnostics (fix them first), 101 = a runtime trap fired (overflow, \
+                division by zero — or a hole was reached, in which case the trap names it and the \
+                next step is `goals`). Deterministic: strict left-to-right evaluation, trapping \
+                arithmetic.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "path": path_property },
+                "required": ["path"],
             },
         }),
     ]
@@ -296,6 +318,34 @@ fn call_tool(name: &str, arguments: &Value) -> Result<String, String> {
                     "unknown diagnostic code `{code}`; codes run XN0001–XN4001"
                 )),
             }
+        }
+
+        "run" => {
+            let path = path_of(arguments)?;
+            let source = read(&path)?;
+            let analysis = xenith_driver::analyze_source(&source);
+            if !analysis.diagnostics.is_empty() {
+                let value = json!({
+                    "exit_code": 2,
+                    "stdout": "",
+                    "error": "the file has diagnostics; call `check` and fix them first",
+                });
+                return serde_json::to_string_pretty(&value).map_err(|e| e.to_string());
+            }
+            let parsed = xenith_syntax::parse(&source);
+            let (table, _) = xenith_sema::def::collect(&parsed.module);
+            let outcome = xenith_vm::run(&parsed.module, &table);
+            let index = LineIndex::new(&source);
+            let error = outcome.error.map(|(message, span)| {
+                let at = index.line_col(&source, span.start);
+                format!("{path}:{}:{}: {message}", at.line, at.column)
+            });
+            let value = json!({
+                "exit_code": outcome.exit,
+                "stdout": String::from_utf8_lossy(&outcome.stdout),
+                "error": error,
+            });
+            serde_json::to_string_pretty(&value).map_err(|e| e.to_string())
         }
 
         _ => unreachable!("tool names are validated by the caller"),

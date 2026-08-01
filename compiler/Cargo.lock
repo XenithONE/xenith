@@ -244,6 +244,7 @@ dependencies = [
  "xenith-driver",
  "xenith-sema",
  "xenith-syntax",
+ "xenith-vm",
 ]
 
 [[package]]
@@ -273,6 +274,7 @@ dependencies = [
  "xenith-driver",
  "xenith-sema",
  "xenith-syntax",
+ "xenith-vm",
 ]
 
 [[package]]
@@ -293,6 +295,11 @@ dependencies = [
 [[package]]
 name = "xenith-vm"
 version = "0.0.0"
+dependencies = [
+ "xenith-diag",
+ "xenith-sema",
+ "xenith-syntax",
+]
 
 [[package]]
 name = "zmij"

@@ -209,6 +209,20 @@ fn equality_on_functions_is_rejected() {
 // ------------------------------------------------------------ option, result
 
 #[test]
+fn qualified_variant_construction_with_a_payload_checks() {
+    // `Grade.Pass(95)` parses as a method call, and the checker once synthed
+    // the receiver and reported `Grade` as an unknown *value*. Found by the
+    // interpreter's test suite — no earlier test ever constructed a qualified
+    // variant that carries a payload.
+    expect_clean(
+        "enum Grade { Pass(Int), Fail }\n\
+         fn f() -> Grade { Grade.Pass(95) }\n\
+         fn g(grade: Grade) -> Int { 1 }\n\
+         fn h() -> Int { g(grade: Grade.Pass(60)) }",
+    );
+}
+
+#[test]
 fn constructors_take_their_parameters_from_the_expected_type() {
     expect_clean(
         "enum ApiError { Down }\n\

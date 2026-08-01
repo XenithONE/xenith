@@ -20,4 +20,5 @@ xenith-diag = { workspace = true }
 xenith-syntax = { workspace = true }
 xenith-sema = { workspace = true }
 xenith-driver = { workspace = true }
+xenith-vm = { workspace = true }
 serde_json = { workspace = true }
