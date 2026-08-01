@@ -241,6 +241,7 @@ dependencies = [
  "serde",
  "serde_json",
  "xenith-diag",
+ "xenith-sema",
  "xenith-syntax",
 ]
 

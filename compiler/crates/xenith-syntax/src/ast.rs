@@ -38,6 +38,19 @@ pub struct Path {
     pub span: Span,
 }
 
+/// A generic parameter: `T`, or `T: Eq + Hash`.
+///
+/// Bounds name sealed type properties (`Eq`, `Ord`, `Hash`, `Copy`, `Text`).
+/// The parser accepts any identifier here; the checker validates against the
+/// closed set, so that an unknown property is reported with its name rather
+/// than as a syntax error. See `design/0006-type-checking.md` §3.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GenericParam {
+    pub name: Ident,
+    pub bounds: Vec<Ident>,
+    pub span: Span,
+}
+
 // ------------------------------------------------------------------- module
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -81,7 +94,7 @@ pub struct ConstItem {
 pub struct FnItem {
     pub name: Ident,
     pub is_async: bool,
-    pub generics: Vec<Ident>,
+    pub generics: Vec<GenericParam>,
     pub params: Vec<Param>,
     /// Absent means the function returns `unit`.
     pub return_type: Option<Type>,
@@ -110,7 +123,7 @@ pub struct EffectSet {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StructItem {
     pub name: Ident,
-    pub generics: Vec<Ident>,
+    pub generics: Vec<GenericParam>,
     pub fields: Vec<FieldDef>,
 }
 
@@ -127,7 +140,7 @@ pub struct FieldDef {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EnumItem {
     pub name: Ident,
-    pub generics: Vec<Ident>,
+    pub generics: Vec<GenericParam>,
     pub variants: Vec<VariantDef>,
 }
 
@@ -469,7 +482,7 @@ fn normalize_item(item: &mut Item) {
         }
         ItemKind::Fn(f) => {
             normalize_ident(&mut f.name);
-            f.generics.iter_mut().for_each(normalize_ident);
+            normalize_generics(&mut f.generics);
             for param in &mut f.params {
                 param.span = Span::EMPTY;
                 normalize_ident(&mut param.name);
@@ -487,7 +500,7 @@ fn normalize_item(item: &mut Item) {
         }
         ItemKind::Struct(s) => {
             normalize_ident(&mut s.name);
-            s.generics.iter_mut().for_each(normalize_ident);
+            normalize_generics(&mut s.generics);
             for field in &mut s.fields {
                 field.span = Span::EMPTY;
                 field.docs.clear();
@@ -497,7 +510,7 @@ fn normalize_item(item: &mut Item) {
         }
         ItemKind::Enum(e) => {
             normalize_ident(&mut e.name);
-            e.generics.iter_mut().for_each(normalize_ident);
+            normalize_generics(&mut e.generics);
             for variant in &mut e.variants {
                 variant.span = Span::EMPTY;
                 variant.docs.clear();
@@ -511,6 +524,14 @@ fn normalize_item(item: &mut Item) {
 
 fn normalize_ident(ident: &mut Ident) {
     ident.span = Span::EMPTY;
+}
+
+fn normalize_generics(generics: &mut [GenericParam]) {
+    for param in generics {
+        param.span = Span::EMPTY;
+        normalize_ident(&mut param.name);
+        param.bounds.iter_mut().for_each(normalize_ident);
+    }
 }
 
 fn normalize_path(path: &mut Path) {

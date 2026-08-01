@@ -81,3 +81,11 @@ jobs:
 
       - name: Formatted
         run: cargo run --manifest-path compiler/Cargo.toml -p xenith -- fmt --check examples/*.xn
+
+      # The README shows this exact output; if it drifts, the documentation
+      # is teaching an interface that no longer exists.
+      - name: Goals
+        run: |
+          cargo run --manifest-path compiler/Cargo.toml -p xenith -- goals examples/scores.xn | tee /tmp/goals.txt
+          grep -q "expected: Result<Player, ScoreError>" /tmp/goals.txt
+          grep -q "in scope: name: String" /tmp/goals.txt

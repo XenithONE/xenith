@@ -375,13 +375,29 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn generic_params(&mut self) -> Vec<Ident> {
+    fn generic_params(&mut self) -> Vec<GenericParam> {
         let mut generics = Vec::new();
         if !self.eat(TokenKind::Lt) {
             return generics;
         }
         while !self.at(TokenKind::Gt) && !self.at_end() {
-            generics.push(self.expect_ident());
+            let start = self.span();
+            let name = self.expect_ident();
+            // `T: Eq + Hash`. The property names are validated by the checker
+            // against the sealed set, not here — a syntax error cannot name
+            // the property, a semantic one can.
+            let mut bounds = Vec::new();
+            if self.eat(TokenKind::Colon) {
+                bounds.push(self.expect_ident());
+                while self.eat(TokenKind::Plus) {
+                    bounds.push(self.expect_ident());
+                }
+            }
+            generics.push(GenericParam {
+                name,
+                bounds,
+                span: start.to(self.prev_span()),
+            });
             if !self.eat(TokenKind::Comma) {
                 break;
             }

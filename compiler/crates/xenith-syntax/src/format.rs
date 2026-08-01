@@ -662,18 +662,22 @@ fn is_block_like(kind: &ExprKind) -> bool {
     )
 }
 
-fn render_generics(generics: &[Ident]) -> String {
+fn render_generics(generics: &[GenericParam]) -> String {
     if generics.is_empty() {
         return String::new();
     }
-    format!(
-        "<{}>",
-        generics
-            .iter()
-            .map(|g| g.name.as_str())
-            .collect::<Vec<_>>()
-            .join(", ")
-    )
+    let rendered: Vec<String> = generics
+        .iter()
+        .map(|g| {
+            if g.bounds.is_empty() {
+                g.name.name.clone()
+            } else {
+                let bounds: Vec<&str> = g.bounds.iter().map(|b| b.name.as_str()).collect();
+                format!("{}: {}", g.name.name, bounds.join(" + "))
+            }
+        })
+        .collect();
+    format!("<{}>", rendered.join(", "))
 }
 
 fn render_path(path: &Path) -> String {

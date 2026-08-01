@@ -385,6 +385,47 @@ fn holes_parse_in_type_position() {
 // ------------------------------------------------------------------ generics
 
 #[test]
+fn generic_parameters_record_their_bounds() {
+    let module = expect_clean("fn get<K: Eq + Hash, V>(map: Map<K, V>, key: K) -> Option<V> {}");
+    let ItemKind::Fn(f) = &module.items[0].kind else {
+        panic!("expected a function");
+    };
+    assert_eq!(f.generics.len(), 2);
+    assert_eq!(f.generics[0].name.name, "K");
+    assert_eq!(
+        f.generics[0]
+            .bounds
+            .iter()
+            .map(|b| b.name.as_str())
+            .collect::<Vec<_>>(),
+        ["Eq", "Hash"]
+    );
+    assert!(f.generics[1].bounds.is_empty());
+}
+
+#[test]
+fn bounds_parse_on_structs_and_enums_too() {
+    let module = expect_clean("struct Cache<K: Hash, V> { key: K, value: V }");
+    let ItemKind::Struct(s) = &module.items[0].kind else {
+        panic!("expected a struct");
+    };
+    assert_eq!(s.generics[0].bounds.len(), 1);
+
+    let module = expect_clean("enum Tree<T: Ord> { Leaf, Node(T) }");
+    let ItemKind::Enum(e) = &module.items[0].kind else {
+        panic!("expected an enum");
+    };
+    assert_eq!(e.generics[0].bounds[0].name, "Ord");
+}
+
+#[test]
+fn an_unknown_bound_name_is_not_a_parse_error() {
+    // The sealed set is enforced by the checker, which can name the property.
+    // The parser accepting it is what makes that diagnostic possible.
+    assert!(parse("fn f<T: Sortable>(x: T) {}").diagnostics.is_empty());
+}
+
+#[test]
 fn nested_generic_arguments_parse() {
     let module = expect_clean("fn f(m: Map<String, List<Int>>) {}");
     let ItemKind::Fn(f) = &module.items[0].kind else {

@@ -1,13 +1,14 @@
 # Examples
 
-> **These do not run yet.** There is no standard library and no backend — the
-> compiler currently lexes, parses, and formats. `xenith check` will accept
-> these files and `xenith fmt` leaves them unchanged, which is the extent of
-> what can be demonstrated today.
+> **These do not run yet.** There is no backend and only a provisional
+> prelude — but they parse, format, **type-check** (including effects), and
+> answer `xenith goals`.
 >
 > They are written to be read, and to be kept honest by the tooling that does
-> exist: every file here is checked and format-verified in CI, so an example
-> cannot rot into something that no longer parses.
+> exist: every file here is parsed, type-checked and format-verified in CI, so
+> an example cannot rot. That is not hypothetical — wiring the checker into
+> the test suite immediately caught a real bug in `hello.xn` (`return unit;`
+> where `Result<Unit, Error>` requires `return Ok(unit);`).
 
 | File | Shows |
 | --- | --- |
@@ -26,6 +27,15 @@ cargo run --manifest-path compiler/Cargo.toml -p xenith -- fmt --check examples/
 
 `scores.xn` ends with a function whose body is the hole `??lookup`. That file
 checks cleanly: a partial program is a normal state in Xenith, not an error.
-Once `xenith goals` exists it will report the type required at that hole, the
-bindings in scope, and the effects permitted — see
-[design/0002](../design/0002-design-review.md).
+Ask the compiler what belongs there:
+
+```bash
+cargo run --manifest-path compiler/Cargo.toml -p xenith -- goals examples/scores.xn
+```
+
+```console
+examples/scores.xn:59:5 — hole ??lookup in try_find
+  expected: Result<Player, ScoreError>
+  in scope: name: String
+  effects:  none permitted
+```

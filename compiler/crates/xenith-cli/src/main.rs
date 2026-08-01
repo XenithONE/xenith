@@ -10,6 +10,7 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use xenith_diag::{DiagCode, Diagnostic, LineIndex};
+use xenith_sema::analyze;
 use xenith_syntax::{FormatError, format, parse};
 
 mod render;
@@ -50,6 +51,20 @@ enum Command {
         /// The code to explain. Omit to list every code.
         code: Option<String>,
     },
+    /// Report every hole: the type required there, what is in scope, and
+    /// which effects are permitted.
+    ///
+    /// A hole (`??` or `??name`) is a legal program element, so a partial
+    /// program is something to query, not something to fix. This command is
+    /// how a tool — or a model — asks "what belongs here?".
+    Goals {
+        /// Files to inspect.
+        #[arg(required = true)]
+        paths: Vec<PathBuf>,
+        /// Emit machine-readable goals.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 fn main() -> ExitCode {
@@ -57,6 +72,7 @@ fn main() -> ExitCode {
         Command::Check { paths, json } => check(&paths, json),
         Command::Fmt { paths, check } => fmt(&paths, check),
         Command::Explain { code } => explain(code.as_deref()),
+        Command::Goals { paths, json } => goals(&paths, json),
     }
 }
 
@@ -69,7 +85,14 @@ fn check(paths: &[PathBuf], json: bool) -> ExitCode {
             continue;
         };
         let parsed = parse(&source);
-        findings.push((path.clone(), source, parsed.diagnostics));
+        // The checker runs even over a tree with parse errors in it —
+        // recovery nodes are ordinary nodes, and a model mid-edit still
+        // deserves type information about the parts that did parse.
+        let analysis = analyze(&parsed.module);
+        let mut diagnostics = parsed.diagnostics;
+        diagnostics.extend(analysis.diagnostics);
+        diagnostics.sort_by_key(|d| d.span.start);
+        findings.push((path.clone(), source, diagnostics));
     }
 
     let has_errors = findings
@@ -170,6 +193,49 @@ fn explain(code: Option<&str>) -> ExitCode {
             eprintln!("run `xenith explain` with no argument to list every code");
             ExitCode::FAILURE
         }
+    }
+}
+
+fn goals(paths: &[PathBuf], json: bool) -> ExitCode {
+    let mut failed = false;
+    let mut reports = Vec::new();
+
+    for path in paths {
+        let Some(source) = read(path, &mut failed) else {
+            continue;
+        };
+        let parsed = parse(&source);
+        let analysis = analyze(&parsed.module);
+        let problem_count = parsed.diagnostics.len() + analysis.diagnostics.len();
+        reports.push((path.clone(), source, analysis.goals, problem_count));
+    }
+
+    if json {
+        println!("{}", render::goals_json(&reports));
+    } else {
+        let mut total = 0usize;
+        for (path, source, goals, problems) in &reports {
+            total += goals.len();
+            let index = LineIndex::new(source);
+            for goal in goals {
+                print!("{}", render::goal(path, source, &index, goal));
+            }
+            if *problems > 0 {
+                eprintln!(
+                    "note: {} has {problems} diagnostic(s); run `xenith check` to see them",
+                    path.display()
+                );
+            }
+        }
+        if total == 0 {
+            eprintln!("no holes found");
+        }
+    }
+
+    if failed {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
     }
 }
 

@@ -26,7 +26,8 @@ pub enum Type {
     Int,
     Float,
     Bool,
-    Text,
+    /// The string type, spelled String in source.
+    Str,
     Char,
     Unit,
 
@@ -225,9 +226,11 @@ impl fmt::Display for TypeName<'_> {
             Type::Int => f.write_str("Int"),
             Type::Float => f.write_str("Float"),
             Type::Bool => f.write_str("Bool"),
-            Type::Text => f.write_str("Text"),
+            Type::Str => f.write_str("String"),
             Type::Char => f.write_str("Char"),
-            Type::Unit => f.write_str("()"),
+            // The examples and the prelude spell this `Unit`; diagnostics must
+            // spell types the way the code the reader is looking at does.
+            Type::Unit => f.write_str("Unit"),
             Type::Param(name) => f.write_str(name),
             Type::Named { def, args } => {
                 f.write_str(&(self.name_of)(*def))?;
@@ -360,12 +363,12 @@ mod tests {
             2 => "List".to_string(),
             _ => "?".to_string(),
         };
-        let ty = named(1, vec![named(2, vec![Type::Int]), Type::Text]);
+        let ty = named(1, vec![named(2, vec![Type::Int]), Type::Str]);
         let rendered = TypeName {
             ty: &ty,
             name_of: &name_of,
         }
         .to_string();
-        assert_eq!(rendered, "Result<List<Int>, Text>");
+        assert_eq!(rendered, "Result<List<Int>, String>");
     }
 }

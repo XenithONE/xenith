@@ -17,5 +17,5 @@ fn greeting(name: String) -> String {
 
 fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
     io.write(text: greeting(name: "world"))?;
-    return unit;
+    return Ok(unit);
 }

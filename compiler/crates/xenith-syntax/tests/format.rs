@@ -31,6 +31,8 @@ const SAMPLES: &[&str] = &[
     "fn f() -> Int { a + b * c }",
     "fn f() -> Bool { a & b == c }",
     "fn f() { let p = Player { name: \"ada\", score: 0 }; }",
+    "fn get<K: Eq + Hash, V>(map: Map<K, V>, key: K) -> Option<V> { ?? }",
+    "struct Cache<K: Hash, V> { key: K, value: V }",
 ];
 
 fn formatted(source: &str) -> String {
@@ -214,6 +216,15 @@ fn indentation_is_four_spaces_per_level() {
     let output = formatted("fn f(c: Bool) { if c { if c { g(); } } }");
     assert!(output.contains("\n        if c {"), "{output}");
     assert!(output.contains("\n            g();"), "{output}");
+}
+
+#[test]
+fn generic_bounds_format_canonically() {
+    let output = formatted("fn get<K:Eq+Hash,V>(map:Map<K,V>,key:K)->Option<V>{ ?? }");
+    assert!(
+        output.starts_with("fn get<K: Eq + Hash, V>(map: Map<K, V>, key: K) -> Option<V> {"),
+        "{output}"
+    );
 }
 
 #[test]

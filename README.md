@@ -2,10 +2,11 @@
 
 **An experimental general-purpose language designed so that a compiler can guide an LLM to correct code.**
 
-> ⚠️ **Status: pre-alpha.** Xenith programs do not run. There is no standard library, no type
-> checker and no backend. What exists is the front end — the compiler lexes, parses and formats,
-> and the `xenith` command has `check`, `fmt` and `explain`. If you are looking for a language you
-> can use today, this is not it.
+> ⚠️ **Status: pre-alpha.** Xenith programs do not run yet — there is no backend and only a
+> provisional prelude. What exists: the front end, a bidirectional type checker with checked
+> effects and sealed properties, and typed holes that answer through `xenith goals`. The `xenith`
+> command has `check`, `fmt`, `explain` and `goals`. If you are looking for a language you can use
+> today, this is not it.
 
 ---
 
@@ -37,18 +38,20 @@ fn fetch(client: Client, request: Request) -> Result<Response, HttpError> uses {
 }
 ```
 
-The compiler then answers, as machine-readable data, what would fit there:
+The compiler then answers, as machine-readable data, what would fit there. This is real output —
+[`examples/scores.xn`](examples/scores.xn) ends in a hole, and this is what the compiler says
+about it today:
 
 ```console
-$ xenith goals --json
-{
-  "hole": "response",
-  "expected": "Result<Response, HttpError>",
-  "in_scope": ["client", "request"],
-  "allowed_effects": ["Net.send"],
-  "candidates": ["client.try_send(request: request)", "Ok(Response.empty())"]
-}
+$ xenith goals examples/scores.xn
+examples/scores.xn:59:5 — hole ??lookup in try_find
+  expected: Result<Player, ScoreError>
+  in scope: name: String
+  effects:  none permitted
 ```
+
+`--json` emits the same as data, with `candidates` present and empty: ranked suggestions are an
+accelerator that lands later, and the expected type is the load-bearing part.
 
 The unit of work becomes *fill one hole*, not *rewrite the module*. Compiler output is always
 `{ diagnostics[], holes[], suggested_edits[] }`, and every diagnostic carries a stable code, an
@@ -127,10 +130,12 @@ cargo build --manifest-path compiler/Cargo.toml
 cargo run --manifest-path compiler/Cargo.toml -p xenith -- check examples/scores.xn
 ```
 
-`check` parses and reports problems; `--json` emits them as data, with byte spans and applicable
-fixes. `explain XN1002` prints the rule behind a code. `fmt` rewrites source into canonical form —
-it takes no options, and it verifies its own output before writing, refusing rather than risking a
-silent change of meaning.
+`check` parses **and type-checks**: local-only inference, checked effect sets, sealed property
+bounds, move-free mutability rules. `--json` emits diagnostics as data, with byte spans and
+applicable fixes — an undeclared effect, for instance, carries the edit that would amend the
+`uses` clause. `goals` reports every hole as shown above. `explain XN4001` prints the rule behind
+a code. `fmt` rewrites source into canonical form — it takes no options, and it verifies its own
+output before writing, refusing rather than risking a silent change of meaning.
 
 Diagnostics look like this, with the caret at the position the fix edits:
 

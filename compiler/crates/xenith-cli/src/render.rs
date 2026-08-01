@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use xenith_diag::{Diagnostic, LineIndex, Severity, Span};
+use xenith_sema::Goal;
 
 /// One file's worth of results, ready to serialise.
 #[derive(Serialize)]
@@ -86,6 +87,78 @@ pub fn diagnostic(path: &Path, source: &str, index: &LineIndex, diagnostic: &Dia
         diagnostic.code.id()
     ));
 
+    out
+}
+
+/// One goal as JSON. `candidates` is present and empty on purpose: the shape
+/// is the interface, and ranking is an accelerator that lands later
+/// (design/0006 §5 — "the expected type alone is the thesis").
+pub fn goals_json(reports: &[(PathBuf, String, Vec<Goal>, usize)]) -> String {
+    let rendered: Vec<serde_json::Value> = reports
+        .iter()
+        .flat_map(|(path, source, goals, _)| {
+            let index = LineIndex::new(source);
+            goals
+                .iter()
+                .map(|goal| {
+                    let at = index.line_col(source, goal.span.start);
+                    serde_json::json!({
+                        "file": path.display().to_string(),
+                        "line": at.line,
+                        "column": at.column,
+                        "kind": goal.kind,
+                        "hole": goal.name,
+                        "expected": goal.expected,
+                        "enclosing_function": goal.enclosing_function,
+                        "in_scope": goal
+                            .in_scope
+                            .iter()
+                            .map(|(name, ty)| serde_json::json!({ "name": name, "type": ty }))
+                            .collect::<Vec<_>>(),
+                        "allowed_effects": goal.allowed_effects,
+                        "candidates": Vec::<serde_json::Value>::new(),
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    serde_json::to_string_pretty(&rendered).unwrap_or_else(|_| "[]".to_string())
+}
+
+pub fn goal(path: &Path, source: &str, index: &LineIndex, goal: &Goal) -> String {
+    let at = index.line_col(source, goal.span.start);
+    let shown = goal
+        .name
+        .as_ref()
+        .map(|n| format!("??{n}"))
+        .unwrap_or_else(|| "??".to_string());
+
+    let mut out = format!(
+        "{}:{}:{} — hole {shown} in {}\n",
+        path.display(),
+        at.line,
+        at.column,
+        goal.enclosing_function
+    );
+    out.push_str(&format!("  expected: {}\n", goal.expected));
+    if goal.in_scope.is_empty() {
+        out.push_str("  in scope: (nothing)\n");
+    } else {
+        let listed: Vec<String> = goal
+            .in_scope
+            .iter()
+            .map(|(name, ty)| format!("{name}: {ty}"))
+            .collect();
+        out.push_str(&format!("  in scope: {}\n", listed.join(", ")));
+    }
+    if goal.allowed_effects.is_empty() {
+        out.push_str("  effects:  none permitted\n");
+    } else {
+        out.push_str(&format!(
+            "  effects:  {}\n",
+            goal.allowed_effects.join(", ")
+        ));
+    }
     out
 }
 

@@ -137,6 +137,43 @@ pub enum DiagCode {
     ExpectedPattern,
     /// XN1007 — a declaration was required at the top level of a module.
     ExpectedItem,
+
+    /// XN2001 — a type name that resolves to nothing.
+    UnknownType,
+    /// XN2002 — a value name that resolves to nothing.
+    UnknownName,
+    /// XN2003 — the receiver's type has no method of this name.
+    UnknownMethod,
+    /// XN2004 — the type has no field of this name.
+    UnknownField,
+    /// XN2005 — two declarations share a name.
+    DuplicateDefinition,
+    /// XN2006 — the enum has no variant of this name.
+    UnknownVariant,
+
+    /// XN3001 — one type was required and a different one was found.
+    TypeMismatch,
+    /// XN3002 — a call supplied the wrong number of arguments.
+    WrongArgumentCount,
+    /// XN3003 — a named argument does not match the parameter at its position.
+    ArgumentNameMismatch,
+    /// XN3004 — the expression being called is not a function.
+    NotCallable,
+    /// XN3005 — a type annotation is required here.
+    AnnotationRequired,
+    /// XN3006 — a generic bound names a property that does not exist.
+    UnknownProperty,
+    /// XN3007 — a struct literal leaves a field unset.
+    MissingField,
+    /// XN3008 — a call with two or more arguments must name them.
+    NamedArgumentsRequired,
+    /// XN3009 — assignment through a `let` binding or to a non-`var` field.
+    AssignmentToImmutable,
+    /// XN3010 — a type does not satisfy a required sealed property.
+    PropertyNotSatisfied,
+
+    /// XN4001 — a call performs an effect the enclosing function does not declare.
+    EffectNotPermitted,
 }
 
 impl DiagCode {
@@ -156,6 +193,23 @@ impl DiagCode {
         DiagCode::ExpectedType,
         DiagCode::ExpectedPattern,
         DiagCode::ExpectedItem,
+        DiagCode::UnknownType,
+        DiagCode::UnknownName,
+        DiagCode::UnknownMethod,
+        DiagCode::UnknownField,
+        DiagCode::DuplicateDefinition,
+        DiagCode::UnknownVariant,
+        DiagCode::TypeMismatch,
+        DiagCode::WrongArgumentCount,
+        DiagCode::ArgumentNameMismatch,
+        DiagCode::NotCallable,
+        DiagCode::AnnotationRequired,
+        DiagCode::UnknownProperty,
+        DiagCode::MissingField,
+        DiagCode::NamedArgumentsRequired,
+        DiagCode::AssignmentToImmutable,
+        DiagCode::PropertyNotSatisfied,
+        DiagCode::EffectNotPermitted,
     ];
 
     /// The stable textual identifier, for example `"XN0002"`.
@@ -174,6 +228,23 @@ impl DiagCode {
             DiagCode::ExpectedType => "XN1005",
             DiagCode::ExpectedPattern => "XN1006",
             DiagCode::ExpectedItem => "XN1007",
+            DiagCode::UnknownType => "XN2001",
+            DiagCode::UnknownName => "XN2002",
+            DiagCode::UnknownMethod => "XN2003",
+            DiagCode::UnknownField => "XN2004",
+            DiagCode::DuplicateDefinition => "XN2005",
+            DiagCode::UnknownVariant => "XN2006",
+            DiagCode::TypeMismatch => "XN3001",
+            DiagCode::WrongArgumentCount => "XN3002",
+            DiagCode::ArgumentNameMismatch => "XN3003",
+            DiagCode::NotCallable => "XN3004",
+            DiagCode::AnnotationRequired => "XN3005",
+            DiagCode::UnknownProperty => "XN3006",
+            DiagCode::MissingField => "XN3007",
+            DiagCode::NamedArgumentsRequired => "XN3008",
+            DiagCode::AssignmentToImmutable => "XN3009",
+            DiagCode::PropertyNotSatisfied => "XN3010",
+            DiagCode::EffectNotPermitted => "XN4001",
         }
     }
 
@@ -295,6 +366,168 @@ impl DiagCode {
                  A program starts at `fn main`, which receives its capabilities as \
                  parameters — there is no ambient environment to reach for, so there \
                  is nothing a top-level statement could usefully do."
+            }
+            DiagCode::UnknownType => {
+                "This type name does not resolve to anything.\n\n\
+                 A type is either built in (`Int`, `Float`, `Bool`, `String`, `Char`, \
+                 `Unit`, `List`, `Option`, `Result`, `Map`, `Shared`, `Task`), a \
+                 `struct` or `enum` declared in this module, or a generic parameter of \
+                 the enclosing declaration. There are no implicit imports.\n\n\
+                 If you do not yet know the type, `??` is legal in type position and \
+                 becomes a goal instead of an error."
+            }
+            DiagCode::UnknownName => {
+                "This name does not resolve to anything in scope.\n\n\
+                 Values come from `let` and `var` bindings, function parameters, \
+                 pattern bindings, module functions and constants. Enum variants are \
+                 named through their enum (`Rank.Gold`); only the variants of \
+                 `Option` and `Result` (`Some`, `None`, `Ok`, `Err`) may be used \
+                 unqualified.\n\n\
+                 If the value does not exist yet, write a hole: `??name`. The \
+                 compiler will report what type is required there and what is in \
+                 scope to build it from."
+            }
+            DiagCode::UnknownMethod => {
+                "The receiver's type has no method of this name.\n\n\
+                 The message names the receiver's type. Methods in Xenith are \
+                 currently provided by the language, not declared by user code, so a \
+                 misspelling is the usual cause — the naming rules make the correct \
+                 spelling guessable: `to_` converts totally, `try_` returns `Result`, \
+                 `is_`/`has_` return `Bool`, `checked_` returns `Option`."
+            }
+            DiagCode::UnknownField => {
+                "The type has no field of this name.\n\n\
+                 Field names are declared on the struct and are the only way to reach \
+                 its contents — there is no index-based or reflective access. Check \
+                 the struct's declaration; the diagnostic names the type so the \
+                 declaration is easy to find."
+            }
+            DiagCode::DuplicateDefinition => {
+                "Two declarations in this module share a name.\n\n\
+                 Names at the top level are unique, with no overloading and no \
+                 shadowing between declarations. Overloading is excluded deliberately: \
+                 when two functions share a name, every reader — human or model — has \
+                 to re-derive which one a call site means. Rename one of them; the \
+                 naming rules suggest encoding what distinguishes them (`from_text`, \
+                 `from_bytes`) rather than reusing the name."
+            }
+            DiagCode::UnknownVariant => {
+                "The enum has no variant of this name.\n\n\
+                 The diagnostic names the enum; its declaration lists the variants. \
+                 In a `match`, a lowercase name that is not a variant becomes a \
+                 binding that matches everything — so a misspelt variant name here \
+                 would otherwise silently change what the arm does. That is why \
+                 variant names are checked against the scrutinee's enum."
+            }
+            DiagCode::TypeMismatch => {
+                "One type was required at this position and a different one was \
+                 found.\n\n\
+                 Xenith performs no implicit conversions: `Int` and `Float` never \
+                 bridge silently, and `1` and `1.0` are different values of different \
+                 types. Conversions are spelled out with `to_` functions, which are \
+                 total, or `try_` functions where they can fail.\n\n\
+                 If the two types in the message look the same, check their \
+                 arguments: `List<Int>` and `List<Float>` differ in the argument, \
+                 not the head."
+            }
+            DiagCode::WrongArgumentCount => {
+                "This call supplies the wrong number of arguments.\n\n\
+                 The message states how many the callee declares and how many were \
+                 given. Xenith has no default arguments, no variadics and no \
+                 overloading, so the declared count is exact — every parameter is \
+                 filled at every call site. If you do not have a value for one yet, \
+                 pass a hole: `f(config: ??)`."
+            }
+            DiagCode::ArgumentNameMismatch => {
+                "This named argument does not match the parameter declared at its \
+                 position.\n\n\
+                 Named arguments follow declaration order, and each name must match \
+                 the parameter it lands on. The fix carries the declared name; \
+                 applying it is safe. If the values themselves are in the wrong \
+                 order, reorder them instead — the mismatch this rule exists to \
+                 catch."
+            }
+            DiagCode::NotCallable => {
+                "The expression being called is not a function.\n\n\
+                 Only functions, lambdas, and enum variant constructors can be \
+                 applied. A common cause is calling a value that merely holds the \
+                 result of a function: `total()` when `total` is already an `Int`."
+            }
+            DiagCode::AnnotationRequired => {
+                "The type here cannot be determined locally, so an annotation is \
+                 required.\n\n\
+                 Xenith infers types only within an expression, never across \
+                 bindings or declarations — inference at a distance means an edit in \
+                 one place can change a type far away, which makes programs \
+                 unrepairable in small steps.\n\n\
+                 The usual causes: a hole with nothing to say what it should be \
+                 (`let x = ??;` — annotate the binding: `let x: Config = ??;`), or a \
+                 constructor whose type parameter no argument pins down \
+                 (`let r = Ok(5);` — annotate: `let r: Result<Int, ApiError> = \
+                 Ok(5);`)."
+            }
+            DiagCode::UnknownProperty => {
+                "A generic bound names a property that does not exist.\n\n\
+                 The property set is sealed: `Eq`, `Ord`, `Hash`, `Copy`, `Text`. \
+                 It cannot be extended by user code, which is what makes bound \
+                 checking a table lookup instead of a search — there is never a \
+                 question of which implementation applies, because there are no \
+                 implementations to choose between."
+            }
+            DiagCode::MissingField => {
+                "This struct literal leaves a field unset.\n\n\
+                 Every field is filled at every construction site; there are no \
+                 default values. This is what makes adding a field to a struct a \
+                 safe change — the compiler points at every construction site that \
+                 needs updating.\n\n\
+                 The fix inserts the missing field with a hole as its value, so the \
+                 literal compiles and `xenith goals` reports what belongs there."
+            }
+            DiagCode::NamedArgumentsRequired => {
+                "Calls with two or more arguments must name them.\n\n\
+                 `move(2, 3)` reads fine until the parameters are `(dy, dx)` — \
+                 swapped positional arguments type-check and then misbehave at \
+                 runtime, and models make exactly this mistake at scale. \
+                 `move(dx: 2, dy: 3)` cannot be swapped silently.\n\n\
+                 Single-argument calls may omit the name. Enum variant payloads are \
+                 unnamed and stay positional: `Ok(value)`, `NotFound(id)`."
+            }
+            DiagCode::AssignmentToImmutable => {
+                "This assignment writes through something not declared mutable.\n\n\
+                 Bindings are immutable unless introduced with `var`, and fields are \
+                 immutable unless declared `var` in the struct. Mutability is spelled \
+                 at the declaration, not the use — one line to read to know whether \
+                 a thing can change.\n\n\
+                 If the mutation is intended, change `let` to `var` at the binding, \
+                 or mark the field `var` in the struct declaration."
+            }
+            DiagCode::PropertyNotSatisfied => {
+                "A type does not satisfy a sealed property that this position \
+                 requires.\n\n\
+                 Properties are decided structurally from the type's definition and \
+                 cannot be implemented by hand. Scalars and `String` satisfy `Eq`, \
+                 `Ord` and `Hash`; a struct or enum satisfies `Eq` and `Hash` when \
+                 every field does; function types, capabilities and `Shared` satisfy \
+                 none of them (`Shared` identity is compared with `is`).\n\n\
+                 Two deliberate exclusions, both from IEEE NaN: `Float` satisfies \
+                 `Eq` but neither `Ord` nor `Hash`, so it cannot be a sort key or a \
+                 `Map` key. Aggregates never satisfy `Ord`, because ordering derived \
+                 from field declaration order changes when fields are reordered. In \
+                 both cases, pass an explicit comparison: `sorted_by(compare: ...)`. \
+                 What runs is then readable at the call site."
+            }
+            DiagCode::EffectNotPermitted => {
+                "This call performs an effect the enclosing function does not \
+                 declare.\n\n\
+                 A function may only perform the effects in its `uses { .. }` \
+                 clause; an absent clause means none at all. The check is what makes \
+                 a signature trustworthy — a caller reads `uses {Fs.read}` and knows \
+                 the function touches nothing else.\n\n\
+                 Two fixes, and which is right is a design decision: add the effect \
+                 to this function's `uses` clause (the attached fix does this), \
+                 which also widens what *its* callers must permit — or move the \
+                 effectful call out to a caller that already holds the capability, \
+                 and pass the result in as a value."
             }
         }
     }
@@ -501,11 +734,28 @@ mod tests {
                 | DiagCode::ExpectedExpression
                 | DiagCode::ExpectedType
                 | DiagCode::ExpectedPattern
-                | DiagCode::ExpectedItem => seen += 1,
+                | DiagCode::ExpectedItem
+                | DiagCode::UnknownType
+                | DiagCode::UnknownName
+                | DiagCode::UnknownMethod
+                | DiagCode::UnknownField
+                | DiagCode::DuplicateDefinition
+                | DiagCode::UnknownVariant
+                | DiagCode::TypeMismatch
+                | DiagCode::WrongArgumentCount
+                | DiagCode::ArgumentNameMismatch
+                | DiagCode::NotCallable
+                | DiagCode::AnnotationRequired
+                | DiagCode::UnknownProperty
+                | DiagCode::MissingField
+                | DiagCode::NamedArgumentsRequired
+                | DiagCode::AssignmentToImmutable
+                | DiagCode::PropertyNotSatisfied
+                | DiagCode::EffectNotPermitted => seen += 1,
             }
         }
-        assert_eq!(seen, 13, "update DiagCode::ALL when adding a variant");
-        assert_eq!(DiagCode::ALL.len(), 13);
+        assert_eq!(seen, 30, "update DiagCode::ALL when adding a variant");
+        assert_eq!(DiagCode::ALL.len(), 30);
     }
 
     #[test]
