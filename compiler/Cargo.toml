@@ -1,8 +1,6 @@
 [workspace]
 resolver = "3"
-# `tools/*` is added back when the first tool crate (xenith-mcp) lands.
-# An empty glob is a hard error in cargo, not a no-op.
-members = ["crates/*"]
+members = ["crates/*", "tools/*"]
 
 [workspace.package]
 version = "0.0.0"

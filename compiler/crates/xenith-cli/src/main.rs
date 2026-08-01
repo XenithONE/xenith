@@ -10,7 +10,6 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use xenith_diag::{DiagCode, Diagnostic, LineIndex};
-use xenith_sema::analyze;
 use xenith_syntax::{FormatError, format, parse};
 
 mod render;
@@ -128,15 +127,8 @@ fn check(paths: &[PathBuf], json: bool) -> ExitCode {
         let Some(source) = read(path, &mut failed) else {
             continue;
         };
-        let parsed = parse(&source);
-        // The checker runs even over a tree with parse errors in it —
-        // recovery nodes are ordinary nodes, and a model mid-edit still
-        // deserves type information about the parts that did parse.
-        let analysis = analyze(&parsed.module);
-        let mut diagnostics = parsed.diagnostics;
-        diagnostics.extend(analysis.diagnostics);
-        diagnostics.sort_by_key(|d| d.span.start);
-        findings.push((path.clone(), source, diagnostics));
+        let analysis = xenith_driver::analyze_source(&source);
+        findings.push((path.clone(), source, analysis.diagnostics));
     }
 
     let has_errors = findings
@@ -248,10 +240,13 @@ fn goals(paths: &[PathBuf], json: bool) -> ExitCode {
         let Some(source) = read(path, &mut failed) else {
             continue;
         };
-        let parsed = parse(&source);
-        let analysis = analyze(&parsed.module);
-        let problem_count = parsed.diagnostics.len() + analysis.diagnostics.len();
-        reports.push((path.clone(), source, analysis.goals, problem_count));
+        let analysis = xenith_driver::analyze_source(&source);
+        reports.push((
+            path.clone(),
+            source,
+            analysis.goals,
+            analysis.diagnostics.len(),
+        ));
     }
 
     if json {
@@ -294,7 +289,8 @@ fn type_at(path: &Path, at: &str, json: bool) -> ExitCode {
         return ExitCode::FAILURE;
     };
     let index = LineIndex::new(&source);
-    let Some(offset) = offset_of(&source, &index, line, column) else {
+    let Some(offset) = xenith_driver::wire::position_to_offset(&source, &index, line, column)
+    else {
         eprintln!("{}:{line}:{column} is outside the file", path.display());
         return ExitCode::FAILURE;
     };
@@ -309,19 +305,8 @@ fn type_at(path: &Path, at: &str, json: bool) -> ExitCode {
     };
 
     if json {
-        let rendered = serde_json::json!({
-            "file": path.display().to_string(),
-            "line": line,
-            "column": column,
-            "type": probe.ty,
-            "enclosing_function": probe.enclosing_function,
-            "in_scope": probe
-                .in_scope
-                .iter()
-                .map(|(name, ty)| serde_json::json!({ "name": name, "type": ty }))
-                .collect::<Vec<_>>(),
-            "allowed_effects": probe.allowed_effects,
-        });
+        let rendered =
+            xenith_driver::wire::probe(&path.display().to_string(), line, column, &probe);
         println!(
             "{}",
             serde_json::to_string_pretty(&rendered).unwrap_or_default()
@@ -364,17 +349,7 @@ fn producers(path: &Path, type_text: &str, json: bool) -> ExitCode {
     };
 
     if json {
-        let rendered: Vec<serde_json::Value> = found
-            .iter()
-            .map(|p| {
-                serde_json::json!({
-                    "kind": p.kind,
-                    "symbol": p.symbol,
-                    "signature": p.signature,
-                    "effects": p.effects,
-                })
-            })
-            .collect();
+        let rendered = xenith_driver::wire::producers(&found);
         println!(
             "{}",
             serde_json::to_string_pretty(&rendered).unwrap_or_default()
@@ -399,25 +374,6 @@ fn parse_position(text: &str) -> Option<(u32, u32)> {
         return None;
     }
     Some((line, column))
-}
-
-/// One-based line and character column to a byte offset.
-fn offset_of(source: &str, index: &LineIndex, line: u32, column: u32) -> Option<u32> {
-    let start = index.line_start(line)?;
-    let text = index.line_text(source, line)?;
-    let mut seen = 0u32;
-    for (byte_offset, _) in text.char_indices() {
-        seen += 1;
-        if seen == column {
-            return Some(start + byte_offset as u32);
-        }
-    }
-    // One past the last character addresses the end of the line.
-    if column == seen + 1 {
-        Some(start + text.len() as u32)
-    } else {
-        None
-    }
 }
 
 fn read(path: &Path, failed: &mut bool) -> Option<String> {

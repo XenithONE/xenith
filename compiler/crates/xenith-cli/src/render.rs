@@ -7,49 +7,20 @@
 
 use std::path::{Path, PathBuf};
 
-use serde::Serialize;
 use xenith_diag::{Diagnostic, LineIndex, Severity, Span};
 use xenith_sema::Goal;
 
-/// One file's worth of results, ready to serialise.
-#[derive(Serialize)]
-struct FileReport<'a> {
-    file: String,
-    diagnostics: Vec<Entry<'a>>,
-}
-
-#[derive(Serialize)]
-struct Entry<'a> {
-    #[serde(flatten)]
-    diagnostic: &'a Diagnostic,
-    /// Line and column of the span's start, one-based. Byte offsets stay
-    /// authoritative; this is here so a consumer does not have to recompute it.
-    line: u32,
-    column: u32,
-}
+// The JSON shapes live in xenith-driver's `wire` module, shared with the MCP
+// server — one wire format, two frontends. This module only renders for
+// humans and stitches per-file wire values into whole responses.
 
 pub fn diagnostics_json(findings: &[(PathBuf, String, Vec<Diagnostic>)]) -> String {
-    let reports: Vec<FileReport> = findings
+    let reports: Vec<serde_json::Value> = findings
         .iter()
         .map(|(path, source, diagnostics)| {
-            let index = LineIndex::new(source);
-            FileReport {
-                file: path.display().to_string(),
-                diagnostics: diagnostics
-                    .iter()
-                    .map(|diagnostic| {
-                        let at = index.line_col(source, diagnostic.span.start);
-                        Entry {
-                            diagnostic,
-                            line: at.line,
-                            column: at.column,
-                        }
-                    })
-                    .collect(),
-            }
+            xenith_driver::wire::file_diagnostics(&path.display().to_string(), source, diagnostics)
         })
         .collect();
-
     serde_json::to_string_pretty(&reports).unwrap_or_else(|_| "[]".to_string())
 }
 
@@ -90,47 +61,14 @@ pub fn diagnostic(path: &Path, source: &str, index: &LineIndex, diagnostic: &Dia
     out
 }
 
-/// One goal as JSON. `candidates` is present and empty on purpose: the shape
-/// is the interface, and ranking is an accelerator that lands later
-/// (design/0006 §5 — "the expected type alone is the thesis").
 pub fn goals_json(reports: &[(PathBuf, String, Vec<Goal>, usize)]) -> String {
-    let rendered: Vec<serde_json::Value> = reports
-        .iter()
-        .flat_map(|(path, source, goals, _)| {
-            let index = LineIndex::new(source);
-            goals
-                .iter()
-                .map(|goal| {
-                    let at = index.line_col(source, goal.span.start);
-                    serde_json::json!({
-                        "file": path.display().to_string(),
-                        "line": at.line,
-                        "column": at.column,
-                        "kind": goal.kind,
-                        "hole": goal.name,
-                        "expected": goal.expected,
-                        "enclosing_function": goal.enclosing_function,
-                        "in_scope": goal
-                            .in_scope
-                            .iter()
-                            .map(|(name, ty)| serde_json::json!({ "name": name, "type": ty }))
-                            .collect::<Vec<_>>(),
-                        "allowed_effects": goal.allowed_effects,
-                        "candidates": goal
-                            .candidates
-                            .iter()
-                            .map(|c| serde_json::json!({
-                                "expression": c.expression,
-                                "complete": c.complete,
-                                "requires_effects": c.requires_effects,
-                            }))
-                            .collect::<Vec<_>>(),
-                        "blocked": goal.blocked,
-                    })
-                })
-                .collect::<Vec<_>>()
-        })
-        .collect();
+    let mut rendered: Vec<serde_json::Value> = Vec::new();
+    for (path, source, goals, _) in reports {
+        let value = xenith_driver::wire::goals(&path.display().to_string(), source, goals);
+        if let serde_json::Value::Array(entries) = value {
+            rendered.extend(entries);
+        }
+    }
     serde_json::to_string_pretty(&rendered).unwrap_or_else(|_| "[]".to_string())
 }
 

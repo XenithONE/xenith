@@ -162,6 +162,21 @@ producers of Result<Player, ScoreError>:
 Both take `--json`. Partial programs answer like any other — a query is a hole the author did not
 have to write, and it rides the same traversal that answers `goals`.
 
+## Using from an agent (MCP)
+
+Everything above is also an MCP server: `check`, `goals`, `type_at`, `producers`, `fmt` and
+`explain` as tools over stdio, speaking the same JSON as the CLI — one wire format, defined once
+in `xenith-driver`. To connect it to Claude Code:
+
+```bash
+claude mcp add xenith -- cargo run -q --manifest-path compiler/Cargo.toml -p xenith-mcp
+```
+
+(The first call pays for a build; point the command at a compiled `xenith-mcp` binary to skip
+that.) The tool descriptions carry the usage rules — a model that has only read the tool list
+knows that holes are legal, that `producers` replaces guessing a function name, and that an
+unknown type is an error rather than an empty result.
+
 Diagnostics look like this, with the caret at the position the fix edits:
 
 ```console

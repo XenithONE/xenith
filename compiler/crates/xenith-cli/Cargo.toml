@@ -16,6 +16,7 @@ path = "src/main.rs"
 xenith-diag = { workspace = true }
 xenith-syntax = { workspace = true }
 xenith-sema = { workspace = true }
+xenith-driver = { workspace = true }
 clap = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

@@ -1,14 +1,23 @@
 [package]
-name = "xenith-driver"
+name = "xenith-mcp"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+description = "The Xenith compiler as an MCP server"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "xenith-mcp"
+path = "src/main.rs"
 
 [dependencies]
 xenith-diag = { workspace = true }
 xenith-syntax = { workspace = true }
 xenith-sema = { workspace = true }
+xenith-driver = { workspace = true }
 serde_json = { workspace = true }

@@ -241,6 +241,7 @@ dependencies = [
  "serde",
  "serde_json",
  "xenith-diag",
+ "xenith-driver",
  "xenith-sema",
  "xenith-syntax",
 ]
@@ -256,6 +257,23 @@ dependencies = [
 [[package]]
 name = "xenith-driver"
 version = "0.0.0"
+dependencies = [
+ "serde_json",
+ "xenith-diag",
+ "xenith-sema",
+ "xenith-syntax",
+]
+
+[[package]]
+name = "xenith-mcp"
+version = "0.0.0"
+dependencies = [
+ "serde_json",
+ "xenith-diag",
+ "xenith-driver",
+ "xenith-sema",
+ "xenith-syntax",
+]
 
 [[package]]
 name = "xenith-sema"
