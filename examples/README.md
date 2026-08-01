@@ -38,4 +38,8 @@ examples/scores.xn:59:5 — hole ??lookup in try_find
   expected: Result<Player, ScoreError>
   in scope: name: String
   effects:  none permitted
+  candidates:
+    1. Err(??)
+    2. Ok(??)
+    3. try_award(player: ??, points: ??)
 ```

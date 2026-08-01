@@ -7,10 +7,12 @@
 //! hole's goal falls out of the ordinary traversal instead of needing a
 //! separate machine. See `design/0006-type-checking.md`.
 
+pub mod candidates;
 pub mod check;
 pub mod def;
 pub mod ty;
 
+pub use candidates::Candidate;
 pub use check::{Analysis, Goal, analyze};
 pub use def::{DefTable, Property};
 pub use ty::{DefId, EffectSet, HoleId, Type, TypeName};

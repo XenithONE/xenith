@@ -450,6 +450,126 @@ fn goals_arrive_in_source_order() {
     assert_eq!(goals[1].name.as_deref(), Some("second"));
 }
 
+// ---------------------------------------------------------------- candidates
+
+fn candidate_expressions(source: &str) -> Vec<String> {
+    let goals = goals_of(source);
+    assert_eq!(goals.len(), 1, "expected exactly one goal");
+    goals[0]
+        .candidates
+        .iter()
+        .map(|c| c.expression.clone())
+        .collect()
+}
+
+#[test]
+fn an_exact_binding_is_the_first_candidate() {
+    let found = candidate_expressions(
+        "struct Config { retries: Int }\n\
+         fn save(config: Config) -> Bool { true }\n\
+         fn f(config: Config) -> Bool { save(??which) }",
+    );
+    assert_eq!(found[0], "config", "{found:?}");
+}
+
+#[test]
+fn constructors_arrive_as_skeletons_with_nested_holes() {
+    let found = candidate_expressions(
+        "enum ApiError { Down }\n\
+         fn f() -> Result<Int, ApiError> { ??body }",
+    );
+    assert!(found.contains(&"Ok(??)".to_string()), "{found:?}");
+    assert!(found.contains(&"Err(??)".to_string()), "{found:?}");
+}
+
+#[test]
+fn payload_slots_fill_from_scope_when_the_type_matches() {
+    let found = candidate_expressions(
+        "enum ApiError { Down }\n\
+         fn f(value: Int) -> Result<Int, ApiError> { ??body }",
+    );
+    assert!(found.contains(&"Ok(value)".to_string()), "{found:?}");
+}
+
+#[test]
+fn a_function_with_the_right_return_type_is_suggested_with_named_arguments() {
+    let found = candidate_expressions(
+        "struct Config { retries: Int }\n\
+         fn load_config(retries: Int) -> Config { Config { retries: retries } }\n\
+         fn f() -> Config { ??cfg }",
+    );
+    assert!(
+        found.contains(&"load_config(retries: ??)".to_string()),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn the_enclosing_function_is_never_suggested() {
+    // "Call the function you are writing" answers nothing.
+    let found = candidate_expressions(
+        "enum ApiError { Down }\n\
+         fn try_find(id: Int) -> Result<Int, ApiError> { ??lookup }",
+    );
+    assert!(
+        found.iter().all(|c| !c.starts_with("try_find")),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn an_effect_blocked_function_is_reported_with_the_reason_not_suggested() {
+    let source = "fn read_line(io: Io) -> String uses {Io.read} { \"\" }\n\
+                  fn f() -> String { ??input }";
+    let goals = goals_of(source);
+    let goal = &goals[0];
+    assert!(
+        goal.candidates
+            .iter()
+            .all(|c| !c.expression.starts_with("read_line")),
+        "{:?}",
+        goal.candidates
+    );
+    assert_eq!(goal.blocked.len(), 1);
+    assert!(goal.blocked[0].contains("Io.read"), "{:?}", goal.blocked);
+}
+
+#[test]
+fn struct_literal_skeletons_name_every_field_and_fill_from_scope() {
+    let found = candidate_expressions(
+        "struct Player { name: String, var score: Int }\n\
+         fn f(name: String) -> Player { ??made }",
+    );
+    assert!(
+        found.contains(&"Player { name: name, score: ?? }".to_string()),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn field_projections_one_step_deep_are_candidates() {
+    let found = candidate_expressions(
+        "struct Player { name: String, var score: Int }\n\
+         fn f(player: Player) -> Int { ??points }",
+    );
+    assert!(found.contains(&"player.score".to_string()), "{found:?}");
+}
+
+#[test]
+fn candidates_are_capped_at_five() {
+    let source = "fn a() -> Int { 1 }\nfn b() -> Int { 2 }\nfn c() -> Int { 3 }\n\
+                  fn d() -> Int { 4 }\nfn e() -> Int { 5 }\nfn g() -> Int { 6 }\n\
+                  fn f(x: Int, y: Int) -> Int { ??pick }";
+    let found = candidate_expressions(source);
+    assert_eq!(found.len(), 5, "{found:?}");
+}
+
+#[test]
+fn type_goals_carry_no_candidates() {
+    let goals = goals_of("fn f(x: ??) -> Int { 1 }");
+    assert!(goals[0].candidates.is_empty());
+}
+
 // ----------------------------------------------------- the examples themselves
 
 #[test]

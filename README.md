@@ -48,10 +48,18 @@ examples/scores.xn:59:5 — hole ??lookup in try_find
   expected: Result<Player, ScoreError>
   in scope: name: String
   effects:  none permitted
+  candidates:
+    1. Err(??)
+    2. Ok(??)
+    3. try_award(player: ??, points: ??)
 ```
 
-`--json` emits the same as data, with `candidates` present and empty: ranked suggestions are an
-accelerator that lands later, and the expected type is the load-bearing part.
+Candidates are deliberately *scaffolds*, not completions: nested holes mark what still needs
+deciding, and named arguments are already spelled out. A model is better served by a partially
+correct skeleton with explicit gaps than by a fully formed but irrelevant expression. Functions
+that produce the right type but need effects this position does not permit are listed as
+`blocked`, with the reason — a model that is not told *why* repeats the mistake. `--json` emits
+all of it as data.
 
 The unit of work becomes *fill one hole*, not *rewrite the module*. Compiler output is always
 `{ diagnostics[], holes[], suggested_edits[] }`, and every diagnostic carries a stable code, an

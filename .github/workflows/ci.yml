@@ -89,3 +89,5 @@ jobs:
           cargo run --manifest-path compiler/Cargo.toml -p xenith -- goals examples/scores.xn | tee /tmp/goals.txt
           grep -q "expected: Result<Player, ScoreError>" /tmp/goals.txt
           grep -q "in scope: name: String" /tmp/goals.txt
+          grep -q "Ok(??)" /tmp/goals.txt
+          grep -q "try_award(player: ??, points: ??)" /tmp/goals.txt

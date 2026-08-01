@@ -116,7 +116,16 @@ pub fn goals_json(reports: &[(PathBuf, String, Vec<Goal>, usize)]) -> String {
                             .map(|(name, ty)| serde_json::json!({ "name": name, "type": ty }))
                             .collect::<Vec<_>>(),
                         "allowed_effects": goal.allowed_effects,
-                        "candidates": Vec::<serde_json::Value>::new(),
+                        "candidates": goal
+                            .candidates
+                            .iter()
+                            .map(|c| serde_json::json!({
+                                "expression": c.expression,
+                                "complete": c.complete,
+                                "requires_effects": c.requires_effects,
+                            }))
+                            .collect::<Vec<_>>(),
+                        "blocked": goal.blocked,
                     })
                 })
                 .collect::<Vec<_>>()
@@ -158,6 +167,24 @@ pub fn goal(path: &Path, source: &str, index: &LineIndex, goal: &Goal) -> String
             "  effects:  {}\n",
             goal.allowed_effects.join(", ")
         ));
+    }
+    if !goal.candidates.is_empty() {
+        out.push_str("  candidates:\n");
+        for (index, candidate) in goal.candidates.iter().enumerate() {
+            let effects = if candidate.requires_effects.is_empty() {
+                String::new()
+            } else {
+                format!("  — uses {{{}}}", candidate.requires_effects.join(", "))
+            };
+            out.push_str(&format!(
+                "    {}. {}{effects}\n",
+                index + 1,
+                candidate.expression
+            ));
+        }
+    }
+    for blocked in &goal.blocked {
+        out.push_str(&format!("  blocked:  {blocked}\n"));
     }
     out
 }

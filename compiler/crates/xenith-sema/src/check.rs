@@ -32,6 +32,12 @@ pub struct Goal {
     /// Innermost bindings last; shadowed names already removed.
     pub in_scope: Vec<(String, String)>,
     pub allowed_effects: Vec<String>,
+    /// Ranked scaffolds that would fit here, holes included. Empty for type
+    /// goals and for holes whose expected type is unknown.
+    pub candidates: Vec<crate::candidates::Candidate>,
+    /// Symbols that produce the right type but are unusable here, with the
+    /// reason — a model not told *why* repeats the mistake.
+    pub blocked: Vec<String>,
 }
 
 pub struct Analysis {
@@ -137,12 +143,23 @@ impl<'a> Checker<'a> {
 
     /// Snapshot the scope for a goal: innermost occurrence of each name wins.
     fn scope_snapshot(&self) -> Vec<(String, String)> {
+        self.scope_types()
+            .into_iter()
+            .map(|(name, ty)| {
+                let rendered = self.render(&ty);
+                (name, rendered)
+            })
+            .collect()
+    }
+
+    /// The same snapshot with real types, for candidate generation.
+    fn scope_types(&self) -> Vec<(String, Type)> {
         let mut seen = std::collections::HashSet::new();
         let mut out = Vec::new();
         for scope in self.scopes.iter().rev() {
             for binding in scope.iter().rev() {
                 if seen.insert(binding.name.clone()) {
-                    out.push((binding.name.clone(), self.render(&binding.ty)));
+                    out.push((binding.name.clone(), binding.ty.clone()));
                 }
             }
         }
@@ -152,9 +169,29 @@ impl<'a> Checker<'a> {
 
     fn push_goal(&mut self, name: Option<String>, span: Span, kind: &'static str, expected: &Type) {
         let rendered = self.render(expected);
-        self.push_goal_rendered(name, span, kind, rendered);
+        let (candidates, blocked) = crate::candidates::candidates_for(
+            self.defs,
+            expected,
+            &self.scope_types(),
+            &self.sig.effects,
+            &self.sig.name,
+            name.as_deref(),
+        );
+        let goal = Goal {
+            name,
+            span,
+            kind,
+            expected: rendered,
+            enclosing_function: self.sig.name.clone(),
+            in_scope: self.scope_snapshot(),
+            allowed_effects: self.sig.effects.iter().map(String::from).collect(),
+            candidates,
+            blocked,
+        };
+        self.goals.push(goal);
     }
 
+    /// A goal with no meaningful expected type — type holes. No candidates.
     fn push_goal_rendered(
         &mut self,
         name: Option<String>,
@@ -170,6 +207,8 @@ impl<'a> Checker<'a> {
             enclosing_function: self.sig.name.clone(),
             in_scope: self.scope_snapshot(),
             allowed_effects: self.sig.effects.iter().map(String::from).collect(),
+            candidates: Vec::new(),
+            blocked: Vec::new(),
         };
         self.goals.push(goal);
     }
