@@ -1,0 +1,91 @@
+{
+  "condition": "docs-query",
+  "model": "opencode-deepseek",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 98.5
+        }
+      ],
+      "task": "t4-01",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 36.1
+        }
+      ],
+      "task": "t4-02",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 90.8
+        }
+      ],
+      "task": "t4-03",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 75.6
+        }
+      ],
+      "task": "t4-04",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 176.3
+        }
+      ],
+      "task": "t4-05",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 41.7
+        }
+      ],
+      "task": "t4-06",
+      "tier": 4
+    }
+  ],
+  "totals": {
+    "pass_at_1": 6,
+    "passed": 6,
+    "tasks": 6
+  },
+  "unix_time": 1785660475
+}

@@ -1,0 +1,106 @@
+{
+  "condition": "query",
+  "model": "grok",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 104.3
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 46.2
+        }
+      ],
+      "task": "t4-01",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 70.6
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 56.6
+        }
+      ],
+      "task": "t4-02",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 97.2
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 81.6
+        }
+      ],
+      "task": "t4-03",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 54.2
+        }
+      ],
+      "task": "t4-04",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 44.1
+        }
+      ],
+      "task": "t4-05",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 137.6
+        }
+      ],
+      "task": "t4-06",
+      "tier": 4
+    }
+  ],
+  "totals": {
+    "pass_at_1": 3,
+    "passed": 6,
+    "tasks": 6
+  },
+  "unix_time": 1785659473
+}

@@ -1,0 +1,151 @@
+{
+  "condition": "query",
+  "model": "opencode-nemotron",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "empty reply",
+          "seconds": 14.8
+        },
+        {
+          "attempt": 2,
+          "outcome": "diagnostics",
+          "seconds": 145.3
+        },
+        {
+          "attempt": 3,
+          "outcome": "runtime failure",
+          "seconds": 88.0
+        },
+        {
+          "attempt": 4,
+          "outcome": "diagnostics",
+          "seconds": 61.1
+        }
+      ],
+      "task": "t4-01",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 88.0
+        },
+        {
+          "attempt": 2,
+          "outcome": "diagnostics",
+          "seconds": 61.6
+        },
+        {
+          "attempt": 3,
+          "outcome": "empty reply",
+          "seconds": 140.7
+        },
+        {
+          "attempt": 4,
+          "outcome": "diagnostics",
+          "seconds": 37.6
+        }
+      ],
+      "task": "t4-02",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 115.2
+        }
+      ],
+      "task": "t4-03",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "empty reply",
+          "seconds": 241.0
+        },
+        {
+          "attempt": 2,
+          "outcome": "diagnostics",
+          "seconds": 43.5
+        },
+        {
+          "attempt": 3,
+          "outcome": "diagnostics",
+          "seconds": 26.6
+        },
+        {
+          "attempt": 4,
+          "outcome": "pass",
+          "seconds": 40.6
+        }
+      ],
+      "task": "t4-04",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 51.7
+        }
+      ],
+      "task": "t4-05",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 92.0
+        },
+        {
+          "attempt": 2,
+          "outcome": "empty reply",
+          "seconds": 11.0
+        },
+        {
+          "attempt": 3,
+          "outcome": "diagnostics",
+          "seconds": 27.1
+        },
+        {
+          "attempt": 4,
+          "outcome": "diagnostics",
+          "seconds": 35.2
+        }
+      ],
+      "task": "t4-06",
+      "tier": 4
+    }
+  ],
+  "totals": {
+    "pass_at_1": 2,
+    "passed": 3,
+    "tasks": 6
+  },
+  "unix_time": 1785660129
+}

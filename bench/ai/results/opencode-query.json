@@ -1,0 +1,112 @@
+{
+  "condition": "query",
+  "model": "opencode",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 22.4
+        }
+      ],
+      "task": "t4-01",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "goals": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-02-opencode-query-r1.xn:3:32 — hole ??pieces in main\n  expected: List<String>\n  in scope: io: Io, input: String\n  effects:  Io.write\n  candidates:\n    1. input.split(sep: input)\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-02-opencode-query-r1.xn:9:15 — hole ??sum in main\n  expected: Int\n  in scope: io: Io, input: String, pieces: List<String>, sum: Int, index: Int, piece: Option<String>\n  effects:  Io.write\n  candidates:\n    1. sum\n    2. index\n    3. input.len()\n    4. pieces.len()",
+          "outcome": "diagnostics",
+          "seconds": 24.4
+        },
+        {
+          "attempt": 2,
+          "outcome": "diagnostics",
+          "seconds": 24.2
+        },
+        {
+          "attempt": 3,
+          "outcome": "diagnostics",
+          "seconds": 19.6
+        },
+        {
+          "attempt": 4,
+          "outcome": "diagnostics",
+          "seconds": 14.1
+        }
+      ],
+      "task": "t4-02",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 15.6
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 13.6
+        }
+      ],
+      "task": "t4-03",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 16.6
+        }
+      ],
+      "task": "t4-04",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 21.6
+        }
+      ],
+      "task": "t4-05",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 27.9
+        }
+      ],
+      "task": "t4-06",
+      "tier": 4
+    }
+  ],
+  "totals": {
+    "pass_at_1": 4,
+    "passed": 5,
+    "tasks": 6
+  },
+  "unix_time": 1785658804
+}

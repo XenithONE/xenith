@@ -1,0 +1,127 @@
+{
+  "condition": "query",
+  "model": "opencode-deepseek",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 139.5
+        },
+        {
+          "attempt": 2,
+          "outcome": "runtime failure",
+          "seconds": 22.3
+        },
+        {
+          "attempt": 3,
+          "outcome": "pass",
+          "seconds": 61.8
+        }
+      ],
+      "task": "t4-01",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 125.4
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 64.4
+        }
+      ],
+      "task": "t4-02",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 164.2
+        }
+      ],
+      "task": "t4-03",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 119.4
+        },
+        {
+          "attempt": 2,
+          "outcome": "diagnostics",
+          "seconds": 68.6
+        },
+        {
+          "attempt": 3,
+          "outcome": "diagnostics",
+          "seconds": 117.6
+        },
+        {
+          "attempt": 4,
+          "outcome": "diagnostics",
+          "seconds": 25.6
+        }
+      ],
+      "task": "t4-04",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 40.8
+        }
+      ],
+      "task": "t4-05",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "goals": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-06-opencode-deepseek-query-r1.xn:16:21 — hole ?? in main\n  expected: String\n  in scope: io: Io, forward: Map<String, Int>, reverse: Map<Int, String>, keys: List<String>, i: Int\n  effects:  Io.write\n  candidates:\n    1. i.to_text()\n    2. keys.join(sep: ??)\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-06-opencode-deepseek-query-r1.xn:20:21 — hole ?? in main\n  expected: Int\n  in scope: io: Io, forward: Map<String, Int>, reverse: Map<Int, String>, keys: List<String>, i: Int, key: String\n  effects:  Io.write\n  candidates:\n    1. i\n    2. forward.len()\n    3. key.len()\n    4. keys.len()\n    5. reverse.len()\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-06-opencode-deepseek-query-r1.xn:33:21 — hole ?? in main\n  expected: String\n  in scope: io: Io, forward: Map<String, Int>, reverse: Map<Int, String>, keys: List<String>, i: Int, out: String, n: Int\n  effects:  Io.write\n  candidates:\n    1. out\n    2. keys.join(sep: out)\n    3. i.to_text()\n    4. n.to_text()\n    5. out.concat(other: out)",
+          "outcome": "diagnostics",
+          "seconds": 134.2
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 30.7
+        }
+      ],
+      "task": "t4-06",
+      "tier": 4
+    }
+  ],
+  "totals": {
+    "pass_at_1": 2,
+    "passed": 5,
+    "tasks": 6
+  },
+  "unix_time": 1785659917
+}

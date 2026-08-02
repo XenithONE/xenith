@@ -108,6 +108,31 @@ with `xenith-bench summarize`. Four readings, including the one that did not go 
    models better at repairing — it makes repair unnecessary. Diagnostics earn their keep in
    the rare miss (every full-pack/hole-guided miss recovered in one round).
 
+## The separation pilot (2026-08-02, exploratory)
+
+Seven models × the four 0007 arms × the six frozen tier-4 tasks — 168 runs. The generated
+table is in [`results/summary.md`](results/summary.md). Totals (pass@1 · green out of 42):
+`blind` 22 · 36, `query` 21 · 37, `docs` 29 · 41, `docs-query` 36 · 42. Four readings:
+
+1. **The ceiling broke.** Tier-4 under `blind` runs at ~52% pass@1 where tiers 1–3 ran at 94%
+   with a guide — these tasks finally have room to separate conditions.
+2. **The docs factor is the big one** (+7 and +15 pass@1 along its two edges). Models guess
+   conventional *names* well — `blind` still repairs to 36/42 green — but exact *signatures*,
+   above all Xenith's mandatory named arguments (`get(index:)`, `insert(key:, value:)`), are
+   what they cannot invent first-try. An API table pays even when every name is guessable.
+3. **The query factor read ≈0 — because the channel went unused, not because it failed.**
+   Across all query-family cells, only 2 of 50 failure rounds carried any `goals` output: the
+   arms carry no behavioral nudges, no model spontaneously wrote a `??` hole, and `goals` has
+   nothing to say about a program without holes. What the old `hole-guided` condition bundled
+   as "the invitation to leave holes" turns out to be the *activation condition* of the whole
+   query mechanism. Measuring the channel's value requires giving every arm the same
+   hole-usage instruction — the next iteration's design problem, recorded here rather than
+   papered over.
+4. `docs-query` is the only perfect-green cell block (42/42) and the best pass@1 (36) — but
+   with the query channel dormant, its edge over `docs` is confounded with the one
+   feedback-mechanics sentence the arms are allowed to differ by. Exploratory, per 0007 §5-5;
+   no verdict is claimed.
+
 ## Two measurement bugs, caught and fixed
 
 Recorded here because the numbers only mean something if the instrument is honest.

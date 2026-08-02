@@ -1,0 +1,116 @@
+{
+  "condition": "blind",
+  "model": "grok",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 84.1
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 46.4
+        }
+      ],
+      "task": "t4-01",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 81.3
+        },
+        {
+          "attempt": 2,
+          "outcome": "diagnostics",
+          "seconds": 61.4
+        },
+        {
+          "attempt": 3,
+          "outcome": "pass",
+          "seconds": 47.3
+        }
+      ],
+      "task": "t4-02",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 41.3
+        }
+      ],
+      "task": "t4-03",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 48.7
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 76.7
+        }
+      ],
+      "task": "t4-04",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 36.0
+        }
+      ],
+      "task": "t4-05",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 162.4
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 37.5
+        }
+      ],
+      "task": "t4-06",
+      "tier": 4
+    }
+  ],
+  "totals": {
+    "pass_at_1": 2,
+    "passed": 6,
+    "tasks": 6
+  },
+  "unix_time": 1785659510
+}
