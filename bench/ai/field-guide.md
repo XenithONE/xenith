@@ -135,10 +135,18 @@ variants (`Ok(v)`, `Rank.Gold`, `Shape.Rect(w, h)`), struct patterns
 
 Built-in types: `Int` (64-bit, trapping), `Float` (IEEE), `Bool`, `String`, `Char`, `Unit`
 (its only value is `unit`), `Option<T>` (`Some(v)` / `None`), `Result<T, E>` (`Ok(v)` / `Err(e)`),
-and the capability `Io`. `List` and `Map` exist as types but **nothing constructs them yet — do
-not use them.**
+`List<T>`, `Map<K, V>` (keys need `Eq + Hash`; `Float` cannot be a key), and the capability `Io`.
 
-The entire method set:
+Construction: a list is written `[1, 2, 3]`; an empty `[]` needs an expected type
+(`let xs: List<Int> = [];`). A map starts from the prelude function `empty_map()`, whose key and
+value types come from the annotation: `var m: Map<String, Int> = empty_map();`. Reads from
+containers return copies; methods that mutate their receiver require a `var` binding.
+
+`List`, `Map`, and `String` carry a substantial method set beyond the core table below. Their
+exact names and signatures are what the API reference (when provided) or the compiler's
+`goals`/`producers` output (when available) states.
+
+The core method set:
 
 | Method | Signature |
 | --- | --- |
@@ -148,8 +156,7 @@ The entire method set:
 | `Option<T>.to_result` | `(error: E) -> Result<T, E>` |
 | `Io.write` | `(text: String) -> Result<Unit, Error>` — effect `Io.write`; writes exactly `text`, no newline added |
 
-There are **no other methods**. No `len`, no `push`, no `format!`, no string interpolation —
-build strings with `concat` and `to_text`.
+There is no `format!` and no string interpolation — build strings with `concat` and `to_text`.
 
 ## Holes
 
