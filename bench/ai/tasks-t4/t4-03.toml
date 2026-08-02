@@ -1,0 +1,52 @@
+name = "t4-03"
+tier = 4
+prompt = '''
+Write a complete Xenith program. Start from the five words ox, cat, owl, deer, bee in that
+order. Group the words by their length, keeping the original order inside each group. Then
+print the groups as length:word,word entries — groups ordered by length ascending, words
+inside a group separated by commas, groups separated by | — with no trailing separators.
+'''
+expected_stdout = "2:ox|3:cat,owl,bee|4:deer"
+reference = '''
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    let words = ["ox", "cat", "owl", "deer", "bee"];
+    var groups: Map<Int, List<String>> = empty_map();
+    var i = 0;
+    while i < words.len() {
+        let word = match words.get(index: i) {
+            Some(w) => w,
+            None => "",
+        };
+        var group = match groups.get(key: word.len()) {
+            Some(g) => g,
+            None => [],
+        };
+        group.push(item: word);
+        let stored = groups.insert(key: word.len(), value: group);
+        i = i + 1;
+    }
+    let lengths = groups.keys().sorted();
+    var out = "";
+    var j = 0;
+    while j < lengths.len() {
+        let length = match lengths.get(index: j) {
+            Some(n) => n,
+            None => 0,
+        };
+        let members = match groups.get(key: length) {
+            Some(g) => g,
+            None => [],
+        };
+        if j > 0 {
+            out = out.concat(other: "|");
+        }
+        out = out
+            .concat(other: length.to_text())
+            .concat(other: ":")
+            .concat(other: members.join(sep: ","));
+        j = j + 1;
+    }
+    io.write(text: out)?;
+    return Ok(unit);
+}
+'''

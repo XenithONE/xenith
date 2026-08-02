@@ -1,0 +1,56 @@
+name = "t4-06"
+tier = 4
+prompt = '''
+Write a complete Xenith program. Build a table that maps these text keys to these integer
+values, in this order: red to 1, green to 2, blue to 1, gray to 3. Then build the reverse
+table from integers back to text: when two keys map to the same integer, the key that was
+inserted earlier wins. Print the reverse table as integer:text entries, ordered by integer
+ascending, separated by commas, with no trailing separator.
+'''
+expected_stdout = "1:red,2:green,3:gray"
+reference = '''
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    var forward: Map<String, Int> = empty_map();
+    let a = forward.insert(key: "red", value: 1);
+    let b = forward.insert(key: "green", value: 2);
+    let c = forward.insert(key: "blue", value: 1);
+    let d = forward.insert(key: "gray", value: 3);
+    var reverse: Map<Int, String> = empty_map();
+    let names = forward.keys();
+    var i = 0;
+    while i < names.len() {
+        let name = match names.get(index: i) {
+            Some(n) => n,
+            None => "",
+        };
+        let value = match forward.get(key: name) {
+            Some(v) => v,
+            None => 0,
+        };
+        if !reverse.has_key(key: value) {
+            let stored = reverse.insert(key: value, value: name);
+        }
+        i = i + 1;
+    }
+    let numbers = reverse.keys().sorted();
+    var out = "";
+    var j = 0;
+    while j < numbers.len() {
+        let number = match numbers.get(index: j) {
+            Some(n) => n,
+            None => 0,
+        };
+        let name = match reverse.get(key: number) {
+            Some(n) => n,
+            None => "",
+        };
+        if j > 0 {
+            out = out.concat(other: ",");
+        }
+        out = out.concat(other: number.to_text()).concat(other: ":").concat(other: name);
+        j = j + 1;
+    }
+    io.write(text: out)?;
+    return Ok(unit);
+}
+'''

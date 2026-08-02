@@ -1,0 +1,48 @@
+name = "t4-01"
+tier = 4
+prompt = '''
+Write a complete Xenith program. Start from the text "the cat and the dog and the bird".
+Count how many times each word occurs (words are separated by single spaces). Then print
+one entry per word as word:count, entries ordered by word ascending, entries separated by
+commas, with no trailing separator.
+'''
+expected_stdout = "and:2,bird:1,cat:1,dog:1,the:3"
+reference = '''
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    let words = "the cat and the dog and the bird".split(sep: " ");
+    var counts: Map<String, Int> = empty_map();
+    var i = 0;
+    while i < words.len() {
+        let word = match words.get(index: i) {
+            Some(w) => w,
+            None => "",
+        };
+        let seen = match counts.get(key: word) {
+            Some(n) => n,
+            None => 0,
+        };
+        let stored = counts.insert(key: word, value: seen + 1);
+        i = i + 1;
+    }
+    let names = counts.keys().sorted();
+    var out = "";
+    var j = 0;
+    while j < names.len() {
+        let name = match names.get(index: j) {
+            Some(w) => w,
+            None => "",
+        };
+        let count = match counts.get(key: name) {
+            Some(n) => n,
+            None => 0,
+        };
+        if j > 0 {
+            out = out.concat(other: ",");
+        }
+        out = out.concat(other: name).concat(other: ":").concat(other: count.to_text());
+        j = j + 1;
+    }
+    io.write(text: out)?;
+    return Ok(unit);
+}
+'''

@@ -1,0 +1,25 @@
+name = "t4-04"
+tier = 4
+prompt = '''
+Write a complete Xenith program. Start from the five words pear, apple, pear, fig, apple in
+that order. Remove duplicates, sort the remaining words ascending, and print them separated
+by commas with no trailing separator.
+'''
+expected_stdout = "apple,fig,pear"
+reference = '''
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    let words = ["pear", "apple", "pear", "fig", "apple"];
+    var seen: Map<String, Bool> = empty_map();
+    var i = 0;
+    while i < words.len() {
+        let word = match words.get(index: i) {
+            Some(w) => w,
+            None => "",
+        };
+        let stored = seen.insert(key: word, value: true);
+        i = i + 1;
+    }
+    io.write(text: seen.keys().sorted().join(sep: ","))?;
+    return Ok(unit);
+}
+'''

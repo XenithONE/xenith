@@ -1,0 +1,45 @@
+name = "t4-05"
+tier = 4
+prompt = '''
+Write a complete Xenith program. Define a structure for a player with a name (text) and a
+score (integer). Start from these four players in this order: ada 42, bob 77, eve 77,
+mel 15. Find the player with the highest score — when two players tie, the earlier one
+wins — and print that player's name.
+'''
+expected_stdout = "bob"
+reference = '''
+struct Player {
+    name: String,
+    score: Int,
+}
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    let players = [
+        Player { name: "ada", score: 42 },
+        Player { name: "bob", score: 77 },
+        Player { name: "eve", score: 77 },
+        Player { name: "mel", score: 15 },
+    ];
+    var best_name = "";
+    var best_score = 0;
+    var started = false;
+    var i = 0;
+    while i < players.len() {
+        match players.get(index: i) {
+            Some(player) => {
+                if !started || player.score > best_score {
+                    best_name = player.name;
+                    best_score = player.score;
+                    started = true;
+                }
+            }
+            None => {
+                started = started;
+            }
+        };
+        i = i + 1;
+    }
+    io.write(text: best_name)?;
+    return Ok(unit);
+}
+'''

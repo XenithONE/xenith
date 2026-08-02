@@ -1,0 +1,32 @@
+name = "t4-02"
+tier = 4
+prompt = '''
+Write a complete Xenith program. Start from the text "12, 34, x, 56". Separate it at each
+comma, remove surrounding spaces from each piece, and read each piece as an integer. Pieces
+that are not valid integers are skipped. Print the sum of the valid integers.
+'''
+expected_stdout = "102"
+reference = '''
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    let pieces = "12, 34, x, 56".split(sep: ",");
+    var total = 0;
+    var i = 0;
+    while i < pieces.len() {
+        let piece = match pieces.get(index: i) {
+            Some(p) => p,
+            None => "",
+        };
+        match piece.trim().try_to_int() {
+            Ok(value) => {
+                total = total + value;
+            }
+            Err(reason) => {
+                total = total + 0;
+            }
+        };
+        i = i + 1;
+    }
+    io.write(text: total.to_text())?;
+    return Ok(unit);
+}
+'''
