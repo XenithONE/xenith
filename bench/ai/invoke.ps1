@@ -5,6 +5,14 @@
 # order, so the knowledge lives in exactly one place. Requires the CLIs to be
 # installed and authenticated; runs are local by design — see README.md for
 # why the benchmark never runs in CI.
+#
+# Every CLI runs from a neutral, empty directory outside the repository.
+# Several of these tools are agents with ambient workspace access even in
+# their "print one answer" modes; run from the repo, Cursor's ask mode read
+# the field guide and the reference solutions out of the working tree and
+# scored a perfect bare run — falsified by re-asking from an empty directory,
+# where its Xenith reverted to guessed syntax. The measurement is the prompt,
+# so the filesystem must have nothing to say.
 
 param(
     [Parameter(Mandatory)][ValidateSet(
@@ -16,10 +24,18 @@ param(
 
 $prompt = Get-Content -Raw $PromptFile
 
+$neutral = Join-Path $env:LOCALAPPDATA 'xenith-bench\neutral'
+$null = New-Item -ItemType Directory -Force $neutral
+Set-Location $neutral
+
 switch ($Cli) {
-    # `--skip-git-repo-check` is required outside a trusted directory.
+    # `--skip-git-repo-check` is required outside a git repository, which the
+    # neutral directory deliberately is.
     'codex' { codex exec --skip-git-repo-check $prompt }
-    'grok' { grok -p $prompt }
+    # Web search is on by default and the benchmark language has a public
+    # repository — a searching model could find the documentation this
+    # condition withholds.
+    'grok' { grok --disable-web-search -p $prompt }
     # `--print` must come after any other flags; putting `-p` first makes it
     # swallow the next flag as its value.
     'agy' { agy --print $prompt }
@@ -29,7 +45,8 @@ switch ($Cli) {
     'opencode-deepseek' { opencode run --model opencode/deepseek-v4-flash-free $prompt }
     'opencode-nemotron' { opencode run --model opencode/nemotron-3-ultra-free $prompt }
     # Auto mode (no --model) routes each call to whichever model Cursor
-    # picks — a mixture by design. `--mode ask` keeps it a text reply
-    # rather than an agent with shell access.
-    'cursor' { cursor-agent --mode ask --output-format text -p $prompt }
+    # picks — a mixture by design. `--mode ask` keeps the reply textual, and
+    # `--trust` answers the workspace-trust prompt for the (empty) neutral
+    # directory, which headless mode cannot ask interactively.
+    'cursor' { cursor-agent --trust --mode ask --output-format text -p $prompt }
 }

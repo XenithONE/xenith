@@ -67,6 +67,30 @@ mixture, and labelled as one. `opencode-deepseek` and `opencode-nemotron` reach 
 by default: a cell is accumulated over short bursts, and re-invoking the same command continues
 where the last burst stopped.
 
+## Two measurement bugs, caught and fixed
+
+Recorded here because the numbers only mean something if the instrument is honest.
+
+**Empty replies were judged as programs.** One CLI (agy) reacts to compiler feedback by
+reaching for shell tools; headless mode auto-denies the permission prompt and the reply comes
+back empty. The harness judged the empty file — which passes `check` (an empty module is
+legal) and fails `run` with "no main" — and recorded a *runtime failure* of a program the
+model never wrote, then quoted the empty file back as the model's "previous attempt". Every
+agy bare repair round died this way, which produced a suspiciously uniform 0/10 and exposed
+the bug. Empty replies are now their own outcome class, and the contract tells every model
+uniformly: answer directly, no tools, the harness runs your code.
+
+**The working directory answered the exam.** The CLIs were spawned from inside the
+repository, and several of them are agents with ambient workspace access even in single-answer
+mode. Cursor's ask mode scored a *perfect* 10/10 bare — implausible, since `bare` withholds
+all documentation — and re-asking from an empty directory produced the same guessed-syntax
+Xenith every other bare model writes. It had been reading the field guide and the reference
+solutions out of the working tree. Every CLI now runs from a neutral empty directory outside
+the repo, and grok's default-on web search is disabled (the language has a public repository —
+a searching model could fetch what the condition withholds). All bare cells measured before
+this fix were voided and re-run; the voided reports are archived beside the live ones with
+`.void-*` / `.cwd-repo*` suffixes instead of deleted.
+
 ## Why results are committed rather than produced in CI
 
 Runs shell out to subscription CLIs, not metered APIs. Those CLIs are not available to hosted

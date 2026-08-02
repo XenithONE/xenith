@@ -1,0 +1,188 @@
+{
+  "condition": "bare",
+  "model": "opencode-deepseek",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 18.8
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 48.1
+        }
+      ],
+      "task": "multiples",
+      "tier": 1
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 139.4
+        }
+      ],
+      "task": "repeat",
+      "tier": 1
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 21.4
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 221.3
+        }
+      ],
+      "task": "sum-to-100",
+      "tier": 1
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 148.8
+        }
+      ],
+      "task": "account",
+      "tier": 2
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 22.9
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 106.5
+        }
+      ],
+      "task": "collatz",
+      "tier": 2
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 19.2
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 114.2
+        }
+      ],
+      "task": "reverse-digits",
+      "tier": 2
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 20.4
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 93.3
+        }
+      ],
+      "task": "shapes",
+      "tier": 2
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 52.6
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 127.5
+        }
+      ],
+      "task": "effects",
+      "tier": 3
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 67.5
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 77.1
+        }
+      ],
+      "task": "gcd",
+      "tier": 3
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 23.5
+        },
+        {
+          "attempt": 2,
+          "outcome": "diagnostics",
+          "seconds": 38.6
+        },
+        {
+          "attempt": 3,
+          "outcome": "pass",
+          "seconds": 147.6
+        }
+      ],
+      "task": "overflow",
+      "tier": 3
+    }
+  ],
+  "totals": {
+    "pass_at_1": 2,
+    "passed": 10,
+    "tasks": 10
+  },
+  "unix_time": 1785639622
+}

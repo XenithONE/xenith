@@ -1,0 +1,113 @@
+{
+  "condition": "bare",
+  "model": "opencode-nemotron",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 40.2
+        },
+        {
+          "attempt": 2,
+          "outcome": "model error: no reply within 240s",
+          "seconds": 241.5
+        }
+      ],
+      "task": "multiples",
+      "tier": 1
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 29.3
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 157.3
+        }
+      ],
+      "task": "repeat",
+      "tier": 1
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 43.1
+        },
+        {
+          "attempt": 2,
+          "outcome": "model error: no reply within 240s",
+          "seconds": 241.2
+        }
+      ],
+      "task": "sum-to-100",
+      "tier": 1
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 47.2
+        },
+        {
+          "attempt": 2,
+          "outcome": "runtime failure",
+          "seconds": 132.9
+        },
+        {
+          "attempt": 3,
+          "outcome": "diagnostics",
+          "seconds": 39.6
+        },
+        {
+          "attempt": 4,
+          "outcome": "model error: no reply within 240s",
+          "seconds": 241.5
+        }
+      ],
+      "task": "account",
+      "tier": 2
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 79.7
+        },
+        {
+          "attempt": 2,
+          "outcome": "model error: no reply within 240s",
+          "seconds": 241.2
+        }
+      ],
+      "task": "collatz",
+      "tier": 2
+    }
+  ],
+  "totals": {
+    "pass_at_1": 0,
+    "passed": 1,
+    "tasks": 5
+  },
+  "unix_time": 1785639651
+}
