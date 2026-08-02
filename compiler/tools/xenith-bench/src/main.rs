@@ -16,6 +16,11 @@
 //! `full-pack` — the field guide in context.
 //! `hole-guided` — the field guide plus the hole workflow: each round feeds
 //! back `xenith goals` alongside diagnostics.
+//! `docs` / `query` / `docs-query` / `blind` — the 2×2 separation arms of
+//! design/0007 §5: "std API table in the guide" crossed with "goals/producers
+//! in the feedback". Everything else — rounds cap, prompt skeleton,
+//! diagnostics, tasks — is identical across the four, so a gap between cells
+//! is attributable to the two factors and nothing else.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -97,22 +102,53 @@ impl Model {
     }
 }
 
+/// The first three are the original matrix and stay frozen for
+/// reproducibility. The last four are the 0007 §5 separation arms; their CLI
+/// names double as the `{model}-{condition}.json` result-file suffix.
 #[derive(Clone, Copy, ValueEnum, PartialEq)]
 enum Condition {
     Bare,
     FullPack,
     HoleGuided,
+    Docs,
+    Query,
+    DocsQuery,
+    Blind,
 }
 
 impl Condition {
     const ALL: [Condition; 3] = [Condition::Bare, Condition::FullPack, Condition::HoleGuided];
+    const SEPARATION: [Condition; 4] = [
+        Condition::Docs,
+        Condition::Query,
+        Condition::DocsQuery,
+        Condition::Blind,
+    ];
 
     fn name(self) -> &'static str {
         match self {
             Condition::Bare => "bare",
             Condition::FullPack => "full-pack",
             Condition::HoleGuided => "hole-guided",
+            Condition::Docs => "docs",
+            Condition::Query => "query",
+            Condition::DocsQuery => "docs-query",
+            Condition::Blind => "blind",
         }
+    }
+
+    /// The docs factor: these arms carry the std API table in the guide.
+    fn has_api_table(self) -> bool {
+        matches!(self, Condition::Docs | Condition::DocsQuery)
+    }
+
+    /// The query factor: these arms get `xenith goals` appended to failing
+    /// feedback. `hole-guided` predates the 2×2 and keeps its channel.
+    fn feeds_goals(self) -> bool {
+        matches!(
+            self,
+            Condition::HoleGuided | Condition::Query | Condition::DocsQuery
+        )
     }
 }
 
@@ -154,13 +190,50 @@ fn summarize(paths: &Paths) -> ExitCode {
          the cell has no canonical result file yet. Conditions and the measurement\n\
          story live in [README.md](../README.md).\n\n",
     );
-    table.push_str("| model | bare | full-pack | hole-guided |\n");
-    table.push_str("| --- | --- | --- | --- |\n");
+    let (main_block, _) = matrix_block(paths, &Condition::ALL);
+    table.push_str(&main_block);
 
-    let mut totals: Vec<(u32, u32, u32)> = vec![(0, 0, 0); Condition::ALL.len()];
+    // The 0007 arms render only once at least one cell is measured: an
+    // all-dash table would imply an experiment that has not started.
+    let (separation_block, measured) = matrix_block(paths, &Condition::SEPARATION);
+    if measured {
+        table.push_str(
+            "\n## Separation experiment (0007)\n\n\
+             The 2×2 of design/0007 §5-1: std API table in the guide × goals/producers\n\
+             in the feedback. Same cell format as above.\n\n",
+        );
+        table.push_str(&separation_block);
+    }
+
+    let out = paths.results.join("summary.md");
+    if let Err(e) = std::fs::write(&out, &table) {
+        eprintln!("cannot write {}: {e}", out.display());
+        return ExitCode::FAILURE;
+    }
+    print!("{table}");
+    println!("\nwrote {}", out.display());
+    ExitCode::SUCCESS
+}
+
+/// One model × condition table over the given columns, plus whether any cell
+/// had canonical results. Both summary tables must come from this one path,
+/// or their cell formats drift apart.
+fn matrix_block(paths: &Paths, conditions: &[Condition]) -> (String, bool) {
+    let mut table = String::from("| model |");
+    for condition in conditions {
+        table.push_str(&format!(" {} |", condition.name()));
+    }
+    table.push_str("\n| --- |");
+    for _ in conditions {
+        table.push_str(" --- |");
+    }
+    table.push('\n');
+
+    let mut measured = false;
+    let mut totals: Vec<(u32, u32, u32)> = vec![(0, 0, 0); conditions.len()];
     for model in Model::ALL {
         table.push_str(&format!("| `{}` |", model.name()));
-        for (i, condition) in Condition::ALL.into_iter().enumerate() {
+        for (i, condition) in conditions.iter().enumerate() {
             let file = paths
                 .results
                 .join(format!("{}-{}.json", model.name(), condition.name()));
@@ -169,6 +242,7 @@ fn summarize(paths: &Paths) -> ExitCode {
                 table.push_str(" — |");
                 continue;
             }
+            measured = true;
             let tasks = reports.len() as u32;
             let pass1 = reports.iter().filter(|r| r.pass_at_1).count() as u32;
             let green = reports.iter().filter(|r| r.passed).count() as u32;
@@ -198,15 +272,7 @@ fn summarize(paths: &Paths) -> ExitCode {
         }
     }
     table.push('\n');
-
-    let out = paths.results.join("summary.md");
-    if let Err(e) = std::fs::write(&out, &table) {
-        eprintln!("cannot write {}: {e}", out.display());
-        return ExitCode::FAILURE;
-    }
-    print!("{table}");
-    println!("\nwrote {}", out.display());
-    ExitCode::SUCCESS
+    (table, measured)
 }
 
 // -------------------------------------------------------------------- layout
@@ -218,6 +284,7 @@ struct Paths {
     scratch: PathBuf,
     results: PathBuf,
     field_guide: PathBuf,
+    api_table: PathBuf,
     invoke: PathBuf,
 }
 
@@ -235,6 +302,7 @@ impl Paths {
             scratch: root.join("bench/ai/scratch"),
             results: root.join("bench/ai/results"),
             field_guide: root.join("bench/ai/field-guide.md"),
+            api_table: root.join("bench/ai/api-table.md"),
             invoke: root.join("bench/ai/invoke.ps1"),
             root,
         }
@@ -419,6 +487,17 @@ fn run_models(
         }
     };
     let guide = std::fs::read_to_string(&paths.field_guide).unwrap_or_default();
+    let api_table = std::fs::read_to_string(&paths.api_table).unwrap_or_default();
+    // A docs-family cell run against a missing table would silently measure
+    // `query`/`blind` under the wrong label; refuse instead.
+    if condition.has_api_table() && api_table.trim().is_empty() {
+        eprintln!(
+            "{} is empty or missing; the {} condition is meaningless without it",
+            paths.api_table.display(),
+            condition.name()
+        );
+        return ExitCode::FAILURE;
+    }
     let tasks = match load_tasks(&paths.tasks) {
         Ok(tasks) => tasks,
         Err(message) => {
@@ -455,7 +534,7 @@ fn run_models(
     for task in &tasks {
         println!("== {} / {} / {}", task.name, model.name(), condition.name());
         let report = run_one_task(
-            paths, &xenith, &guide, task, model, condition, rounds, timeout,
+            paths, &xenith, &guide, &api_table, task, model, condition, rounds, timeout,
         );
         let verdict = if report.passed {
             format!("PASS in {} round(s)", report.rounds.len())
@@ -512,6 +591,9 @@ fn load_prior_reports(file: &Path) -> Vec<TaskReport> {
                             attempt: r["attempt"].as_u64()? as u32,
                             outcome: r["outcome"].as_str()?.to_string(),
                             seconds: r["seconds"].as_f64()?,
+                            // Absent in every pre-0007 report; absence is not
+                            // an error, it is the common case.
+                            goals: r["goals"].as_str().map(str::to_string),
                         })
                     })
                     .collect(),
@@ -552,6 +634,12 @@ struct RoundRecord {
     attempt: u32,
     outcome: String,
     seconds: f64,
+    /// The `xenith goals` text fed back this round, verbatim — the raw
+    /// material for the oracle-hit-rate analysis (0007 §5-5): did the
+    /// candidates name the methods the final solution used? Recorded only in
+    /// the query-family separation arms; everywhere else it stays `None` so
+    /// pre-0007 result files keep their exact shape.
+    goals: Option<String>,
 }
 
 struct TaskReport {
@@ -568,16 +656,22 @@ fn report_json(report: &TaskReport) -> serde_json::Value {
         "tier": report.tier,
         "passed": report.passed,
         "pass_at_1": report.pass_at_1,
-        "rounds": report
-            .rounds
-            .iter()
-            .map(|r| serde_json::json!({
-                "attempt": r.attempt,
-                "outcome": r.outcome,
-                "seconds": (r.seconds * 10.0).round() / 10.0,
-            }))
-            .collect::<Vec<_>>(),
+        "rounds": report.rounds.iter().map(round_json).collect::<Vec<_>>(),
     })
+}
+
+fn round_json(round: &RoundRecord) -> serde_json::Value {
+    let mut json = serde_json::json!({
+        "attempt": round.attempt,
+        "outcome": round.outcome,
+        "seconds": (round.seconds * 10.0).round() / 10.0,
+    });
+    // Serialized only when present: rounds outside the query-family arms must
+    // not grow a null field that old readers and old diffs never had.
+    if let Some(goals) = &round.goals {
+        json["goals"] = serde_json::json!(goals);
+    }
+    json
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -585,6 +679,7 @@ fn run_one_task(
     paths: &Paths,
     xenith: &Path,
     guide: &str,
+    api_table: &str,
     task: &Task,
     model: Model,
     condition: Condition,
@@ -599,7 +694,7 @@ fn run_one_task(
         rounds: Vec::new(),
     };
 
-    let mut transcript = first_prompt(guide, task, condition);
+    let mut transcript = first_prompt(guide, api_table, task, condition);
 
     for attempt in 1..=rounds {
         let started = Instant::now();
@@ -610,6 +705,7 @@ fn run_one_task(
                     attempt,
                     outcome: format!("model error: {message}"),
                     seconds: started.elapsed().as_secs_f64(),
+                    goals: None,
                 });
                 return report;
             }
@@ -625,6 +721,7 @@ fn run_one_task(
                 attempt,
                 outcome: "empty reply".into(),
                 seconds: started.elapsed().as_secs_f64(),
+                goals: None,
             });
             transcript.push_str(
                 "\n\n--- note ---\nYour previous reply came back empty (the CLI produced no \
@@ -645,16 +742,18 @@ fn run_one_task(
                 attempt,
                 outcome: "scratch write failed".into(),
                 seconds: started.elapsed().as_secs_f64(),
+                goals: None,
             });
             return report;
         }
 
-        let (outcome, feedback) = judge(xenith, &file, task, condition);
-        let done = feedback.is_none();
+        let judgement = judge(xenith, &file, task, condition);
+        let done = judgement.feedback.is_none();
         report.rounds.push(RoundRecord {
             attempt,
-            outcome,
+            outcome: judgement.outcome,
             seconds: started.elapsed().as_secs_f64(),
+            goals: judgement.goals,
         });
 
         if done {
@@ -669,51 +768,67 @@ fn run_one_task(
              --- compiler feedback ---\n{}\n\n\
              Fix the program. Reply again with exactly one fenced code block \
              containing the complete corrected file.",
-            feedback.unwrap_or_default()
+            judgement.feedback.unwrap_or_default()
         ));
     }
 
     report
 }
 
-/// Judge one attempt. `None` feedback means the attempt passed.
-fn judge(
-    xenith: &Path,
-    file: &Path,
-    task: &Task,
-    condition: Condition,
-) -> (String, Option<String>) {
-    match execute(xenith, file) {
+struct Judgement {
+    outcome: String,
+    /// `None` means the attempt passed.
+    feedback: Option<String>,
+    /// The goals text appended to `feedback`, when this round both failed
+    /// check/run and belongs to a query-family separation arm (0007 §5-5).
+    goals: Option<String>,
+}
+
+/// Judge one attempt. Goals enrichment happens only on failed check/run —
+/// wrong output is not a hole problem — and only for conditions whose
+/// feedback channel includes it.
+fn judge(xenith: &Path, file: &Path, task: &Task, condition: Condition) -> Judgement {
+    let (outcome, mut feedback, enrich) = match execute(xenith, file) {
         Execution::Passed { stdout } if stdout == task.expected_stdout => {
-            ("pass".to_string(), None)
+            return Judgement {
+                outcome: "pass".to_string(),
+                feedback: None,
+                goals: None,
+            };
         }
         Execution::Passed { stdout } => (
             "wrong output".to_string(),
-            Some(format!(
+            format!(
                 "The program compiled and ran, but printed {stdout:?} where {:?} was required.",
                 task.expected_stdout
-            )),
+            ),
+            false,
         ),
-        Execution::CheckFailed { output } => {
-            let mut feedback = output;
-            if condition == Condition::HoleGuided {
-                if let Some(goals) = goals_output(xenith, file) {
-                    feedback.push_str("\n--- xenith goals ---\n");
-                    feedback.push_str(&goals);
-                }
+        Execution::CheckFailed { output } => ("diagnostics".to_string(), output, true),
+        Execution::RunFailed { exit, error } => (
+            "runtime failure".to_string(),
+            format!("The program exited with code {exit}: {error}"),
+            true,
+        ),
+    };
+
+    let mut goals = None;
+    if enrich && condition.feeds_goals() {
+        if let Some(text) = goals_output(xenith, file) {
+            feedback.push_str("\n--- xenith goals ---\n");
+            feedback.push_str(&text);
+            // Kept for oracle-hit-rate only in the separation arms, so
+            // hole-guided result files keep their pre-0007 byte shape.
+            if matches!(condition, Condition::Query | Condition::DocsQuery) {
+                goals = Some(text);
             }
-            ("diagnostics".to_string(), Some(feedback))
         }
-        Execution::RunFailed { exit, error } => {
-            let mut feedback = format!("The program exited with code {exit}: {error}");
-            if condition == Condition::HoleGuided {
-                if let Some(goals) = goals_output(xenith, file) {
-                    feedback.push_str("\n--- xenith goals ---\n");
-                    feedback.push_str(&goals);
-                }
-            }
-            ("runtime failure".to_string(), Some(feedback))
-        }
+    }
+
+    Judgement {
+        outcome,
+        feedback: Some(feedback),
+        goals,
     }
 }
 
@@ -739,7 +854,15 @@ not use tools or execute commands — the harness compiles and runs your code fo
 program must define `fn main` and print exactly the required output using io.write. io.write \
 adds no newline.";
 
-fn first_prompt(guide: &str, task: &Task, condition: Condition) -> String {
+// The separation arms share one skeleton; these two sentences are the only
+// permitted difference in it, and the delta between them is the description
+// of the feedback channel — nothing behavioral (0007 §5-1: no asymmetric
+// nudges, no hole invitations, no warnings against anything).
+const FEEDBACK_PLAIN: &str = "After each attempt you will receive compiler feedback.";
+const FEEDBACK_WITH_GOALS: &str = "After each attempt you will receive compiler feedback; it \
+may include hole goals and producer listings.";
+
+fn first_prompt(guide: &str, api_table: &str, task: &Task, condition: Condition) -> String {
     match condition {
         Condition::Bare => format!(
             "You are writing Xenith, a programming language that resembles Rust and \
@@ -760,6 +883,26 @@ fn first_prompt(guide: &str, task: &Task, condition: Condition) -> String {
              TASK: {}\n\n{CONTRACT}",
             task.prompt.trim()
         ),
+        // The 2×2: the guide either carries the API table or not, and the
+        // feedback sentence either names the goals channel or not. Same
+        // skeleton, same contract, same budgets — everything else must stay
+        // byte-identical across the four arms.
+        Condition::Docs | Condition::Query | Condition::DocsQuery | Condition::Blind => {
+            let guide = if condition.has_api_table() {
+                format!("{guide}\n\n## std API reference\n\n{api_table}")
+            } else {
+                guide.to_string()
+            };
+            let feedback = if condition.feeds_goals() {
+                FEEDBACK_WITH_GOALS
+            } else {
+                FEEDBACK_PLAIN
+            };
+            format!(
+                "{guide}\n\n---\n\n{feedback}\n\nTASK: {}\n\n{CONTRACT}",
+                task.prompt.trim()
+            )
+        }
     }
 }
 
@@ -852,5 +995,149 @@ mod tests {
     fn indented_fences_still_close() {
         let reply = "  ```\ncode line\n  ```";
         assert_eq!(extract_code(reply), "code line");
+    }
+
+    fn sample_task() -> Task {
+        Task {
+            name: "t4-xx".into(),
+            tier: 4,
+            prompt: "Print the answer.".into(),
+            expected_stdout: String::new(),
+            reference: String::new(),
+        }
+    }
+
+    /// Stub guide and table: the separation assertions are about what the
+    /// skeleton adds. The real field guide is shared verbatim by all four
+    /// arms, so it cancels out of every between-arm comparison.
+    fn separation_prompt(condition: Condition) -> String {
+        first_prompt("GUIDE", "TABLE", &sample_task(), condition)
+    }
+
+    #[test]
+    fn the_api_table_follows_the_docs_factor() {
+        assert!(separation_prompt(Condition::Docs).contains("## std API reference"));
+        assert!(separation_prompt(Condition::DocsQuery).contains("## std API reference"));
+        assert!(!separation_prompt(Condition::Query).contains("## std API reference"));
+        assert!(!separation_prompt(Condition::Blind).contains("## std API reference"));
+    }
+
+    #[test]
+    fn the_goals_sentence_follows_the_query_factor() {
+        let names = "hole goals and producer listings";
+        assert!(separation_prompt(Condition::Query).contains(names));
+        assert!(separation_prompt(Condition::DocsQuery).contains(names));
+        assert!(!separation_prompt(Condition::Docs).contains("hole goals"));
+        assert!(!separation_prompt(Condition::Blind).contains("hole goals"));
+    }
+
+    #[test]
+    fn separation_arms_differ_only_along_the_two_factors() {
+        // Swapping one factor's text must turn one arm's prompt into the
+        // other's byte for byte; any third difference breaks these.
+        assert_eq!(
+            separation_prompt(Condition::Blind).replace(FEEDBACK_PLAIN, FEEDBACK_WITH_GOALS),
+            separation_prompt(Condition::Query)
+        );
+        assert_eq!(
+            separation_prompt(Condition::Docs).replace(FEEDBACK_PLAIN, FEEDBACK_WITH_GOALS),
+            separation_prompt(Condition::DocsQuery)
+        );
+        assert_eq!(
+            separation_prompt(Condition::Blind)
+                .replace("GUIDE", "GUIDE\n\n## std API reference\n\nTABLE"),
+            separation_prompt(Condition::Docs)
+        );
+    }
+
+    #[test]
+    fn no_separation_arm_is_nudged() {
+        // 0007 §5-1: no asymmetric nudges. "guess" in any wording would be a
+        // behavioral instruction; `??` would be a hole invitation.
+        for condition in Condition::SEPARATION {
+            let prompt = separation_prompt(condition);
+            assert!(!prompt.contains("guess"), "{} nudges", condition.name());
+            assert!(!prompt.contains("??"), "{} invites holes", condition.name());
+        }
+    }
+
+    #[test]
+    fn separation_condition_names_match_result_files() {
+        let names: Vec<&str> = Condition::SEPARATION.iter().map(|c| c.name()).collect();
+        assert_eq!(names, ["docs", "query", "docs-query", "blind"]);
+    }
+
+    #[test]
+    fn goals_feedback_is_wired_to_the_query_family() {
+        assert!(Condition::HoleGuided.feeds_goals());
+        assert!(Condition::Query.feeds_goals());
+        assert!(Condition::DocsQuery.feeds_goals());
+        assert!(!Condition::Bare.feeds_goals());
+        assert!(!Condition::FullPack.feeds_goals());
+        assert!(!Condition::Docs.feeds_goals());
+        assert!(!Condition::Blind.feeds_goals());
+
+        assert!(Condition::Docs.has_api_table());
+        assert!(Condition::DocsQuery.has_api_table());
+        assert!(!Condition::Query.has_api_table());
+        assert!(!Condition::Blind.has_api_table());
+        assert!(!Condition::FullPack.has_api_table());
+    }
+
+    #[test]
+    fn goals_survive_the_results_round_trip() {
+        let dir = std::env::temp_dir().join(format!("xenith-bench-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("codex-query.json");
+        let written = vec![TaskReport {
+            task: "t4-01".into(),
+            tier: 4,
+            passed: true,
+            pass_at_1: false,
+            rounds: vec![
+                RoundRecord {
+                    attempt: 1,
+                    outcome: "diagnostics".into(),
+                    seconds: 1.5,
+                    goals: Some("?? : Int — candidates: len, get".into()),
+                },
+                RoundRecord {
+                    attempt: 2,
+                    outcome: "pass".into(),
+                    seconds: 2.0,
+                    goals: None,
+                },
+            ],
+        }];
+        write_results(&file, Model::Codex, Condition::Query, 4, &written).unwrap();
+        let loaded = load_prior_reports(&file);
+        std::fs::remove_file(&file).ok();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].rounds.len(), 2);
+        assert_eq!(
+            loaded[0].rounds[0].goals.as_deref(),
+            Some("?? : Int — candidates: len, get")
+        );
+        assert!(loaded[0].rounds[1].goals.is_none());
+    }
+
+    #[test]
+    fn pre_0007_reports_still_load() {
+        // A results file written before the goals field existed must load
+        // exactly as before; resume and summarize both depend on it.
+        let dir = std::env::temp_dir().join(format!("xenith-bench-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("legacy-hole-guided.json");
+        std::fs::write(
+            &file,
+            r#"{"tasks":[{"task":"t1","tier":1,"passed":true,"pass_at_1":true,
+               "rounds":[{"attempt":1,"outcome":"pass","seconds":3.0}]}]}"#,
+        )
+        .unwrap();
+        let loaded = load_prior_reports(&file);
+        std::fs::remove_file(&file).ok();
+        assert_eq!(loaded.len(), 1);
+        assert!(loaded[0].passed);
+        assert!(loaded[0].rounds[0].goals.is_none());
     }
 }

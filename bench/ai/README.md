@@ -25,6 +25,22 @@ the premise is wrong** and the design gets revisited — see
 > as the lower control until retrieval is a real mechanism. The original three-way comparison
 > returns when `std/` exists.
 
+### Separation conditions (0007)
+
+The 2×2 arms of [design/0007 §5](../../design/0007-std-minimal.md), which factor apart what
+`hole-guided` bundled. The std API table is [`api-table.md`](api-table.md):
+
+| Condition | API table in guide | `goals`/`producers` in feedback |
+| --- | --- | --- |
+| `docs` | yes | no |
+| `query` | no | yes |
+| `docs-query` | yes | yes |
+| `blind` | no | no |
+
+All four arms share identical budgets (rounds cap 4) and identical prompts apart from those
+two factors — no asymmetric nudges in any arm. The main comparisons are `query` vs `blind`
+and `docs-query` vs `docs`, and results are reported as an exploratory pilot per 0007 §5-5.
+
 ## Metrics
 
 - **pass@1** — first attempt passes the hidden expectation
