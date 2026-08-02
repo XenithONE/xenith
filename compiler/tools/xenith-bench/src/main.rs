@@ -529,6 +529,25 @@ fn run_one_task(
                 return report;
             }
         };
+        // An empty reply is a CLI failure, not a program. Judging it as one
+        // poisons the cell twice over: the empty file passes `check` (an empty
+        // module is legal), fails `run` with "no main", and gets recorded as a
+        // runtime failure — and the repair prompt then quotes an empty
+        // "previous attempt" the model never wrote. agy in headless mode does
+        // exactly this when a tool request is auto-denied.
+        if reply.trim().is_empty() {
+            report.rounds.push(RoundRecord {
+                attempt,
+                outcome: "empty reply".into(),
+                seconds: started.elapsed().as_secs_f64(),
+            });
+            transcript.push_str(
+                "\n\n--- note ---\nYour previous reply came back empty (the CLI produced no \
+                 text). Do not use tools; answer directly. Reply with exactly one fenced \
+                 code block containing the complete program.",
+            );
+            continue;
+        }
         let code = extract_code(&reply);
         let file = paths.scratch.join(format!(
             "{}-{}-{}-r{attempt}.xn",
@@ -625,9 +644,15 @@ fn goals_output(xenith: &Path, file: &Path) -> Option<String> {
 
 // ------------------------------------------------------------------- prompts
 
+// The "do not use tools" sentence is load-bearing: some CLIs (agy) respond to
+// compiler feedback by reaching for shell tools, which headless mode denies,
+// and the reply comes back empty. The instruction is uniform across models so
+// cells stay comparable.
 const CONTRACT: &str = "Reply with exactly one fenced code block containing one complete \
-Xenith source file, and no prose outside the fence. The program must define `fn main` and \
-print exactly the required output using io.write. io.write adds no newline.";
+Xenith source file, and no prose outside the fence. Answer directly from what you know: do \
+not use tools or execute commands — the harness compiles and runs your code for you. The \
+program must define `fn main` and print exactly the required output using io.write. io.write \
+adds no newline.";
 
 fn first_prompt(guide: &str, task: &Task, condition: Condition) -> String {
     match condition {
