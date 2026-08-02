@@ -338,6 +338,10 @@ fn run_models(
     std::fs::create_dir_all(&paths.scratch).ok();
     std::fs::create_dir_all(&paths.results).ok();
 
+    let file = paths
+        .results
+        .join(format!("{}-{}.json", model.name(), condition.name()));
+
     let mut reports = Vec::new();
     for task in &tasks {
         println!("== {} / {} / {}", task.name, model.name(), condition.name());
@@ -351,29 +355,16 @@ fn run_models(
         };
         println!("   -> {verdict}");
         reports.push(report);
+        // Rewrite after every task: a run that dies mid-matrix keeps what it
+        // measured instead of losing an hour of model time.
+        if let Err(e) = write_results(&file, model, condition, rounds, &reports) {
+            eprintln!("{}: {e}", file.display());
+            return ExitCode::FAILURE;
+        }
     }
 
     let passed = reports.iter().filter(|r| r.passed).count();
     let pass_at_1 = reports.iter().filter(|r| r.pass_at_1).count();
-    let summary = serde_json::json!({
-        "model": model.name(),
-        "condition": condition.name(),
-        "rounds_limit": rounds,
-        "tasks": reports.iter().map(report_json).collect::<Vec<_>>(),
-        "totals": {
-            "tasks": reports.len(),
-            "passed": passed,
-            "pass_at_1": pass_at_1,
-        },
-    });
-
-    let file = paths
-        .results
-        .join(format!("{}-{}.json", model.name(), condition.name()));
-    if let Err(e) = std::fs::write(&file, serde_json::to_string_pretty(&summary).unwrap()) {
-        eprintln!("{}: {e}", file.display());
-        return ExitCode::FAILURE;
-    }
     println!(
         "\n{}/{} passed ({} at first attempt) -> {}",
         passed,
@@ -382,6 +373,34 @@ fn run_models(
         file.display()
     );
     ExitCode::SUCCESS
+}
+
+fn write_results(
+    file: &Path,
+    model: Model,
+    condition: Condition,
+    rounds: u32,
+    reports: &[TaskReport],
+) -> Result<(), String> {
+    let passed = reports.iter().filter(|r| r.passed).count();
+    let pass_at_1 = reports.iter().filter(|r| r.pass_at_1).count();
+    let unix_time = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let summary = serde_json::json!({
+        "model": model.name(),
+        "condition": condition.name(),
+        "rounds_limit": rounds,
+        "unix_time": unix_time,
+        "tasks": reports.iter().map(report_json).collect::<Vec<_>>(),
+        "totals": {
+            "tasks": reports.len(),
+            "passed": passed,
+            "pass_at_1": pass_at_1,
+        },
+    });
+    std::fs::write(file, serde_json::to_string_pretty(&summary).unwrap()).map_err(|e| e.to_string())
 }
 
 struct RoundRecord {
@@ -575,7 +594,9 @@ fn first_prompt(guide: &str, task: &Task, condition: Condition) -> String {
 }
 
 fn ask_model(paths: &Paths, model: Model, prompt: &str, timeout: u64) -> Result<String, String> {
-    let prompt_file = paths.scratch.join("prompt.txt");
+    // Per-model file: runs for different models execute in parallel, and a
+    // shared prompt file would race.
+    let prompt_file = paths.scratch.join(format!("prompt-{}.txt", model.name()));
     std::fs::write(&prompt_file, prompt).map_err(|e| e.to_string())?;
 
     let mut child = std::process::Command::new("pwsh")
