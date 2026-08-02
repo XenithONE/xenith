@@ -342,7 +342,20 @@ fn run_models(
         .results
         .join(format!("{}-{}.json", model.name(), condition.name()));
 
-    let mut reports = Vec::new();
+    // Resume by default: a matrix is accumulated over short bursts, not one
+    // long run — model calls are slow and sessions have execution caps. Tasks
+    // already recorded in the results file are kept and skipped.
+    let mut reports = load_prior_reports(&file);
+    if !reports.is_empty() {
+        println!(
+            "resuming: {} task(s) already recorded in {}",
+            reports.len(),
+            file.display()
+        );
+    }
+    let done: Vec<String> = reports.iter().map(|r| r.task.clone()).collect();
+    let tasks: Vec<&&Task> = tasks.iter().filter(|t| !done.contains(&t.name)).collect();
+
     for task in &tasks {
         println!("== {} / {} / {}", task.name, model.name(), condition.name());
         let report = run_one_task(
@@ -373,6 +386,42 @@ fn run_models(
         file.display()
     );
     ExitCode::SUCCESS
+}
+
+/// Reconstruct prior task reports from an existing results file, so a burst
+/// picks up where the previous one stopped.
+fn load_prior_reports(file: &Path) -> Vec<TaskReport> {
+    let Ok(text) = std::fs::read_to_string(file) else {
+        return Vec::new();
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return Vec::new();
+    };
+    let Some(tasks) = value["tasks"].as_array() else {
+        return Vec::new();
+    };
+    tasks
+        .iter()
+        .filter_map(|t| {
+            Some(TaskReport {
+                task: t["task"].as_str()?.to_string(),
+                tier: t["tier"].as_u64()? as u32,
+                passed: t["passed"].as_bool()?,
+                pass_at_1: t["pass_at_1"].as_bool()?,
+                rounds: t["rounds"]
+                    .as_array()?
+                    .iter()
+                    .filter_map(|r| {
+                        Some(RoundRecord {
+                            attempt: r["attempt"].as_u64()? as u32,
+                            outcome: r["outcome"].as_str()?.to_string(),
+                            seconds: r["seconds"].as_f64()?,
+                        })
+                    })
+                    .collect(),
+            })
+        })
+        .collect()
 }
 
 fn write_results(
