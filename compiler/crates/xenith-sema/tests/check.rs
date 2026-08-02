@@ -349,6 +349,161 @@ fn assigning_to_an_immutable_field_is_reported() {
     assert_eq!(codes_of(source), ["XN3009"]);
 }
 
+// --------------------------------------------------------------------- lists
+
+#[test]
+fn a_list_literal_takes_its_element_type_from_the_expected_type() {
+    expect_clean("fn f() -> List<Int> { [1, 2, 3] }");
+    expect_clean("fn f() -> List<List<Int>> { [[1], []] }");
+}
+
+#[test]
+fn an_empty_list_literal_checks_against_an_annotation() {
+    expect_clean("fn f() -> List<Int> { [] }");
+    expect_clean("fn f() -> Int { let xs: List<Int> = []; xs.len() }");
+}
+
+#[test]
+fn an_empty_list_with_nothing_to_determine_it_demands_an_annotation() {
+    // Same policy as bare holes (0006 §1-1): the element type is not invented.
+    let codes = codes_of("fn f() -> Int { let xs = []; 1 }");
+    assert_eq!(codes, ["XN3005"]);
+}
+
+#[test]
+fn a_mismatched_element_is_reported_against_the_expected_element_type() {
+    let codes = codes_of("fn f() -> List<Int> { [1, true] }");
+    assert_eq!(codes, ["XN3001"]);
+}
+
+#[test]
+fn a_list_literal_in_a_non_list_position_is_a_mismatch() {
+    assert_eq!(codes_of("fn f() -> Int { [1] }"), ["XN3001"]);
+    assert_eq!(codes_of("fn f() -> Int { [] }"), ["XN3001"]);
+}
+
+#[test]
+fn a_list_literal_synthesises_from_its_first_element() {
+    expect_clean("fn f() -> List<Int> { let xs = [1, 2]; xs }");
+    let codes = codes_of("fn f() -> Int { let xs = [1, true]; 1 }");
+    assert_eq!(codes, ["XN3001"]);
+}
+
+#[test]
+fn a_hole_element_inside_a_list_becomes_a_goal() {
+    let source = "fn f() -> List<Int> { [1, ??gap, 3] }";
+    expect_clean(source);
+    let goals = goals_of(source);
+    assert_eq!(goals[0].name.as_deref(), Some("gap"));
+    assert_eq!(goals[0].expected, "Int");
+}
+
+#[test]
+fn the_list_reads_check_with_their_declared_signatures() {
+    expect_clean(
+        "fn a(xs: List<Int>) -> Int { xs.len() }\n\
+         fn b(xs: List<Int>) -> Bool { xs.is_empty() }\n\
+         fn c(xs: List<Int>) -> Option<Int> { xs.get(index: 0) }\n\
+         fn d(xs: List<Int>) -> Bool { xs.contains(item: 3) }\n\
+         fn e(xs: List<Int>) -> List<Int> { xs.sorted() }\n\
+         fn g(xs: List<Int>) -> List<Int> { xs.concat(other: xs) }\n\
+         fn h(xs: List<String>) -> String { xs.join(sep: \", \") }",
+    );
+}
+
+#[test]
+fn push_on_a_let_binding_is_reported() {
+    let codes = codes_of("fn f() -> Int { let xs = [1]; xs.push(item: 2); xs.len() }");
+    assert_eq!(codes, ["XN3009"]);
+}
+
+#[test]
+fn pop_and_replace_also_require_a_var_binding() {
+    assert_eq!(
+        codes_of("fn f() -> Option<Int> { let xs = [1]; xs.pop() }"),
+        ["XN3009"]
+    );
+    assert_eq!(
+        codes_of("fn f() -> Option<Int> { let xs = [1]; xs.replace(index: 0, value: 2) }"),
+        ["XN3009"]
+    );
+}
+
+#[test]
+fn the_mutators_are_fine_on_a_var_binding() {
+    expect_clean(
+        "fn f() -> Int { var xs = [1]; xs.push(item: 2); xs.pop(); \
+         xs.replace(index: 0, value: 9); xs.len() }",
+    );
+}
+
+#[test]
+fn push_on_a_temporary_is_reported() {
+    let codes = codes_of("fn f() -> Unit { [1].push(item: 2) }");
+    assert_eq!(codes, ["XN3009"]);
+}
+
+#[test]
+fn push_through_an_immutable_field_is_reported() {
+    let source = "struct Deck { cards: List<Int> }\n\
+                  fn f() -> Unit { var deck = Deck { cards: [1] }; deck.cards.push(item: 2) }";
+    assert_eq!(codes_of(source), ["XN3009"]);
+}
+
+#[test]
+fn push_through_a_let_binding_to_a_var_field_is_reported() {
+    let source = "struct Deck { var cards: List<Int> }\n\
+                  fn f() -> Unit { let deck = Deck { cards: [1] }; deck.cards.push(item: 2) }";
+    assert_eq!(codes_of(source), ["XN3009"]);
+}
+
+#[test]
+fn push_through_a_var_binding_to_a_var_field_is_fine() {
+    expect_clean(
+        "struct Deck { var cards: List<Int> }\n\
+         fn f() -> Unit { var deck = Deck { cards: [1] }; deck.cards.push(item: 2) }",
+    );
+}
+
+#[test]
+fn sorted_on_floats_is_rejected_by_the_ord_bound() {
+    // NaN breaks total order, so `Float` is not `Ord` (0006 §3).
+    let found = diagnostics_of("fn f(xs: List<Float>) -> List<Float> { xs.sorted() }");
+    let (code, message) = &found[0];
+    assert_eq!(code, "XN3010");
+    assert!(message.contains("Ord"), "{message}");
+    assert_eq!(
+        codes_of("fn f() -> List<Float> { [1.0].sorted() }"),
+        ["XN3010"]
+    );
+}
+
+#[test]
+fn contains_on_a_non_eq_element_is_rejected() {
+    // Function values satisfy no properties.
+    let found = diagnostics_of(
+        "fn f(fs: List<fn(Int) -> Int>, g: fn(Int) -> Int) -> Bool { fs.contains(item: g) }",
+    );
+    let (code, message) = &found[0];
+    assert_eq!(code, "XN3010");
+    assert!(message.contains("Eq"), "{message}");
+}
+
+#[test]
+fn a_generic_ord_bound_carries_through_to_sorted() {
+    expect_clean("fn f<T: Ord>(xs: List<T>) -> List<T> { xs.sorted() }");
+    assert_eq!(
+        codes_of("fn f<T>(xs: List<T>) -> List<T> { xs.sorted() }"),
+        ["XN3010"]
+    );
+}
+
+#[test]
+fn replace_takes_named_arguments_like_any_two_parameter_call() {
+    let codes = codes_of("fn f() -> Option<Int> { var xs = [1]; xs.replace(0, 5) }");
+    assert_eq!(codes, ["XN3008", "XN3008"]);
+}
+
 // ------------------------------------------------------------------- effects
 
 #[test]
@@ -582,6 +737,50 @@ fn candidates_are_capped_at_five() {
 fn type_goals_carry_no_candidates() {
     let goals = goals_of("fn f(x: ??) -> Int { 1 }");
     assert!(goals[0].candidates.is_empty());
+}
+
+// The L0 gate (design/0007 §4): if `goals` cannot surface the List surface at
+// a hole, the separation experiment's oracle is dead and the rest of the
+// slice is not worth building on.
+
+#[test]
+fn l0_gate_goals_surface_list_methods() {
+    let found = candidate_expressions("fn f(xs: List<Int>) -> Int { ??count }");
+    assert!(
+        found.iter().any(|c| c.contains("len")),
+        "an Int hole with a List<Int> in scope must offer `len`: {found:?}"
+    );
+}
+
+#[test]
+fn l0_gate_goals_surface_list_producers() {
+    let found = candidate_expressions("fn f(xs: List<Int>) -> List<Int> { ??result }");
+    assert!(
+        found.iter().any(|c| c.contains("sorted")),
+        "a List<Int> hole must offer `sorted`: {found:?}"
+    );
+    assert!(
+        found.iter().any(|c| c.contains("concat")),
+        "a List<Int> hole must offer `concat`: {found:?}"
+    );
+}
+
+#[test]
+fn a_bound_blocked_method_is_reported_with_the_reason_not_suggested() {
+    let goals = goals_of("fn f(xs: List<Float>) -> List<Float> { ??result }");
+    let goal = &goals[0];
+    assert!(
+        goal.candidates
+            .iter()
+            .all(|c| !c.expression.contains("sorted")),
+        "{:?}",
+        goal.candidates
+    );
+    assert!(
+        goal.blocked.iter().any(|b| b.contains("Ord")),
+        "{:?}",
+        goal.blocked
+    );
 }
 
 // ----------------------------------------------------- the examples themselves

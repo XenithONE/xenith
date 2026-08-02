@@ -87,6 +87,10 @@ fn render(expr: &Expr) -> String {
             render_args(args)
         ),
         ExprKind::Field { receiver, name } => format!("{}.{}", render(receiver), name.name),
+        ExprKind::ListLit(elements) => format!(
+            "[{}]",
+            elements.iter().map(render).collect::<Vec<_>>().join(", ")
+        ),
         ExprKind::Await(inner) => format!("{}.await", render(inner)),
         ExprKind::Try(inner) => format!("{}?", render(inner)),
         ExprKind::If { .. } => "if".to_string(),
@@ -380,6 +384,59 @@ fn holes_parse_in_type_position() {
         panic!("expected a hole type");
     };
     assert_eq!(name.as_deref(), Some("ret"));
+}
+
+// ------------------------------------------------------------- list literals
+
+#[test]
+fn list_literals_parse_with_and_without_elements() {
+    let ExprKind::ListLit(elements) = expr_of("[1, 2, 3]").kind else {
+        panic!("expected a list literal");
+    };
+    assert_eq!(elements.len(), 3);
+
+    let ExprKind::ListLit(elements) = expr_of("[]").kind else {
+        panic!("expected a list literal");
+    };
+    assert!(elements.is_empty());
+}
+
+#[test]
+fn a_trailing_comma_is_accepted_in_a_list_literal() {
+    // Accepted on input; the canonical formatter decides the output form.
+    let ExprKind::ListLit(elements) = expr_of("[1, 2,]").kind else {
+        panic!("expected a list literal");
+    };
+    assert_eq!(elements.len(), 2);
+    assert_eq!(render(&expr_of("[1, 2,]")), "[1, 2]");
+}
+
+#[test]
+fn list_literals_nest() {
+    let ExprKind::ListLit(elements) = expr_of("[[1, 2], []]").kind else {
+        panic!("expected a list literal");
+    };
+    assert_eq!(elements.len(), 2);
+    let ExprKind::ListLit(inner) = &elements[0].kind else {
+        panic!("expected a nested list literal");
+    };
+    assert_eq!(inner.len(), 2);
+}
+
+#[test]
+fn list_elements_are_full_expressions() {
+    assert_eq!(render(&expr_of("[a + b, f(x)]")), "[(a + b), f(x)]");
+}
+
+#[test]
+fn brackets_re_permit_struct_literals_inside_a_condition() {
+    // Like parentheses: suppression applies to the condition itself, not to
+    // anything nested inside brackets within it.
+    assert!(
+        parse("fn f() { if [Player { score: 0 }].is_empty() { } }")
+            .diagnostics
+            .is_empty()
+    );
 }
 
 // ------------------------------------------------------------------ generics

@@ -619,6 +619,15 @@ impl<'a> Writer<'a> {
                 self.depth -= 1;
                 self.line(&format!("}}{suffix}"));
             }
+            ExprKind::ListLit(elements) if !elements.is_empty() => {
+                self.line(&format!("{prefix}["));
+                self.depth += 1;
+                for element in elements {
+                    self.line(&format!("{},", render_expr(element, PREC_LOWEST)));
+                }
+                self.depth -= 1;
+                self.line(&format!("]{suffix}"));
+            }
             _ => {
                 let inline = format!("{prefix}{}{suffix}", render_expr(expr, PREC_LOWEST));
                 self.line(&inline);
@@ -851,6 +860,15 @@ fn render_expr(expr: &Expr, min_precedence: u8) -> String {
         }
         ExprKind::Await(inner) => format!("{}.await", render_expr(inner, PREC_POSTFIX)),
         ExprKind::Try(inner) => format!("{}?", render_expr(inner, PREC_POSTFIX)),
+
+        ExprKind::ListLit(elements) => format!(
+            "[{}]",
+            elements
+                .iter()
+                .map(|e| render_expr(e, PREC_LOWEST))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
 
         ExprKind::StructLit { path, fields } => {
             if fields.is_empty() {

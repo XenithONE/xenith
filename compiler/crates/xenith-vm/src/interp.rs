@@ -25,6 +25,9 @@ pub enum Value<'a> {
     Str(String),
     Char(char),
     Unit,
+    /// A `List<T>` value. Reads copy (design/0007 D1); only `push`, `pop`
+    /// and `replace` write through the receiver in place.
+    List(Vec<Value<'a>>),
     Struct {
         def: DefId,
         /// Field values in declaration order.
@@ -327,12 +330,11 @@ impl<'a> Interp<'a> {
                 Ok(())
             }
             ast::StmtKind::For { iter, .. } => {
-                // Nothing in the language can construct a List yet, and main
-                // only receives capabilities — so a checked program cannot
-                // reach here with a real list. Say so precisely.
+                // Iteration syntax is deferred to a later RFC (design/0007
+                // §2); until it lands, iteration is `while` + `len` + `get`.
                 trap(
                     iter.span,
-                    "`for` cannot run yet: no expression produces a List value",
+                    "`for` cannot run yet: iterate with `while` + `len` + `get`",
                 )
             }
             ast::StmtKind::Error => Ok(()),
@@ -520,6 +522,14 @@ impl<'a> Interp<'a> {
             }
 
             ast::ExprKind::Block(block) => self.block(block, env),
+
+            ast::ExprKind::ListLit(elements) => {
+                let mut items = Vec::with_capacity(elements.len());
+                for element in elements {
+                    items.push(self.eval(element, env)?);
+                }
+                Ok(Value::List(items))
+            }
 
             ast::ExprKind::StructLit { path, fields } => {
                 let name = &path.segments[0].name;
@@ -792,6 +802,48 @@ impl<'a> Interp<'a> {
             }
         }
 
+        // The List mutators write through the receiver in place, so it is
+        // resolved as a place — the same resolution `=` uses — rather than
+        // evaluated to a copy. Arguments go first, as assignment evaluates
+        // its right-hand side first, so the place borrow overlaps nothing.
+        if matches!(method.name.as_str(), "push" | "pop" | "replace") {
+            let mut evaluated = Vec::with_capacity(args.len());
+            for arg in args {
+                evaluated.push(self.eval(&arg.value, env)?);
+            }
+            let slot = self.resolve_place(receiver, env)?;
+            let Value::List(items) = slot else {
+                return trap(
+                    span,
+                    format!("no runtime method `{}` for this value", method.name),
+                );
+            };
+            return match method.name.as_str() {
+                "push" => {
+                    let Some(item) = evaluated.into_iter().next() else {
+                        return trap(span, "push takes a value");
+                    };
+                    items.push(item);
+                    Ok(Value::Unit)
+                }
+                "pop" => Ok(self.option_of(items.pop())),
+                "replace" => {
+                    let mut taken = evaluated.into_iter();
+                    let (Some(Value::Int(index)), Some(value)) = (taken.next(), taken.next())
+                    else {
+                        return trap(span, "replace takes an index and a value");
+                    };
+                    // Out of range leaves the list untouched (0007 §3).
+                    let old = usize::try_from(index)
+                        .ok()
+                        .filter(|i| *i < items.len())
+                        .map(|i| std::mem::replace(&mut items[i], value));
+                    Ok(self.option_of(old))
+                }
+                _ => unreachable!("matched above"),
+            };
+        }
+
         let receiver_value = self.eval(receiver, env)?;
         let mut evaluated = Vec::with_capacity(args.len());
         for arg in args {
@@ -822,6 +874,68 @@ impl<'a> Interp<'a> {
                     return trap(span, "concat takes a String");
                 };
                 Ok(Value::Str(format!("{a}{b}")))
+            }
+            (Value::List(items), "len") => Ok(Value::Int(items.len() as i64)),
+            (Value::List(items), "is_empty") => Ok(Value::Bool(items.is_empty())),
+            (Value::List(items), "get") => {
+                let Some(Value::Int(index)) = evaluated.first() else {
+                    return trap(span, "get takes an Int");
+                };
+                // Negative and out-of-range are both None; the hit is a copy
+                // of the element (D1).
+                let item = usize::try_from(*index)
+                    .ok()
+                    .and_then(|i| items.get(i))
+                    .cloned();
+                Ok(self.option_of(item))
+            }
+            (Value::List(items), "contains") => {
+                let Some(needle) = evaluated.first() else {
+                    return trap(span, "contains takes a value");
+                };
+                let mut found = false;
+                for item in items {
+                    if values_equal(item, needle, span)? {
+                        found = true;
+                        break;
+                    }
+                }
+                Ok(Value::Bool(found))
+            }
+            (Value::List(items), "sorted") => {
+                // Insertion keeps the sort stable and lets a comparison trap
+                // propagate, which `sort_by` cannot.
+                let mut sorted = items.clone();
+                let mut i = 1;
+                while i < sorted.len() {
+                    let mut j = i;
+                    while j > 0 {
+                        let ordering = compare(&sorted[j - 1], &sorted[j], span)?;
+                        if ordering != Some(std::cmp::Ordering::Greater) {
+                            break;
+                        }
+                        sorted.swap(j - 1, j);
+                        j -= 1;
+                    }
+                    i += 1;
+                }
+                Ok(Value::List(sorted))
+            }
+            (Value::List(items), "concat") => {
+                let Some(Value::List(other)) = evaluated.first() else {
+                    return trap(span, "concat takes a List");
+                };
+                let mut joined = items.clone();
+                joined.extend(other.iter().cloned());
+                Ok(Value::List(joined))
+            }
+            (Value::List(items), "join") => {
+                let Some(Value::Str(sep)) = evaluated.first() else {
+                    return trap(span, "join takes a String");
+                };
+                let rendered: Vec<String> =
+                    items.iter().map(|item| self.value_text(item)).collect();
+                Ok(Value::Str(rendered.join(sep)))
             }
             (Value::Enum { def, variant, .. }, "to_result") if *def == self.table.option => {
                 let error = evaluated.into_iter().next().unwrap_or(Value::Unit);
@@ -860,6 +974,75 @@ impl<'a> Interp<'a> {
                 span,
                 format!("no runtime method `{}` for this value", method.name),
             ),
+        }
+    }
+
+    /// `Some(value)` / `None` from a Rust `Option`.
+    fn option_of(&self, value: Option<Value<'a>>) -> Value<'a> {
+        match value {
+            Some(value) => Value::Enum {
+                def: self.table.option,
+                variant: some_index(),
+                payload: vec![value],
+            },
+            None => Value::Enum {
+                def: self.table.option,
+                variant: none_index(),
+                payload: Vec::new(),
+            },
+        }
+    }
+
+    /// Total, deterministic rendering — the runtime face of the sealed `Text`
+    /// property, which is total today (design/0006 §3-5). `String` renders
+    /// verbatim; everything else the way a literal would be written.
+    fn value_text(&self, value: &Value<'a>) -> String {
+        match value {
+            Value::Int(v) => v.to_string(),
+            Value::Float(v) => v.to_string(),
+            Value::Bool(v) => v.to_string(),
+            Value::Str(v) => v.clone(),
+            Value::Char(v) => v.to_string(),
+            Value::Unit => "unit".to_string(),
+            Value::List(items) => {
+                let parts: Vec<String> = items.iter().map(|item| self.value_text(item)).collect();
+                format!("[{}]", parts.join(", "))
+            }
+            Value::Struct { def, fields } => {
+                let name = self.table.name_of(*def);
+                let DefKind::Struct { fields: declared } = &self.table.def(*def).kind else {
+                    return name;
+                };
+                let parts: Vec<String> = declared
+                    .iter()
+                    .zip(fields)
+                    .map(|(field, value)| format!("{}: {}", field.name, self.value_text(value)))
+                    .collect();
+                format!("{name} {{ {} }}", parts.join(", "))
+            }
+            Value::Enum {
+                def,
+                variant,
+                payload,
+            } => {
+                let name = match &self.table.def(*def).kind {
+                    DefKind::Enum { variants } => variants
+                        .get(*variant)
+                        .map(|v| v.name.clone())
+                        .unwrap_or_default(),
+                    _ => String::new(),
+                };
+                if payload.is_empty() {
+                    name
+                } else {
+                    let parts: Vec<String> =
+                        payload.iter().map(|part| self.value_text(part)).collect();
+                    format!("{name}({})", parts.join(", "))
+                }
+            }
+            Value::Fn { .. } | Value::VariantCtor { .. } => "<fn>".to_string(),
+            Value::Capability(name) => format!("<{name}>"),
+            Value::Task(_) => "<task>".to_string(),
         }
     }
 
@@ -1186,6 +1369,17 @@ fn values_equal<'a>(a: &Value<'a>, b: &Value<'a>, span: Span) -> Eval<'a, bool> 
         (Value::Str(x), Value::Str(y)) => Ok(x == y),
         (Value::Char(x), Value::Char(y)) => Ok(x == y),
         (Value::Unit, Value::Unit) => Ok(true),
+        (Value::List(xs), Value::List(ys)) => {
+            if xs.len() != ys.len() {
+                return Ok(false);
+            }
+            for (x, y) in xs.iter().zip(ys) {
+                if !values_equal(x, y, span)? {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
+        }
         (
             Value::Struct {
                 def: d1,
@@ -1239,6 +1433,10 @@ fn compare<'a>(a: &Value<'a>, b: &Value<'a>, span: Span) -> Eval<'a, Option<std:
         (Value::Float(x), Value::Float(y)) => Ok(x.partial_cmp(y)),
         (Value::Str(x), Value::Str(y)) => Ok(Some(x.cmp(y))),
         (Value::Char(x), Value::Char(y)) => Ok(Some(x.cmp(y))),
+        // Bool and Unit satisfy `Ord` structurally, so `sorted` must order
+        // them; false < true.
+        (Value::Bool(x), Value::Bool(y)) => Ok(Some(x.cmp(y))),
+        (Value::Unit, Value::Unit) => Ok(Some(std::cmp::Ordering::Equal)),
         _ => trap(span, "these values cannot be ordered"),
     }
 }

@@ -253,6 +253,261 @@ fn a_hole_behind_an_untaken_branch_does_not_trap() {
     assert_eq!(stdout_of(source), "took the finished path");
 }
 
+// -------------------------------------------------------------------- lists
+
+#[test]
+fn list_literals_len_and_get_run() {
+    let source = r#"
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    let xs = [10, 20, 30];
+    let picked = match xs.get(index: 1) {
+        Some(value) => value,
+        None => -1,
+    };
+    io.write(text: xs.len().to_text())?;
+    io.write(text: ",")?;
+    io.write(text: picked.to_text())?;
+    return Ok(unit);
+}
+"#;
+    assert_eq!(stdout_of(source), "3,20");
+}
+
+#[test]
+fn get_out_of_range_and_negative_are_none_not_traps() {
+    let source = r#"
+fn describe(xs: List<Int>, index: Int) -> String {
+    match xs.get(index: index) {
+        Some(_) => "some",
+        None => "none",
+    }
+}
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    let xs = [1, 2];
+    io.write(text: describe(xs: xs, index: -1))?;
+    io.write(text: ",")?;
+    io.write(text: describe(xs: xs, index: 2))?;
+    return Ok(unit);
+}
+"#;
+    assert_eq!(stdout_of(source), "none,none");
+}
+
+#[test]
+fn push_and_pop_mutate_in_place() {
+    let source = r#"
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    var xs: List<Int> = [];
+    xs.push(item: 1);
+    xs.push(item: 2);
+    xs.push(item: 3);
+    let last = match xs.pop() {
+        Some(value) => value,
+        None => -1,
+    };
+    io.write(text: xs.len().to_text())?;
+    io.write(text: ",")?;
+    io.write(text: last.to_text())?;
+    return Ok(unit);
+}
+"#;
+    assert_eq!(stdout_of(source), "2,3");
+}
+
+#[test]
+fn pop_on_an_empty_list_is_none() {
+    let source = r#"
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    var xs: List<Int> = [];
+    let text = match xs.pop() {
+        Some(_) => "some",
+        None => "none",
+    };
+    io.write(text: text)?;
+    return Ok(unit);
+}
+"#;
+    assert_eq!(stdout_of(source), "none");
+}
+
+#[test]
+fn replace_returns_the_old_value_and_out_of_range_leaves_the_list_alone() {
+    let source = r#"
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    var xs = [1, 2, 3];
+    let old = match xs.replace(index: 1, value: 9) {
+        Some(value) => value,
+        None => -1,
+    };
+    let missed = match xs.replace(index: 9, value: 7) {
+        Some(value) => value,
+        None => -1,
+    };
+    io.write(text: old.to_text())?;
+    io.write(text: ",")?;
+    io.write(text: missed.to_text())?;
+    io.write(text: "|")?;
+    io.write(text: xs.join(sep: ","))?;
+    return Ok(unit);
+}
+"#;
+    assert_eq!(stdout_of(source), "2,-1|1,9,3");
+}
+
+#[test]
+fn contains_compares_structurally() {
+    let source = r#"
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    let xs = [1, 2, 3];
+    if xs.contains(item: 2) {
+        io.write(text: "yes")?;
+    } else {
+        io.write(text: "no")?;
+    }
+    io.write(text: ",")?;
+    if xs.contains(item: 9) {
+        io.write(text: "yes")?;
+    } else {
+        io.write(text: "no")?;
+    }
+    return Ok(unit);
+}
+"#;
+    assert_eq!(stdout_of(source), "yes,no");
+}
+
+#[test]
+fn sorted_returns_a_new_list_and_leaves_the_receiver_alone() {
+    let source = r#"
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    let xs = [3, 1, 2];
+    let sorted = xs.sorted();
+    io.write(text: sorted.join(sep: ","))?;
+    io.write(text: "|")?;
+    io.write(text: xs.join(sep: ","))?;
+    io.write(text: "|")?;
+    io.write(text: ["pear", "apple", "fig"].sorted().join(sep: ","))?;
+    return Ok(unit);
+}
+"#;
+    assert_eq!(stdout_of(source), "1,2,3|3,1,2|apple,fig,pear");
+}
+
+#[test]
+fn concat_builds_a_new_list() {
+    let source = r#"
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    let a = [1, 2];
+    let b = [3];
+    io.write(text: a.concat(other: b).join(sep: ","))?;
+    io.write(text: "|")?;
+    io.write(text: a.len().to_text())?;
+    return Ok(unit);
+}
+"#;
+    assert_eq!(stdout_of(source), "1,2,3|2");
+}
+
+#[test]
+fn join_renders_strings_verbatim_and_other_elements_as_text() {
+    let source = r#"
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    let empty: List<String> = [];
+    io.write(text: ["a", "b", "c"].join(sep: "-"))?;
+    io.write(text: "|")?;
+    io.write(text: [1, 2].join(sep: ","))?;
+    io.write(text: "|")?;
+    io.write(text: [true, false].join(sep: ","))?;
+    io.write(text: "|")?;
+    io.write(text: empty.join(sep: ","))?;
+    io.write(text: "end")?;
+    return Ok(unit);
+}
+"#;
+    assert_eq!(stdout_of(source), "a-b-c|1,2|true,false|end");
+}
+
+#[test]
+fn lists_are_values_so_a_binding_copies() {
+    // D1: reads and bindings copy; mutating one copy must not touch another.
+    let source = r#"
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    var a = [1];
+    let b = a;
+    a.push(item: 2);
+    io.write(text: a.len().to_text())?;
+    io.write(text: ",")?;
+    io.write(text: b.len().to_text())?;
+    return Ok(unit);
+}
+"#;
+    assert_eq!(stdout_of(source), "2,1");
+}
+
+#[test]
+fn list_equality_is_structural() {
+    let source = r#"
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    if [1, 2] == [1, 2] {
+        io.write(text: "yes")?;
+    } else {
+        io.write(text: "no")?;
+    }
+    io.write(text: ",")?;
+    if [1] == [2] {
+        io.write(text: "yes")?;
+    } else {
+        io.write(text: "no")?;
+    }
+    return Ok(unit);
+}
+"#;
+    assert_eq!(stdout_of(source), "yes,no");
+}
+
+#[test]
+fn push_into_a_var_struct_field_runs() {
+    let source = r#"
+struct Deck {
+    var cards: List<Int>,
+}
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    var deck = Deck { cards: [1] };
+    deck.cards.push(item: 2);
+    io.write(text: deck.cards.join(sep: ","))?;
+    return Ok(unit);
+}
+"#;
+    assert_eq!(stdout_of(source), "1,2");
+}
+
+#[test]
+fn the_iteration_idiom_while_len_get_runs() {
+    // The idiom 0007 §2 fixes until an iteration RFC lands.
+    let source = r#"
+fn sum(xs: List<Int>) -> Int {
+    var total = 0;
+    var index = 0;
+    while index < xs.len() {
+        total = total + match xs.get(index: index) {
+            Some(value) => value,
+            None => 0,
+        };
+        index = index + 1;
+    }
+    total
+}
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    io.write(text: sum(xs: [1, 2, 3, 4, 5]).to_text())?;
+    return Ok(unit);
+}
+"#;
+    assert_eq!(stdout_of(source), "15");
+}
+
 // ------------------------------------------------------------------ closures
 
 #[test]

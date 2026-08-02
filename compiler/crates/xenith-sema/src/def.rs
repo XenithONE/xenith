@@ -134,6 +134,12 @@ pub struct MethodSig {
     pub params: Vec<(&'static str, Type)>,
     pub ret: Type,
     pub effects: EffectSet,
+    /// Sealed-property bounds on generics, verified at the call site once the
+    /// receiver has bound them: `sorted` demands `T: Ord` (design/0006 §3).
+    pub bounds: &'static [(&'static str, Property)],
+    /// The receiver is written through in place — `push`/`pop`/`replace` —
+    /// so it must be a mutable place, same discipline as `=`.
+    pub mutates_receiver: bool,
 }
 
 pub struct DefTable {
@@ -203,6 +209,8 @@ impl DefTable {
                         args: vec![Type::Int],
                     },
                     effects: EffectSet::empty(),
+                    bounds: &[],
+                    mutates_receiver: false,
                 },
                 MethodSig {
                     name: "to_text",
@@ -210,6 +218,8 @@ impl DefTable {
                     params: vec![],
                     ret: string(),
                     effects: EffectSet::empty(),
+                    bounds: &[],
+                    mutates_receiver: false,
                 },
             ],
             Type::Str => vec![MethodSig {
@@ -218,7 +228,116 @@ impl DefTable {
                 params: vec![("other", string())],
                 ret: string(),
                 effects: EffectSet::empty(),
+                bounds: &[],
+                mutates_receiver: false,
             }],
+            // List<T> — the surface fixed by design/0007 §3. Reads are value
+            // copies (D1); the three mutators are the only in-place writes.
+            Type::Named { def, .. } if *def == self.list => {
+                let t = || Type::Param("T".into());
+                let list_t = || Type::Named {
+                    def: self.list,
+                    args: vec![t()],
+                };
+                let option_t = || Type::Named {
+                    def: self.option,
+                    args: vec![t()],
+                };
+                vec![
+                    MethodSig {
+                        name: "len",
+                        own_generics: &[],
+                        params: vec![],
+                        ret: Type::Int,
+                        effects: EffectSet::empty(),
+                        bounds: &[],
+                        mutates_receiver: false,
+                    },
+                    MethodSig {
+                        name: "is_empty",
+                        own_generics: &[],
+                        params: vec![],
+                        ret: Type::Bool,
+                        effects: EffectSet::empty(),
+                        bounds: &[],
+                        mutates_receiver: false,
+                    },
+                    MethodSig {
+                        name: "push",
+                        own_generics: &[],
+                        params: vec![("item", t())],
+                        ret: Type::Unit,
+                        effects: EffectSet::empty(),
+                        bounds: &[],
+                        mutates_receiver: true,
+                    },
+                    MethodSig {
+                        name: "pop",
+                        own_generics: &[],
+                        params: vec![],
+                        ret: option_t(),
+                        effects: EffectSet::empty(),
+                        bounds: &[],
+                        mutates_receiver: true,
+                    },
+                    MethodSig {
+                        name: "get",
+                        own_generics: &[],
+                        params: vec![("index", Type::Int)],
+                        ret: option_t(),
+                        effects: EffectSet::empty(),
+                        bounds: &[],
+                        mutates_receiver: false,
+                    },
+                    MethodSig {
+                        name: "replace",
+                        own_generics: &[],
+                        params: vec![("index", Type::Int), ("value", t())],
+                        ret: option_t(),
+                        effects: EffectSet::empty(),
+                        bounds: &[],
+                        mutates_receiver: true,
+                    },
+                    MethodSig {
+                        name: "contains",
+                        own_generics: &[],
+                        params: vec![("item", t())],
+                        ret: Type::Bool,
+                        effects: EffectSet::empty(),
+                        bounds: &[("T", Property::Eq)],
+                        mutates_receiver: false,
+                    },
+                    MethodSig {
+                        name: "sorted",
+                        own_generics: &[],
+                        params: vec![],
+                        ret: list_t(),
+                        effects: EffectSet::empty(),
+                        bounds: &[("T", Property::Ord)],
+                        mutates_receiver: false,
+                    },
+                    MethodSig {
+                        name: "concat",
+                        own_generics: &[],
+                        params: vec![("other", list_t())],
+                        ret: list_t(),
+                        effects: EffectSet::empty(),
+                        bounds: &[],
+                        mutates_receiver: false,
+                    },
+                    MethodSig {
+                        // Non-restrictive while `Text` is total (0006 §3-5);
+                        // declared anyway so the surface holds when it narrows.
+                        name: "join",
+                        own_generics: &[],
+                        params: vec![("sep", string())],
+                        ret: string(),
+                        effects: EffectSet::empty(),
+                        bounds: &[("T", Property::Text)],
+                        mutates_receiver: false,
+                    },
+                ]
+            }
             Type::Named { def, .. } if *def == self.option => vec![MethodSig {
                 // Option<T>.to_result(error: E) -> Result<T, E>
                 name: "to_result",
@@ -229,6 +348,8 @@ impl DefTable {
                     args: vec![Type::Param("T".into()), Type::Param("E".into())],
                 },
                 effects: EffectSet::empty(),
+                bounds: &[],
+                mutates_receiver: false,
             }],
             Type::Named { def, .. } if self.def(*def).name == "Io" => vec![MethodSig {
                 name: "write",
@@ -245,6 +366,8 @@ impl DefTable {
                     ],
                 },
                 effects: EffectSet::new(["Io.write".to_string()]),
+                bounds: &[],
+                mutates_receiver: false,
             }],
             _ => Vec::new(),
         }

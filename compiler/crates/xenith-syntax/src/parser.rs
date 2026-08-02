@@ -1064,6 +1064,29 @@ impl<'a> Parser<'a> {
                 self.expect(TokenKind::RParen);
                 inner
             }
+            TokenKind::LBracket => {
+                self.bump();
+                let mut elements = Vec::new();
+
+                // Like parentheses, brackets re-permit struct literals even
+                // inside a condition.
+                let saved = self.no_struct_literal;
+                self.no_struct_literal = false;
+
+                while !self.at(TokenKind::RBracket) && !self.at_end() {
+                    elements.push(self.expr());
+                    if !self.eat(TokenKind::Comma) {
+                        break;
+                    }
+                }
+
+                self.no_struct_literal = saved;
+                self.expect(TokenKind::RBracket);
+                Expr {
+                    kind: ExprKind::ListLit(elements),
+                    span: start.to(self.prev_span()),
+                }
+            }
             TokenKind::LBrace => {
                 let block = self.block();
                 let span = block.span;

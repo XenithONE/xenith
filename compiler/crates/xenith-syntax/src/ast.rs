@@ -305,6 +305,10 @@ pub enum ExprKind {
     },
     Block(Block),
 
+    /// `[1, 2, 3]` and `[]`. The empty form needs an expected type to name
+    /// its element — same policy as holes (design/0006 §1-1).
+    ListLit(Vec<Expr>),
+
     /// `Player { name: n, score: 0 }`
     StructLit {
         path: Path,
@@ -663,6 +667,7 @@ fn normalize_expr(expr: &mut Expr) {
             }
         }
         ExprKind::Block(block) => normalize_block(block),
+        ExprKind::ListLit(elements) => elements.iter_mut().for_each(normalize_expr),
         ExprKind::StructLit { path, fields } => {
             normalize_path(path);
             for field in fields {

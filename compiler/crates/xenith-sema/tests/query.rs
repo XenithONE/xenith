@@ -172,6 +172,41 @@ fn a_struct_type_lists_its_literal_shape() {
 }
 
 #[test]
+fn list_methods_appear_as_producers() {
+    let found = producer_signatures("fn f() -> Int { 1 }", "List<Int>");
+    assert!(
+        found.contains(&"List<Int>.sorted() -> List<Int>".to_string()),
+        "{found:?}"
+    );
+    assert!(
+        found.contains(&"List<Int>.concat(other: List<Int>) -> List<Int>".to_string()),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn option_producers_include_the_list_reads() {
+    // The return type pins the receiver: `Option<Int>` names `List<Int>`.
+    let found = producer_signatures("fn f() -> Int { 1 }", "Option<Int>");
+    assert!(
+        found.contains(&"List<Int>.pop() -> Option<Int>".to_string()),
+        "{found:?}"
+    );
+    assert!(
+        found.contains(&"List<Int>.get(index: Int) -> Option<Int>".to_string()),
+        "{found:?}"
+    );
+    assert!(
+        found.contains(&"List<Int>.replace(index: Int, value: Int) -> Option<Int>".to_string()),
+        "{found:?}"
+    );
+    assert!(
+        found.contains(&"Int.checked_add(other: Int) -> Option<Int>".to_string()),
+        "{found:?}"
+    );
+}
+
+#[test]
 fn an_unknown_type_is_an_error_not_an_empty_list() {
     // Empty would read as "nothing produces this", which is a different and
     // wrong claim.

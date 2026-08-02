@@ -11,8 +11,8 @@
 //! reported in `blocked` rather than silently dropped — a model that is not
 //! told *why* something is unusable repeats the mistake.
 
-use crate::def::{DefKind, DefTable};
-use crate::ty::{EffectSet, Type};
+use crate::def::{DefKind, DefTable, GenericInfo};
+use crate::ty::{EffectSet, Type, TypeName};
 
 #[derive(Clone, Debug)]
 pub struct Candidate {
@@ -34,14 +34,16 @@ struct Scored {
 /// Rank candidates for a hole expecting `expected`.
 ///
 /// `scope` carries real types (innermost shadowing already resolved);
-/// `enclosing` is excluded from suggestions — a checker that answers "what
-/// goes in this unfinished body?" with "call the function you are writing"
-/// has answered nothing.
+/// `generics` are the enclosing function's parameters, so property bounds
+/// resolve for `T`-typed bindings; `enclosing` is excluded from suggestions —
+/// a checker that answers "what goes in this unfinished body?" with "call the
+/// function you are writing" has answered nothing.
 pub fn candidates_for(
     defs: &DefTable,
     expected: &Type,
     scope: &[(String, Type)],
     budget: &EffectSet,
+    generics: &[GenericInfo],
     enclosing: &str,
     hole_name: Option<&str>,
 ) -> (Vec<Candidate>, Vec<String>) {
@@ -237,6 +239,98 @@ pub fn candidates_for(
                 requires_effects: sig.effects.iter().map(String::from).collect(),
             },
         });
+    }
+
+    // ----- 5. prelude methods on in-scope bindings -----
+    for (name, ty) in scope {
+        for method in defs.methods_of(ty) {
+            // The binding's own type arguments fix the receiver generics
+            // (`xs: List<Int>` fixes T = Int); the method's extra generics
+            // bind from the expected type.
+            let mut bindings: Vec<(String, Type)> = Vec::new();
+            if let Type::Named { def, args } = ty {
+                for (generic, arg) in defs.def(*def).generics.iter().zip(args.iter()) {
+                    bindings.push((generic.clone(), arg.clone()));
+                }
+            }
+            if !return_matches(&method.ret.substitute(&bindings), expected, &mut bindings) {
+                continue;
+            }
+
+            if !method.effects.is_subset_of(budget) {
+                let missing: Vec<&str> = method.effects.missing_from(budget);
+                blocked.push(format!(
+                    "{name}.{} — needs {{{}}}, not permitted here",
+                    method.name,
+                    missing.join(", ")
+                ));
+                continue;
+            }
+
+            // A bound the receiver's element type cannot satisfy makes the
+            // method unusable however well its return type fits.
+            let violated = method.bounds.iter().find_map(|(generic, property)| {
+                let (_, concrete) = bindings.iter().find(|(n, _)| n == generic)?;
+                if defs.has_property(concrete, *property, generics) {
+                    None
+                } else {
+                    Some((*generic, *property, concrete.clone()))
+                }
+            });
+            if let Some((generic, property, concrete)) = violated {
+                let name_of = |id| defs.name_of(id);
+                let rendered = TypeName {
+                    ty: &concrete,
+                    name_of: &name_of,
+                }
+                .to_string();
+                blocked.push(format!(
+                    "{name}.{} — requires `{generic}: {}`, but `{rendered}` does not satisfy it",
+                    method.name,
+                    property.name()
+                ));
+                continue;
+            }
+
+            let mut nested = 0;
+            let mut filled = 0;
+            let rendered_args: Vec<String> = method
+                .params
+                .iter()
+                .map(|(param, ty)| {
+                    let concrete = ty.substitute(&bindings);
+                    match scope.iter().find(|(_, t)| *t == concrete) {
+                        Some((found, _)) => {
+                            filled += 1;
+                            format!("{param}: {found}")
+                        }
+                        None => {
+                            nested += 1;
+                            format!("{param}: ??")
+                        }
+                    }
+                })
+                .collect();
+            let expression = format!("{name}.{}({})", method.name, rendered_args.join(", "));
+
+            let convention = convention_bonus(method.name, expected, defs);
+            let effect_bonus = if method.effects.is_empty() { 15 } else { 0 };
+            pool.push(Scored {
+                score: 100
+                    + if nested == 0 { 40 } else { -25 * nested }
+                    + filled * 10
+                    + convention
+                    + effect_bonus
+                    + name_affinity(hole_name, method.name)
+                    - 6 * (1 + method.params.len() as i32),
+                head: name.clone(),
+                candidate: Candidate {
+                    expression,
+                    complete: nested == 0,
+                    requires_effects: method.effects.iter().map(String::from).collect(),
+                },
+            });
+        }
     }
 
     // ----- rank, then diversify -----

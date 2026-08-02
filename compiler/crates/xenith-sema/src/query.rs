@@ -30,7 +30,7 @@ pub fn type_at(module: &ast::Module, offset: u32) -> Option<Probe> {
 /// One way to obtain the queried type.
 #[derive(Clone, Debug)]
 pub struct Producer {
-    /// `"function"`, `"variant"`, or `"struct"`.
+    /// `"function"`, `"method"`, `"variant"`, or `"struct"`.
     pub kind: &'static str,
     pub symbol: String,
     /// The full shape, as the reader would write it.
@@ -146,6 +146,59 @@ pub fn producers(module: &ast::Module, type_text: &str) -> Result<Vec<Producer>,
                 });
             }
             DefKind::Opaque => {}
+        }
+    }
+
+    // ----- prelude methods whose return type matches -----
+    //
+    // Receivers are enumerated by type head with fresh parameters; matching
+    // the return type against the target pins them where it mentions them
+    // (`pop: List<T> -> Option<T>` pins T from `Option<Int>`). A parameter
+    // the match leaves open renders as itself, the same as functions do.
+    let io = table.lookup("Io").expect("prelude Io");
+    let heads = [
+        Type::Int,
+        Type::Str,
+        Type::Named {
+            def: table.list,
+            args: vec![Type::Param("T".into())],
+        },
+        Type::Named {
+            def: table.option,
+            args: vec![Type::Param("T".into())],
+        },
+        Type::Named {
+            def: io,
+            args: vec![],
+        },
+    ];
+    for receiver in heads {
+        for method in table.methods_of(&receiver) {
+            let mut bindings: Vec<(String, Type)> = Vec::new();
+            if !return_matches(&method.ret, &target, &mut bindings) {
+                continue;
+            }
+            let shown_receiver = render(&receiver.substitute(&bindings));
+            let params: Vec<String> = method
+                .params
+                .iter()
+                .map(|(name, ty)| format!("{name}: {}", render(&ty.substitute(&bindings))))
+                .collect();
+            let mut signature = format!(
+                "{shown_receiver}.{}({}) -> {}",
+                method.name,
+                params.join(", "),
+                render(&method.ret.substitute(&bindings))
+            );
+            if !method.effects.is_empty() {
+                signature.push_str(&format!(" uses {}", method.effects));
+            }
+            found.push(Producer {
+                kind: "method",
+                symbol: format!("{shown_receiver}.{}", method.name),
+                signature,
+                effects: method.effects.iter().map(String::from).collect(),
+            });
         }
     }
 

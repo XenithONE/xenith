@@ -224,6 +224,7 @@ impl<'a> Checker<'a> {
             expected,
             &self.scope_types(),
             &self.sig.effects,
+            &self.sig.generics,
             &self.sig.name,
             name.as_deref(),
         );
@@ -538,6 +539,45 @@ impl<'a> Checker<'a> {
 
             ast::ExprKind::Block(block) => self.check_block(block, expected),
 
+            // A list literal seeds its elements from the expected type:
+            // `let xs: List<Int> = [];` is complete with no annotation on the
+            // literal itself (design/0007 §3).
+            ast::ExprKind::ListLit(elements) => match expected {
+                Type::Named { def, args } if *def == self.defs.list => {
+                    let element_ty = args[0].clone();
+                    for element in elements {
+                        self.check(element, &element_ty);
+                    }
+                }
+                _ if expected.is_unknown() => {
+                    for element in elements {
+                        let _ = self.synth(element);
+                    }
+                }
+                other => {
+                    // Not a List position at all: one mismatch on the literal.
+                    // The elements still get checked so their own problems and
+                    // goals survive.
+                    if let Some(first) = elements.first() {
+                        let first_ty = self.synth(first);
+                        for element in &elements[1..] {
+                            self.check(element, &first_ty);
+                        }
+                        let found = Type::Named {
+                            def: self.defs.list,
+                            args: vec![first_ty],
+                        };
+                        self.require_compatible(&found, other, expr.span);
+                    } else {
+                        let message = format!(
+                            "expected `{}`, found an empty list literal",
+                            self.render(other)
+                        );
+                        self.error(DiagCode::TypeMismatch, expr.span, message);
+                    }
+                }
+            },
+
             // Constructors gain their type parameters from the expected type:
             // `check(Ok(x), Result<Player, ScoreError>)` binds T and E with no
             // annotation. This is the payoff of bidirectionality.
@@ -702,6 +742,32 @@ impl<'a> Checker<'a> {
             }
 
             ast::ExprKind::Block(block) => self.synth_block(block),
+
+            // With nothing pushed down, the first element names the element
+            // type and the rest are checked against it. An empty literal has
+            // nothing to read a type from — same refusal as a bare hole
+            // (design/0006 §1-1).
+            ast::ExprKind::ListLit(elements) => match elements.first() {
+                Some(first) => {
+                    let element_ty = self.synth(first);
+                    for element in &elements[1..] {
+                        self.check(element, &element_ty);
+                    }
+                    Type::Named {
+                        def: self.defs.list,
+                        args: vec![element_ty],
+                    }
+                }
+                None => {
+                    self.error(
+                        DiagCode::AnnotationRequired,
+                        expr.span,
+                        "nothing determines the element type of `[]` here; \
+                         annotate the surrounding binding",
+                    );
+                    Type::Error
+                }
+            },
 
             ast::ExprKind::StructLit { path, fields } => {
                 self.struct_lit(path, fields, expr.span, None)
@@ -1526,6 +1592,11 @@ impl<'a> Checker<'a> {
         let ret = found.ret.clone();
         let effects = found.effects.clone();
         let own_generics = found.own_generics;
+        let bounds = found.bounds;
+
+        if found.mutates_receiver {
+            self.require_mutable_receiver(receiver, &method.name);
+        }
 
         self.check_args(
             &method.name,
@@ -1547,8 +1618,85 @@ impl<'a> Checker<'a> {
             }
         }
 
+        // Sealed-property bounds, verified against what the receiver bound
+        // (0006 §3): `sorted` needs `T: Ord`, which rejects `List<Float>`.
+        for (name, property) in bounds {
+            let Some((_, concrete)) = bindings.iter().find(|(n, _)| n == name) else {
+                continue;
+            };
+            if !self
+                .defs
+                .has_property(concrete, *property, &self.sig.generics)
+            {
+                let message = format!(
+                    "`{}` requires `{name}: {}`, but `{}` does not satisfy it",
+                    method.name,
+                    property.name(),
+                    self.render(concrete)
+                );
+                self.error(DiagCode::PropertyNotSatisfied, span, message);
+            }
+        }
+
         self.require_effects(&effects, span);
         ret.substitute(&bindings)
+    }
+
+    /// A mutating method writes through its receiver, so the receiver must be
+    /// a mutable place — the same rule `=` enforces, phrased for the call.
+    fn require_mutable_receiver(&mut self, receiver: &ast::Expr, method_name: &str) {
+        match &receiver.kind {
+            ast::ExprKind::Path(path) => {
+                if let [single] = path.segments.as_slice() {
+                    if let Some(binding) = self.lookup(&single.name) {
+                        if !binding.mutable {
+                            let message = format!(
+                                "`{}` is a `let` binding; declare it with `var` to call `{method_name}` on it",
+                                single.name
+                            );
+                            self.error(DiagCode::AssignmentToImmutable, receiver.span, message);
+                        }
+                    }
+                }
+            }
+            ast::ExprKind::Field {
+                receiver: base,
+                name,
+            } => {
+                if let Type::Named { def, .. } = self.synth(base) {
+                    if let DefKind::Struct { fields } = &self.defs.def(def).kind {
+                        if let Some(field) = fields.iter().find(|f| f.name == name.name) {
+                            if !field.mutable {
+                                let message = format!(
+                                    "field `{}` is immutable; declare it `var {}: ..` in the struct",
+                                    name.name, name.name
+                                );
+                                self.error(DiagCode::AssignmentToImmutable, name.span, message);
+                            }
+                        }
+                    }
+                }
+                if let ast::ExprKind::Path(path) = &base.kind {
+                    if let [single] = path.segments.as_slice() {
+                        if let Some(binding) = self.lookup(&single.name) {
+                            if !binding.mutable {
+                                let message = format!(
+                                    "`{}` is a `let` binding; declare it with `var` to call `{method_name}` through it",
+                                    single.name
+                                );
+                                self.error(DiagCode::AssignmentToImmutable, base.span, message);
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {
+                let message = format!(
+                    "`{method_name}` mutates its receiver; call it on a `var` binding, not a temporary value"
+                );
+                self.error(DiagCode::AssignmentToImmutable, receiver.span, message);
+            }
+        }
     }
 
     // ----- struct literals -----

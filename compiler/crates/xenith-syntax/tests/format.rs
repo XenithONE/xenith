@@ -33,6 +33,10 @@ const SAMPLES: &[&str] = &[
     "fn f() { let p = Player { name: \"ada\", score: 0 }; }",
     "fn get<K: Eq + Hash, V>(map: Map<K, V>, key: K) -> Option<V> { ?? }",
     "struct Cache<K: Hash, V> { key: K, value: V }",
+    "fn f() -> List<Int> { [1, 2, 3] }",
+    "fn f() -> List<Int> { [] }",
+    "fn f() -> List<List<Int>> { [[1], [], [2, 3]] }",
+    "fn f() -> Int { var xs = [1]; xs.push(item: 2); xs.len() }",
 ];
 
 fn formatted(source: &str) -> String {
@@ -259,6 +263,30 @@ fn else_if_chains_stay_on_the_closing_brace() {
     let output = formatted("fn f(c: Bool) -> Int { if c { 1 } else if c { 2 } else { 3 } }");
     assert!(output.contains("} else if c {"), "{output}");
     assert!(output.contains("} else {"), "{output}");
+}
+
+#[test]
+fn list_literals_format_canonically() {
+    // A trailing comma is accepted on input and dropped on output.
+    let output = formatted("fn f()->List<Int>{[1,2,3,]}");
+    assert_eq!(output, "fn f() -> List<Int> {\n    [1, 2, 3]\n}\n");
+    let output = formatted("fn f()->List<Int>{[ ]}");
+    assert_eq!(output, "fn f() -> List<Int> {\n    []\n}\n");
+}
+
+#[test]
+fn an_over_long_list_breaks_one_element_per_line() {
+    let long = "fn f() { let xs = [alpha_element_with_a_long_name, beta_element_with_a_long_name, gamma_element_with_a_long_name]; }";
+    let output = formatted(long);
+    assert!(
+        output.contains("        alpha_element_with_a_long_name,\n"),
+        "{output}"
+    );
+    assert!(output.contains("    ];\n"), "{output}");
+    assert!(
+        output.lines().all(|l| l.chars().count() <= 100),
+        "a line still exceeds the width:\n{output}"
+    );
 }
 
 #[test]
