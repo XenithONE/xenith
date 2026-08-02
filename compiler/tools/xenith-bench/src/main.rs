@@ -54,12 +54,20 @@ enum Command {
     },
 }
 
+/// One column of the matrix. Mostly one CLI = one model, with two deliberate
+/// exceptions: `cursor` is Cursor's Auto router, which picks among several
+/// underlying models per call — a mixture, useful as a diversity probe, and
+/// labelled as the router it is. The `opencode-*` variants reach different
+/// model *families* (DeepSeek, Nemotron) through one CLI.
 #[derive(Clone, Copy, ValueEnum)]
 enum Model {
     Codex,
     Grok,
     Agy,
     Opencode,
+    OpencodeDeepseek,
+    OpencodeNemotron,
+    Cursor,
 }
 
 impl Model {
@@ -69,6 +77,9 @@ impl Model {
             Model::Grok => "grok",
             Model::Agy => "agy",
             Model::Opencode => "opencode",
+            Model::OpencodeDeepseek => "opencode-deepseek",
+            Model::OpencodeNemotron => "opencode-nemotron",
+            Model::Cursor => "cursor",
         }
     }
 }

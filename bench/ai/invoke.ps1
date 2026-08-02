@@ -7,7 +7,10 @@
 # why the benchmark never runs in CI.
 
 param(
-    [Parameter(Mandatory)][ValidateSet('codex', 'grok', 'agy', 'opencode')][string]$Cli,
+    [Parameter(Mandatory)][ValidateSet(
+        'codex', 'grok', 'agy', 'opencode',
+        'opencode-deepseek', 'opencode-nemotron', 'cursor'
+    )][string]$Cli,
     [Parameter(Mandatory)][string]$PromptFile
 )
 
@@ -20,6 +23,13 @@ switch ($Cli) {
     # `--print` must come after any other flags; putting `-p` first makes it
     # swallow the next flag as its value.
     'agy' { agy --print $prompt }
-    # The default model is a video model; a text model must be named.
+    # The default model is a video model; a text model must be named. The
+    # extra variants reach different model families through the same CLI.
     'opencode' { opencode run --model openai/gpt-5.6-terra $prompt }
+    'opencode-deepseek' { opencode run --model opencode/deepseek-v4-flash-free $prompt }
+    'opencode-nemotron' { opencode run --model opencode/nemotron-3-ultra-free $prompt }
+    # Auto mode (no --model) routes each call to whichever model Cursor
+    # picks — a mixture by design. `--mode ask` keeps it a text reply
+    # rather than an agent with shell access.
+    'cursor' { cursor-agent --mode ask --output-format text -p $prompt }
 }

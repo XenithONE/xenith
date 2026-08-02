@@ -55,10 +55,17 @@ payloads and guards, `checked_add`/`to_result`/`?` plumbing, effect declarations
 cargo run --manifest-path compiler/Cargo.toml -p xenith-bench -- run --model codex --condition hole-guided
 ```
 
-Models are the subscription CLIs on the maintainer's machine (`codex`, `grok`, `agy`,
-`opencode`), dispatched through [`invoke.ps1`](invoke.ps1) — flag conventions differ per tool
-and two of them break on argument order, so that knowledge lives in one place. Repair rounds
-resend the accumulated exchange, since the CLIs are stateless.
+Models are the subscription CLIs on the maintainer's machine, dispatched through
+[`invoke.ps1`](invoke.ps1) — flag conventions differ per tool and two of them break on argument
+order, so that knowledge lives in one place. Repair rounds resend the accumulated exchange,
+since the CLIs are stateless.
+
+Seven columns, two of them deliberately unusual. `cursor` is Cursor's **Auto router**: each call
+may land on a different underlying model, so the cell measures the router as deployed — a
+mixture, and labelled as one. `opencode-deepseek` and `opencode-nemotron` reach different model
+*families* through the same CLI, so the matrix is not just five flavours of one lab. Runs resume
+by default: a cell is accumulated over short bursts, and re-invoking the same command continues
+where the last burst stopped.
 
 ## Why results are committed rather than produced in CI
 
