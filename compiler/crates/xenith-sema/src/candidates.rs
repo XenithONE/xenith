@@ -41,7 +41,7 @@ struct Scored {
 pub fn candidates_for(
     defs: &DefTable,
     expected: &Type,
-    scope: &[(String, Type)],
+    scope: &[(String, Type, bool)],
     budget: &EffectSet,
     generics: &[GenericInfo],
     enclosing: &str,
@@ -56,7 +56,7 @@ pub fn candidates_for(
     let mut blocked: Vec<String> = Vec::new();
 
     // ----- 1. bindings with exactly the required type -----
-    for (name, ty) in scope {
+    for (name, ty, _) in scope {
         if ty == expected {
             pool.push(Scored {
                 score: 100 + 40 + 15 + name_affinity(hole_name, name),
@@ -71,7 +71,7 @@ pub fn candidates_for(
     }
 
     // ----- 2. field projections one step deep -----
-    for (name, ty) in scope {
+    for (name, ty, _) in scope {
         let Type::Named { def, args } = ty else {
             continue;
         };
@@ -143,8 +143,8 @@ pub fn candidates_for(
                     .iter()
                     .map(|field| {
                         let concrete = field.ty.substitute(&type_bindings);
-                        match scope.iter().find(|(_, ty)| *ty == concrete) {
-                            Some((name, _)) => {
+                        match scope.iter().find(|(_, ty, _)| *ty == concrete) {
+                            Some((name, _, _)) => {
                                 filled += 1;
                                 format!("{}: {name}", field.name)
                             }
@@ -208,8 +208,8 @@ pub fn candidates_for(
             .iter()
             .map(|(param, ty)| {
                 let concrete = ty.substitute(&bindings);
-                match scope.iter().find(|(_, t)| *t == concrete) {
-                    Some((name, _)) => {
+                match scope.iter().find(|(_, t, _)| *t == concrete) {
+                    Some((name, _, _)) => {
                         filled += 1;
                         format!("{param}: {name}")
                     }
@@ -242,7 +242,7 @@ pub fn candidates_for(
     }
 
     // ----- 5. prelude methods on in-scope bindings -----
-    for (name, ty) in scope {
+    for (name, ty, mutable) in scope {
         for method in defs.methods_of(ty) {
             // The binding's own type arguments fix the receiver generics
             // (`xs: List<Int>` fixes T = Int); the method's extra generics
@@ -292,6 +292,16 @@ pub fn candidates_for(
                 continue;
             }
 
+            // A mutator on a `let` binding would be rejected by the checker;
+            // offering it anyway teaches the model a wrong move.
+            if method.mutates_receiver && !mutable {
+                blocked.push(format!(
+                    "{name}.{} — mutates its receiver, and `{name}` is not a `var` binding",
+                    method.name
+                ));
+                continue;
+            }
+
             let mut nested = 0;
             let mut filled = 0;
             let rendered_args: Vec<String> = method
@@ -299,8 +309,8 @@ pub fn candidates_for(
                 .iter()
                 .map(|(param, ty)| {
                     let concrete = ty.substitute(&bindings);
-                    match scope.iter().find(|(_, t)| *t == concrete) {
-                        Some((found, _)) => {
+                    match scope.iter().find(|(_, t, _)| *t == concrete) {
+                        Some((found, _, _)) => {
                             filled += 1;
                             format!("{param}: {found}")
                         }
@@ -374,7 +384,7 @@ fn apply_payload(
     shown: &str,
     payload: &[Type],
     type_bindings: &[(String, Type)],
-    scope: &[(String, Type)],
+    scope: &[(String, Type, bool)],
 ) -> (String, i32, i32) {
     if payload.is_empty() {
         return (shown.to_string(), 0, 0);
@@ -385,8 +395,8 @@ fn apply_payload(
         .iter()
         .map(|ty| {
             let concrete = ty.substitute(type_bindings);
-            match scope.iter().find(|(_, t)| *t == concrete) {
-                Some((name, _)) => {
+            match scope.iter().find(|(_, t, _)| *t == concrete) {
+                Some((name, _, _)) => {
                     filled += 1;
                     name.clone()
                 }

@@ -28,6 +28,12 @@ pub enum Value<'a> {
     /// A `List<T>` value. Reads copy (design/0007 D1); only `push`, `pop`
     /// and `replace` write through the receiver in place.
     List(Vec<Value<'a>>),
+    /// A `Map<K, V>` value in insertion order — the order is normative
+    /// (design/0007 §3), so pairs beat a hash table at this scale.
+    Map(Vec<(Value<'a>, Value<'a>)>),
+    /// A value of the opaque prelude `Error` type. The message exists for
+    /// debug rendering; nothing in the language reads it back out.
+    ErrorValue(String),
     Struct {
         def: DefId,
         /// Field values in declaration order.
@@ -685,6 +691,19 @@ impl<'a> Interp<'a> {
         // not shadow them — same order as the checker.
         let callee_value = match &callee.kind {
             ast::ExprKind::Path(path) if path.segments.len() == 1 => {
+                // The one prelude free function (design/0007 D4). A user
+                // declaration of the same name is a duplicate-definition
+                // error, so nothing real is shadowed here.
+                let name = &path.segments[0].name;
+                if name == "empty_map"
+                    && env.get(name).is_none()
+                    && find_fn(self.module, name).is_none()
+                {
+                    for arg in args {
+                        self.eval(&arg.value, env)?;
+                    }
+                    return Ok(Value::Map(Vec::new()));
+                }
                 self.path_value(path, callee.span, env)?
             }
             ast::ExprKind::Field { receiver, name } => {
@@ -802,32 +821,29 @@ impl<'a> Interp<'a> {
             }
         }
 
-        // The List mutators write through the receiver in place, so it is
-        // resolved as a place — the same resolution `=` uses — rather than
+        // The container mutators write through the receiver in place, so it
+        // is resolved as a place — the same resolution `=` uses — rather than
         // evaluated to a copy. Arguments go first, as assignment evaluates
         // its right-hand side first, so the place borrow overlaps nothing.
-        if matches!(method.name.as_str(), "push" | "pop" | "replace") {
+        if matches!(
+            method.name.as_str(),
+            "push" | "pop" | "replace" | "insert" | "remove"
+        ) {
             let mut evaluated = Vec::with_capacity(args.len());
             for arg in args {
                 evaluated.push(self.eval(&arg.value, env)?);
             }
             let slot = self.resolve_place(receiver, env)?;
-            let Value::List(items) = slot else {
-                return trap(
-                    span,
-                    format!("no runtime method `{}` for this value", method.name),
-                );
-            };
-            return match method.name.as_str() {
-                "push" => {
+            return match (&mut *slot, method.name.as_str()) {
+                (Value::List(items), "push") => {
                     let Some(item) = evaluated.into_iter().next() else {
                         return trap(span, "push takes a value");
                     };
                     items.push(item);
                     Ok(Value::Unit)
                 }
-                "pop" => Ok(self.option_of(items.pop())),
-                "replace" => {
+                (Value::List(items), "pop") => Ok(self.option_of(items.pop())),
+                (Value::List(items), "replace") => {
                     let mut taken = evaluated.into_iter();
                     let (Some(Value::Int(index)), Some(value)) = (taken.next(), taken.next())
                     else {
@@ -840,7 +856,50 @@ impl<'a> Interp<'a> {
                         .map(|i| std::mem::replace(&mut items[i], value));
                     Ok(self.option_of(old))
                 }
-                _ => unreachable!("matched above"),
+                (Value::Map(entries), "insert") => {
+                    let mut taken = evaluated.into_iter();
+                    let (Some(key), Some(value)) = (taken.next(), taken.next()) else {
+                        return trap(span, "insert takes a key and a value");
+                    };
+                    // An existing key keeps its position and its stored key;
+                    // only the value moves (0007 §3 normative order).
+                    let mut existing = None;
+                    for (index, (stored, _)) in entries.iter().enumerate() {
+                        if values_equal(stored, &key, span)? {
+                            existing = Some(index);
+                            break;
+                        }
+                    }
+                    match existing {
+                        Some(index) => {
+                            let old = std::mem::replace(&mut entries[index].1, value);
+                            Ok(self.option_of(Some(old)))
+                        }
+                        None => {
+                            entries.push((key, value));
+                            Ok(self.option_of(None))
+                        }
+                    }
+                }
+                (Value::Map(entries), "remove") => {
+                    let Some(key) = evaluated.into_iter().next() else {
+                        return trap(span, "remove takes a key");
+                    };
+                    let mut found = None;
+                    for (index, (stored, _)) in entries.iter().enumerate() {
+                        if values_equal(stored, &key, span)? {
+                            found = Some(index);
+                            break;
+                        }
+                    }
+                    // Vec::remove shifts, so the survivors keep their order;
+                    // a later re-insert of the key lands at the end.
+                    Ok(self.option_of(found.map(|index| entries.remove(index).1)))
+                }
+                _ => trap(
+                    span,
+                    format!("no runtime method `{}` for this value", method.name),
+                ),
             };
         }
 
@@ -874,6 +933,65 @@ impl<'a> Interp<'a> {
                     return trap(span, "concat takes a String");
                 };
                 Ok(Value::Str(format!("{a}{b}")))
+            }
+            // `len` counts Unicode scalar values, never bytes (D2).
+            (Value::Str(a), "len") => Ok(Value::Int(a.chars().count() as i64)),
+            (Value::Str(a), "split") => {
+                let Some(Value::Str(sep)) = evaluated.first() else {
+                    return trap(span, "split takes a String");
+                };
+                // Lossless by construction: `pieces.join(sep)` rebuilds the
+                // input exactly, empty pieces included. The empty separator
+                // is the `chars` replacement — one piece per scalar.
+                let pieces: Vec<Value> = if sep.is_empty() {
+                    a.chars().map(|c| Value::Str(c.to_string())).collect()
+                } else {
+                    a.split(sep.as_str())
+                        .map(|piece| Value::Str(piece.to_string()))
+                        .collect()
+                };
+                Ok(Value::List(pieces))
+            }
+            (Value::Str(a), "trim") => Ok(Value::Str(
+                a.trim_matches(|c: char| matches!(c, ' ' | '\t' | '\r' | '\n'))
+                    .to_string(),
+            )),
+            (Value::Str(a), "try_to_int") => {
+                // Accepted shape: ASCII whitespace, then [+-]?[0-9]+ (0007
+                // §3). Everything else — separators, decimals, overflow — is
+                // an Err value, never a trap.
+                let trimmed = a.trim_matches(|c: char| matches!(c, ' ' | '\t' | '\r' | '\n'));
+                Ok(match trimmed.parse::<i64>() {
+                    Ok(value) => Value::Enum {
+                        def: self.table.result,
+                        variant: ok_index(),
+                        payload: vec![Value::Int(value)],
+                    },
+                    Err(error) => {
+                        let message = match error.kind() {
+                            std::num::IntErrorKind::PosOverflow
+                            | std::num::IntErrorKind::NegOverflow => "out of Int range",
+                            _ => "not an integer",
+                        };
+                        Value::Enum {
+                            def: self.table.result,
+                            variant: err_index(),
+                            payload: vec![Value::ErrorValue(message.to_string())],
+                        }
+                    }
+                })
+            }
+            (Value::Str(a), "starts_with") => {
+                let Some(Value::Str(prefix)) = evaluated.first() else {
+                    return trap(span, "starts_with takes a String");
+                };
+                Ok(Value::Bool(a.starts_with(prefix.as_str())))
+            }
+            (Value::Str(a), "contains") => {
+                let Some(Value::Str(sub)) = evaluated.first() else {
+                    return trap(span, "contains takes a String");
+                };
+                Ok(Value::Bool(a.contains(sub.as_str())))
             }
             (Value::List(items), "len") => Ok(Value::Int(items.len() as i64)),
             (Value::List(items), "is_empty") => Ok(Value::Bool(items.is_empty())),
@@ -937,6 +1055,40 @@ impl<'a> Interp<'a> {
                     items.iter().map(|item| self.value_text(item)).collect();
                 Ok(Value::Str(rendered.join(sep)))
             }
+            (Value::Map(entries), "len") => Ok(Value::Int(entries.len() as i64)),
+            (Value::Map(entries), "is_empty") => Ok(Value::Bool(entries.is_empty())),
+            (Value::Map(entries), "get") => {
+                let Some(key) = evaluated.first() else {
+                    return trap(span, "get takes a key");
+                };
+                let mut hit = None;
+                for (stored, value) in entries {
+                    if values_equal(stored, key, span)? {
+                        // D1: the read is a copy of the value.
+                        hit = Some(value.clone());
+                        break;
+                    }
+                }
+                Ok(self.option_of(hit))
+            }
+            (Value::Map(entries), "has_key") => {
+                let Some(key) = evaluated.first() else {
+                    return trap(span, "has_key takes a key");
+                };
+                let mut found = false;
+                for (stored, _) in entries {
+                    if values_equal(stored, key, span)? {
+                        found = true;
+                        break;
+                    }
+                }
+                Ok(Value::Bool(found))
+            }
+            // Insertion-order snapshot: later mutation of the map must not
+            // reach into a list already handed out (0007 §3).
+            (Value::Map(entries), "keys") => Ok(Value::List(
+                entries.iter().map(|(key, _)| key.clone()).collect(),
+            )),
             (Value::Enum { def, variant, .. }, "to_result") if *def == self.table.option => {
                 let error = evaluated.into_iter().next().unwrap_or(Value::Unit);
                 let Value::Enum {
@@ -1008,6 +1160,18 @@ impl<'a> Interp<'a> {
                 let parts: Vec<String> = items.iter().map(|item| self.value_text(item)).collect();
                 format!("[{}]", parts.join(", "))
             }
+            // Rendered in insertion order — deterministic by the normative
+            // order rules, even though `==` ignores it.
+            Value::Map(entries) => {
+                let parts: Vec<String> = entries
+                    .iter()
+                    .map(|(key, value)| {
+                        format!("{}: {}", self.value_text(key), self.value_text(value))
+                    })
+                    .collect();
+                format!("{{{}}}", parts.join(", "))
+            }
+            Value::ErrorValue(message) => format!("Error({message})"),
             Value::Struct { def, fields } => {
                 let name = self.table.name_of(*def);
                 let DefKind::Struct { fields: declared } = &self.table.def(*def).kind else {
@@ -1380,6 +1544,28 @@ fn values_equal<'a>(a: &Value<'a>, b: &Value<'a>, span: Span) -> Eval<'a, bool> 
             }
             Ok(true)
         }
+        (Value::Map(xs), Value::Map(ys)) => {
+            // Insertion order is display order, not identity: `==` is
+            // key-value correspondence (0007 §3). Keys within a map are
+            // unique, so equal lengths plus every pair found is a bijection.
+            if xs.len() != ys.len() {
+                return Ok(false);
+            }
+            for (key, value) in xs {
+                let mut matched = false;
+                for (other_key, other_value) in ys {
+                    if values_equal(key, other_key, span)? {
+                        matched = values_equal(value, other_value, span)?;
+                        break;
+                    }
+                }
+                if !matched {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
+        }
+        (Value::ErrorValue(x), Value::ErrorValue(y)) => Ok(x == y),
         (
             Value::Struct {
                 def: d1,

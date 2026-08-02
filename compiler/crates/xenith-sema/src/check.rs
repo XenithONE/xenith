@@ -195,21 +195,22 @@ impl<'a> Checker<'a> {
     fn scope_snapshot(&self) -> Vec<(String, String)> {
         self.scope_types()
             .into_iter()
-            .map(|(name, ty)| {
+            .map(|(name, ty, _)| {
                 let rendered = self.render(&ty);
                 (name, rendered)
             })
             .collect()
     }
 
-    /// The same snapshot with real types, for candidate generation.
-    fn scope_types(&self) -> Vec<(String, Type)> {
+    /// The same snapshot with real types and mutability, for candidate
+    /// generation — a mutating method is only offered on a `var` binding.
+    fn scope_types(&self) -> Vec<(String, Type, bool)> {
         let mut seen = std::collections::HashSet::new();
         let mut out = Vec::new();
         for scope in self.scopes.iter().rev() {
             for binding in scope.iter().rev() {
                 if seen.insert(binding.name.clone()) {
-                    out.push((binding.name.clone(), binding.ty.clone()));
+                    out.push((binding.name.clone(), binding.ty.clone(), binding.mutable));
                 }
             }
         }

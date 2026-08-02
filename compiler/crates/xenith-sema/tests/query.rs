@@ -207,6 +207,30 @@ fn option_producers_include_the_list_reads() {
 }
 
 #[test]
+fn string_and_map_methods_appear_as_producers_of_lists() {
+    let found = producer_signatures("fn f() -> Int { 1 }", "List<String>");
+    assert!(
+        found.contains(&"String.split(sep: String) -> List<String>".to_string()),
+        "{found:?}"
+    );
+    // The value type stays open — rendered as its parameter, like generic
+    // functions are.
+    assert!(
+        found.contains(&"Map<String, V>.keys() -> List<String>".to_string()),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn empty_map_appears_as_a_producer_of_maps() {
+    let found = producer_signatures("fn f() -> Int { 1 }", "Map<String, Int>");
+    assert!(
+        found.contains(&"empty_map() -> Map<String, Int>".to_string()),
+        "{found:?}"
+    );
+}
+
+#[test]
 fn an_unknown_type_is_an_error_not_an_empty_list() {
     // Empty would read as "nothing produces this", which is a different and
     // wrong claim.

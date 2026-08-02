@@ -508,6 +508,309 @@ fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
     assert_eq!(stdout_of(source), "15");
 }
 
+// ---------------------------------------------------------- strings (slice S)
+
+#[test]
+fn string_len_counts_unicode_scalars() {
+    let source = r#"
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    io.write(text: "abc".len().to_text())?;
+    io.write(text: ",")?;
+    io.write(text: "あいう".len().to_text())?;
+    io.write(text: ",")?;
+    io.write(text: "".len().to_text())?;
+    return Ok(unit);
+}
+"#;
+    assert_eq!(stdout_of(source), "3,3,0");
+}
+
+#[test]
+fn split_is_lossless_and_keeps_empty_pieces() {
+    let source = r#"
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    let parts = "a,,b,".split(sep: ",");
+    io.write(text: parts.len().to_text())?;
+    io.write(text: "|")?;
+    io.write(text: parts.join(sep: ","))?;
+    io.write(text: "|")?;
+    let single = "".split(sep: ",");
+    io.write(text: single.len().to_text())?;
+    io.write(text: single.join(sep: ","))?;
+    io.write(text: "|")?;
+    io.write(text: ",x,".split(sep: ",").join(sep: ","))?;
+    return Ok(unit);
+}
+"#;
+    assert_eq!(stdout_of(source), "4|a,,b,|1|,x,");
+}
+
+#[test]
+fn split_with_an_empty_separator_is_per_scalar() {
+    let source = r#"
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    let scalars = "あbc".split(sep: "");
+    io.write(text: scalars.len().to_text())?;
+    io.write(text: "|")?;
+    io.write(text: scalars.join(sep: "-"))?;
+    io.write(text: "|")?;
+    io.write(text: scalars.join(sep: ""))?;
+    io.write(text: "|")?;
+    io.write(text: "".split(sep: "").len().to_text())?;
+    return Ok(unit);
+}
+"#;
+    assert_eq!(stdout_of(source), "3|あ-b-c|あbc|0");
+}
+
+#[test]
+fn trim_strips_ascii_whitespace_only() {
+    // The two wide characters around the second `x` are U+3000, which D2
+    // deliberately leaves alone.
+    let source = "fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    \
+                      io.write(text: \" \\t x \\r\\n\".trim())?;\n    \
+                      io.write(text: \"|\")?;\n    \
+                      io.write(text: \" \\t \".trim().len().to_text())?;\n    \
+                      io.write(text: \"|\")?;\n    \
+                      io.write(text: \"\".trim().len().to_text())?;\n    \
+                      io.write(text: \"|\")?;\n    \
+                      let wide = \"　x　\";\n    \
+                      if wide.trim() == wide {\n        io.write(text: \"kept\")?;\n    } else {\n        \
+                          io.write(text: \"stripped\")?;\n    }\n    \
+                      return Ok(unit);\n}";
+    assert_eq!(stdout_of(source), "x|0|0|kept");
+}
+
+#[test]
+fn try_to_int_accepts_signed_decimals_and_rejects_the_rest() {
+    let source = r#"
+fn describe(s: String) -> String {
+    match s.try_to_int() {
+        Ok(value) => value.to_text(),
+        Err(_) => "err",
+    }
+}
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    let cases = ["42", " +7 ", "-0", "", "x", "1_000", "1.5", "99999999999999999999"];
+    var out: List<String> = [];
+    var index = 0;
+    while index < cases.len() {
+        let case = match cases.get(index: index) {
+            Some(text) => text,
+            None => "",
+        };
+        out.push(item: describe(s: case));
+        index = index + 1;
+    }
+    io.write(text: out.join(sep: ","))?;
+    return Ok(unit);
+}
+"#;
+    assert_eq!(stdout_of(source), "42,7,0,err,err,err,err,err");
+}
+
+#[test]
+fn starts_with_and_contains_handle_their_edges() {
+    let source = r#"
+fn tick(flag: Bool) -> String {
+    if flag {
+        "y"
+    } else {
+        "n"
+    }
+}
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    let answers = [
+        tick(flag: "hello".starts_with(prefix: "he")),
+        tick(flag: "hello".starts_with(prefix: "")),
+        tick(flag: "hello".starts_with(prefix: "el")),
+        tick(flag: "あいう".contains(sub: "い")),
+        tick(flag: "hello".contains(sub: "")),
+        tick(flag: "hello".contains(sub: "lo!")),
+    ];
+    io.write(text: answers.join(sep: ""))?;
+    return Ok(unit);
+}
+"#;
+    assert_eq!(stdout_of(source), "yynyyn");
+}
+
+#[test]
+fn the_split_trim_parse_sum_idiom_runs() {
+    // The t4-02 shape (0007 §5-4): split, trim, parse, skip failures, sum.
+    let source = r#"
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    let parts = "12, 34, x, 56".split(sep: ",");
+    var total = 0;
+    var index = 0;
+    while index < parts.len() {
+        let piece = match parts.get(index: index) {
+            Some(text) => text,
+            None => "",
+        };
+        total = total + match piece.trim().try_to_int() {
+            Ok(value) => value,
+            Err(_) => 0,
+        };
+        index = index + 1;
+    }
+    io.write(text: total.to_text())?;
+    return Ok(unit);
+}
+"#;
+    assert_eq!(stdout_of(source), "102");
+}
+
+// ---------------------------------------------------------------------- maps
+
+#[test]
+fn map_insertion_order_is_normative() {
+    // Update keeps the position, remove shifts, re-insert lands at the end
+    // (0007 §3).
+    let source = r#"
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    var m: Map<String, Int> = empty_map();
+    m.insert(key: "a", value: 1);
+    m.insert(key: "b", value: 2);
+    m.insert(key: "c", value: 3);
+    m.insert(key: "a", value: 10);
+    m.remove(key: "b");
+    m.insert(key: "b", value: 20);
+    io.write(text: m.keys().join(sep: ","))?;
+    io.write(text: "|")?;
+    io.write(text: m.len().to_text())?;
+    io.write(text: "|")?;
+    let found = match m.get(key: "a") {
+        Some(value) => value,
+        None => -1,
+    };
+    io.write(text: found.to_text())?;
+    return Ok(unit);
+}
+"#;
+    assert_eq!(stdout_of(source), "a,c,b|3|10");
+}
+
+#[test]
+fn insert_returns_the_old_value() {
+    let source = r#"
+fn describe(previous: Option<Int>) -> String {
+    match previous {
+        Some(value) => value.to_text(),
+        None => "none",
+    }
+}
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    var m: Map<String, Int> = empty_map();
+    io.write(text: describe(previous: m.insert(key: "a", value: 1)))?;
+    io.write(text: ",")?;
+    io.write(text: describe(previous: m.insert(key: "a", value: 2)))?;
+    return Ok(unit);
+}
+"#;
+    assert_eq!(stdout_of(source), "none,1");
+}
+
+#[test]
+fn map_equality_ignores_insertion_order() {
+    let source = r#"
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    var first: Map<String, Int> = empty_map();
+    first.insert(key: "a", value: 1);
+    first.insert(key: "b", value: 2);
+    var second: Map<String, Int> = empty_map();
+    second.insert(key: "b", value: 2);
+    second.insert(key: "a", value: 1);
+    var third: Map<String, Int> = empty_map();
+    third.insert(key: "a", value: 1);
+    third.insert(key: "b", value: 3);
+    if first == second {
+        io.write(text: "yes")?;
+    } else {
+        io.write(text: "no")?;
+    }
+    io.write(text: ",")?;
+    if first == third {
+        io.write(text: "yes")?;
+    } else {
+        io.write(text: "no")?;
+    }
+    return Ok(unit);
+}
+"#;
+    assert_eq!(stdout_of(source), "yes,no");
+}
+
+#[test]
+fn an_empty_map_answers_all_reads() {
+    let source = r#"
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    var m: Map<String, Int> = empty_map();
+    io.write(text: m.len().to_text())?;
+    io.write(text: ",")?;
+    if m.is_empty() {
+        io.write(text: "empty")?;
+    } else {
+        io.write(text: "full")?;
+    }
+    io.write(text: ",")?;
+    let got = match m.get(key: "x") {
+        Some(_) => "some",
+        None => "none",
+    };
+    io.write(text: got)?;
+    io.write(text: ",")?;
+    let removed = match m.remove(key: "x") {
+        Some(_) => "some",
+        None => "none",
+    };
+    io.write(text: removed)?;
+    io.write(text: ",")?;
+    if m.has_key(key: "x") {
+        io.write(text: "has")?;
+    } else {
+        io.write(text: "lacks")?;
+    }
+    return Ok(unit);
+}
+"#;
+    assert_eq!(stdout_of(source), "0,empty,none,none,lacks");
+}
+
+#[test]
+fn keys_is_a_snapshot_not_a_view() {
+    let source = r#"
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    var m: Map<String, Int> = empty_map();
+    m.insert(key: "a", value: 1);
+    let snapshot = m.keys();
+    m.insert(key: "b", value: 2);
+    io.write(text: snapshot.len().to_text())?;
+    io.write(text: ",")?;
+    io.write(text: m.keys().len().to_text())?;
+    return Ok(unit);
+}
+"#;
+    assert_eq!(stdout_of(source), "1,2");
+}
+
+#[test]
+fn a_map_renders_deterministically_in_join() {
+    let source = r#"
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    var m: Map<String, Int> = empty_map();
+    m.insert(key: "a", value: 1);
+    m.insert(key: "b", value: 2);
+    io.write(text: [m].join(sep: ""))?;
+    return Ok(unit);
+}
+"#;
+    assert_eq!(stdout_of(source), "{a: 1, b: 2}");
+}
+
 // ------------------------------------------------------------------ closures
 
 #[test]

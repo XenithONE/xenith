@@ -222,15 +222,85 @@ impl DefTable {
                     mutates_receiver: false,
                 },
             ],
-            Type::Str => vec![MethodSig {
-                name: "concat",
-                own_generics: &[],
-                params: vec![("other", string())],
-                ret: string(),
-                effects: EffectSet::empty(),
-                bounds: &[],
-                mutates_receiver: false,
-            }],
+            // String — `concat` predates 0007; the rest is the §3 table.
+            // `len` counts Unicode scalar values (D2).
+            Type::Str => vec![
+                MethodSig {
+                    name: "concat",
+                    own_generics: &[],
+                    params: vec![("other", string())],
+                    ret: string(),
+                    effects: EffectSet::empty(),
+                    bounds: &[],
+                    mutates_receiver: false,
+                },
+                MethodSig {
+                    name: "len",
+                    own_generics: &[],
+                    params: vec![],
+                    ret: Type::Int,
+                    effects: EffectSet::empty(),
+                    bounds: &[],
+                    mutates_receiver: false,
+                },
+                MethodSig {
+                    name: "split",
+                    own_generics: &[],
+                    params: vec![("sep", string())],
+                    ret: Type::Named {
+                        def: self.list,
+                        args: vec![string()],
+                    },
+                    effects: EffectSet::empty(),
+                    bounds: &[],
+                    mutates_receiver: false,
+                },
+                MethodSig {
+                    name: "trim",
+                    own_generics: &[],
+                    params: vec![],
+                    ret: string(),
+                    effects: EffectSet::empty(),
+                    bounds: &[],
+                    mutates_receiver: false,
+                },
+                MethodSig {
+                    name: "try_to_int",
+                    own_generics: &[],
+                    params: vec![],
+                    ret: Type::Named {
+                        def: self.result,
+                        args: vec![
+                            Type::Int,
+                            Type::Named {
+                                def: self.lookup("Error").expect("prelude Error"),
+                                args: vec![],
+                            },
+                        ],
+                    },
+                    effects: EffectSet::empty(),
+                    bounds: &[],
+                    mutates_receiver: false,
+                },
+                MethodSig {
+                    name: "starts_with",
+                    own_generics: &[],
+                    params: vec![("prefix", string())],
+                    ret: Type::Bool,
+                    effects: EffectSet::empty(),
+                    bounds: &[],
+                    mutates_receiver: false,
+                },
+                MethodSig {
+                    name: "contains",
+                    own_generics: &[],
+                    params: vec![("sub", string())],
+                    ret: Type::Bool,
+                    effects: EffectSet::empty(),
+                    bounds: &[],
+                    mutates_receiver: false,
+                },
+            ],
             // List<T> — the surface fixed by design/0007 §3. Reads are value
             // copies (D1); the three mutators are the only in-place writes.
             Type::Named { def, .. } if *def == self.list => {
@@ -334,6 +404,88 @@ impl DefTable {
                         ret: string(),
                         effects: EffectSet::empty(),
                         bounds: &[("T", Property::Text)],
+                        mutates_receiver: false,
+                    },
+                ]
+            }
+            // Map<K, V> — design/0007 §3. Every method demands `K: Eq + Hash`
+            // here, at the receiver: container type arguments are not
+            // bound-checked anywhere else yet, so this is where a `Float` key
+            // is refused.
+            Type::Named { def, .. } if *def == self.map => {
+                let k = || Type::Param("K".into());
+                let v = || Type::Param("V".into());
+                let option_v = || Type::Named {
+                    def: self.option,
+                    args: vec![v()],
+                };
+                const KEY_BOUNDS: &[(&str, Property)] =
+                    &[("K", Property::Eq), ("K", Property::Hash)];
+                vec![
+                    MethodSig {
+                        name: "len",
+                        own_generics: &[],
+                        params: vec![],
+                        ret: Type::Int,
+                        effects: EffectSet::empty(),
+                        bounds: KEY_BOUNDS,
+                        mutates_receiver: false,
+                    },
+                    MethodSig {
+                        name: "is_empty",
+                        own_generics: &[],
+                        params: vec![],
+                        ret: Type::Bool,
+                        effects: EffectSet::empty(),
+                        bounds: KEY_BOUNDS,
+                        mutates_receiver: false,
+                    },
+                    MethodSig {
+                        name: "insert",
+                        own_generics: &[],
+                        params: vec![("key", k()), ("value", v())],
+                        ret: option_v(),
+                        effects: EffectSet::empty(),
+                        bounds: KEY_BOUNDS,
+                        mutates_receiver: true,
+                    },
+                    MethodSig {
+                        name: "get",
+                        own_generics: &[],
+                        params: vec![("key", k())],
+                        ret: option_v(),
+                        effects: EffectSet::empty(),
+                        bounds: KEY_BOUNDS,
+                        mutates_receiver: false,
+                    },
+                    MethodSig {
+                        name: "remove",
+                        own_generics: &[],
+                        params: vec![("key", k())],
+                        ret: option_v(),
+                        effects: EffectSet::empty(),
+                        bounds: KEY_BOUNDS,
+                        mutates_receiver: true,
+                    },
+                    MethodSig {
+                        name: "has_key",
+                        own_generics: &[],
+                        params: vec![("key", k())],
+                        ret: Type::Bool,
+                        effects: EffectSet::empty(),
+                        bounds: KEY_BOUNDS,
+                        mutates_receiver: false,
+                    },
+                    MethodSig {
+                        name: "keys",
+                        own_generics: &[],
+                        params: vec![],
+                        ret: Type::Named {
+                            def: self.list,
+                            args: vec![k()],
+                        },
+                        effects: EffectSet::empty(),
+                        bounds: KEY_BOUNDS,
                         mutates_receiver: false,
                     },
                 ]
@@ -556,6 +708,37 @@ pub fn collect(module: &ast::Module) -> (DefTable, Vec<Diagnostic>) {
         shared,
         task,
     };
+
+    // ----- prelude functions -----
+    //
+    // Map construction is a generic free function (design/0007 D4): there is
+    // no associated-function syntax to hang a `Map.new()` on. The type
+    // arguments come from expected-type seeding, or fail closed.
+    table
+        .fn_by_name
+        .insert("empty_map".to_string(), table.fns.len());
+    table.fns.push(FnSig {
+        name: "empty_map".to_string(),
+        generics: vec![
+            GenericInfo {
+                name: "K".to_string(),
+                bounds: vec![Property::Eq, Property::Hash],
+            },
+            GenericInfo {
+                name: "V".to_string(),
+                bounds: Vec::new(),
+            },
+        ],
+        params: Vec::new(),
+        ret: Type::Named {
+            def: map,
+            args: vec![Type::Param("K".into()), Type::Param("V".into())],
+        },
+        effects: EffectSet::empty(),
+        is_async: false,
+        name_span: Span::EMPTY,
+        uses_insertion: UsesInsertion::Nowhere,
+    });
 
     // ----- pass B: bodies of type declarations -----
     for item in &module.items {

@@ -504,6 +504,119 @@ fn replace_takes_named_arguments_like_any_two_parameter_call() {
     assert_eq!(codes, ["XN3008", "XN3008"]);
 }
 
+// ------------------------------------------------------------------- strings
+
+#[test]
+fn the_string_additions_check_with_their_declared_signatures() {
+    expect_clean(
+        "fn a(s: String) -> Int { s.len() }\n\
+         fn b(s: String) -> List<String> { s.split(sep: \",\") }\n\
+         fn c(s: String) -> String { s.trim() }\n\
+         fn d(s: String) -> Result<Int, Error> { s.try_to_int() }\n\
+         fn e(s: String) -> Bool { s.starts_with(prefix: \"x\") }\n\
+         fn g(s: String) -> Bool { s.contains(sub: \"x\") }",
+    );
+}
+
+#[test]
+fn try_to_int_threads_through_question_mark() {
+    expect_clean(
+        "fn parse_next(s: String) -> Result<Int, Error> { let v = s.try_to_int()?; Ok(v + 1) }",
+    );
+}
+
+#[test]
+fn a_wrong_separator_type_is_a_mismatch() {
+    assert_eq!(
+        codes_of("fn f(s: String) -> List<String> { s.split(sep: 1) }"),
+        ["XN3001"]
+    );
+}
+
+// ---------------------------------------------------------------------- maps
+
+#[test]
+fn map_reads_check_with_their_declared_signatures() {
+    expect_clean(
+        "fn a(m: Map<String, Int>) -> Int { m.len() }\n\
+         fn b(m: Map<String, Int>) -> Bool { m.is_empty() }\n\
+         fn c(m: Map<String, Int>) -> Option<Int> { m.get(key: \"x\") }\n\
+         fn d(m: Map<String, Int>) -> Bool { m.has_key(key: \"x\") }\n\
+         fn e(m: Map<String, Int>) -> List<String> { m.keys() }\n\
+         fn g(m: Map<String, Int>) -> String { m.keys().join(sep: \",\") }",
+    );
+}
+
+#[test]
+fn empty_map_takes_its_arguments_from_the_expected_type() {
+    expect_clean("fn f() -> Map<String, Int> { empty_map() }");
+    expect_clean("fn f() -> Int { let m: Map<String, Int> = empty_map(); m.len() }");
+}
+
+#[test]
+fn a_bare_empty_map_demands_an_annotation() {
+    // Same policy as `let x = ??;` (0006 §1-1): one refusal per parameter
+    // nothing determines.
+    let codes = codes_of("fn f() -> Int { let m = empty_map(); 1 }");
+    assert_eq!(codes, ["XN3005", "XN3005"]);
+}
+
+#[test]
+fn a_float_key_is_refused_at_empty_map() {
+    // NaN breaks hashing, so `Float` is not `Hash` (0006 §3).
+    let found = diagnostics_of("fn f() -> Int { let m: Map<Float, Int> = empty_map(); 1 }");
+    let (code, message) = &found[0];
+    assert_eq!(code, "XN3010");
+    assert!(message.contains("Hash"), "{message}");
+}
+
+#[test]
+fn a_float_key_is_refused_at_every_map_method() {
+    // Container type arguments are not bound-checked at the annotation, so
+    // the receiver is where a smuggled `Map<Float, _>` is caught.
+    assert_eq!(
+        codes_of("fn f(m: Map<Float, Int>) -> Int { m.len() }"),
+        ["XN3010"]
+    );
+}
+
+#[test]
+fn map_mutators_require_a_var_binding() {
+    assert_eq!(
+        codes_of(
+            "fn f() -> Option<Int> { let m: Map<String, Int> = empty_map(); \
+             m.insert(key: \"a\", value: 1) }"
+        ),
+        ["XN3009"]
+    );
+    assert_eq!(
+        codes_of(
+            "fn f() -> Option<Int> { let m: Map<String, Int> = empty_map(); \
+             m.remove(key: \"a\") }"
+        ),
+        ["XN3009"]
+    );
+}
+
+#[test]
+fn map_mutators_are_fine_on_a_var_binding() {
+    expect_clean(
+        "fn f() -> Int { var m: Map<String, Int> = empty_map(); \
+         m.insert(key: \"a\", value: 1); m.remove(key: \"a\"); m.len() }",
+    );
+}
+
+#[test]
+fn a_user_function_may_not_redeclare_empty_map() {
+    // The prelude registered it first, so the ordinary duplicate check fires;
+    // the body is then checked against the surviving (prelude) signature,
+    // exactly as any duplicate's body is checked against the first one's.
+    assert_eq!(
+        codes_of("fn empty_map() -> Int { 1 }"),
+        ["XN2005", "XN3001"]
+    );
+}
+
 // ------------------------------------------------------------------- effects
 
 #[test]
@@ -780,6 +893,52 @@ fn a_bound_blocked_method_is_reported_with_the_reason_not_suggested() {
         goal.blocked.iter().any(|b| b.contains("Ord")),
         "{:?}",
         goal.blocked
+    );
+}
+
+// The M gate — the same claim as L0, for the Map surface.
+
+#[test]
+fn m_gate_goals_surface_map_methods() {
+    // A parameter is immutable, so the reads are candidates and the
+    // mutators are blocked with the reason, not silently dropped.
+    let goals = goals_of("fn f(m: Map<String, Int>) -> Option<Int> { ??found }");
+    let goal = &goals[0];
+    assert!(
+        goal.candidates
+            .iter()
+            .any(|c| c.expression.contains("m.get(key:")),
+        "an Option<Int> hole with a Map<String, Int> in scope must offer `get`: {:?}",
+        goal.candidates
+    );
+    assert!(
+        goal.candidates
+            .iter()
+            .all(|c| !c.expression.contains("remove")),
+        "{:?}",
+        goal.candidates
+    );
+    assert!(
+        goal.blocked
+            .iter()
+            .any(|b| b.contains("remove") && b.contains("var")),
+        "{:?}",
+        goal.blocked
+    );
+}
+
+#[test]
+fn map_mutators_surface_only_for_var_bindings() {
+    let goals =
+        goals_of("fn f() -> Option<Int> { var m: Map<String, Int> = empty_map(); ??found }");
+    let found: Vec<&str> = goals[0]
+        .candidates
+        .iter()
+        .map(|c| c.expression.as_str())
+        .collect();
+    assert!(
+        found.iter().any(|c| c.contains("m.remove(key:")),
+        "{found:?}"
     );
 }
 

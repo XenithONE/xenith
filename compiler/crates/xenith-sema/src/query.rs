@@ -168,6 +168,10 @@ pub fn producers(module: &ast::Module, type_text: &str) -> Result<Vec<Producer>,
             args: vec![Type::Param("T".into())],
         },
         Type::Named {
+            def: table.map,
+            args: vec![Type::Param("K".into()), Type::Param("V".into())],
+        },
+        Type::Named {
             def: io,
             args: vec![],
         },
