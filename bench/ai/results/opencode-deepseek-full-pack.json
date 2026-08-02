@@ -1,6 +1,6 @@
 {
   "condition": "full-pack",
-  "model": "opencode",
+  "model": "opencode-deepseek",
   "rounds_limit": 4,
   "tasks": [
     {
@@ -10,7 +10,7 @@
         {
           "attempt": 1,
           "outcome": "pass",
-          "seconds": 15.6
+          "seconds": 19.7
         }
       ],
       "task": "multiples",
@@ -23,7 +23,7 @@
         {
           "attempt": 1,
           "outcome": "pass",
-          "seconds": 15.6
+          "seconds": 21.2
         }
       ],
       "task": "repeat",
@@ -36,7 +36,7 @@
         {
           "attempt": 1,
           "outcome": "pass",
-          "seconds": 13.1
+          "seconds": 16.1
         }
       ],
       "task": "sum-to-100",
@@ -49,7 +49,7 @@
         {
           "attempt": 1,
           "outcome": "pass",
-          "seconds": 11.6
+          "seconds": 17.1
         }
       ],
       "task": "account",
@@ -62,7 +62,7 @@
         {
           "attempt": 1,
           "outcome": "pass",
-          "seconds": 15.6
+          "seconds": 30.6
         }
       ],
       "task": "collatz",
@@ -75,7 +75,7 @@
         {
           "attempt": 1,
           "outcome": "pass",
-          "seconds": 14.1
+          "seconds": 23.1
         }
       ],
       "task": "reverse-digits",
@@ -88,7 +88,7 @@
         {
           "attempt": 1,
           "outcome": "pass",
-          "seconds": 12.1
+          "seconds": 13.6
         }
       ],
       "task": "shapes",
@@ -101,7 +101,7 @@
         {
           "attempt": 1,
           "outcome": "pass",
-          "seconds": 10.6
+          "seconds": 15.6
         }
       ],
       "task": "effects",
@@ -114,7 +114,7 @@
         {
           "attempt": 1,
           "outcome": "pass",
-          "seconds": 11.6
+          "seconds": 14.5
         }
       ],
       "task": "gcd",
@@ -127,7 +127,7 @@
         {
           "attempt": 1,
           "outcome": "pass",
-          "seconds": 11.6
+          "seconds": 43.7
         }
       ],
       "task": "overflow",
@@ -139,5 +139,5 @@
     "passed": 10,
     "tasks": 10
   },
-  "unix_time": 1785640649
+  "unix_time": 1785642454
 }

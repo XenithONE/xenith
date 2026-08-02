@@ -1,0 +1,293 @@
+{
+  "condition": "bare",
+  "model": "codex",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 38.8
+        },
+        {
+          "attempt": 2,
+          "outcome": "diagnostics",
+          "seconds": 19.6
+        },
+        {
+          "attempt": 3,
+          "outcome": "diagnostics",
+          "seconds": 19.1
+        },
+        {
+          "attempt": 4,
+          "outcome": "diagnostics",
+          "seconds": 16.6
+        }
+      ],
+      "task": "multiples",
+      "tier": 1
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 20.0
+        },
+        {
+          "attempt": 2,
+          "outcome": "diagnostics",
+          "seconds": 21.6
+        },
+        {
+          "attempt": 3,
+          "outcome": "diagnostics",
+          "seconds": 21.0
+        },
+        {
+          "attempt": 4,
+          "outcome": "diagnostics",
+          "seconds": 46.8
+        }
+      ],
+      "task": "repeat",
+      "tier": 1
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 19.1
+        },
+        {
+          "attempt": 2,
+          "outcome": "diagnostics",
+          "seconds": 15.5
+        },
+        {
+          "attempt": 3,
+          "outcome": "diagnostics",
+          "seconds": 22.0
+        },
+        {
+          "attempt": 4,
+          "outcome": "diagnostics",
+          "seconds": 15.1
+        }
+      ],
+      "task": "sum-to-100",
+      "tier": 1
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 18.1
+        },
+        {
+          "attempt": 2,
+          "outcome": "diagnostics",
+          "seconds": 36.7
+        },
+        {
+          "attempt": 3,
+          "outcome": "diagnostics",
+          "seconds": 15.5
+        },
+        {
+          "attempt": 4,
+          "outcome": "diagnostics",
+          "seconds": 19.0
+        }
+      ],
+      "task": "account",
+      "tier": 2
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 16.1
+        },
+        {
+          "attempt": 2,
+          "outcome": "diagnostics",
+          "seconds": 33.2
+        },
+        {
+          "attempt": 3,
+          "outcome": "diagnostics",
+          "seconds": 27.4
+        },
+        {
+          "attempt": 4,
+          "outcome": "diagnostics",
+          "seconds": 27.7
+        }
+      ],
+      "task": "collatz",
+      "tier": 2
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 16.6
+        },
+        {
+          "attempt": 2,
+          "outcome": "diagnostics",
+          "seconds": 26.6
+        },
+        {
+          "attempt": 3,
+          "outcome": "diagnostics",
+          "seconds": 42.6
+        },
+        {
+          "attempt": 4,
+          "outcome": "diagnostics",
+          "seconds": 23.7
+        }
+      ],
+      "task": "reverse-digits",
+      "tier": 2
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 18.8
+        },
+        {
+          "attempt": 2,
+          "outcome": "diagnostics",
+          "seconds": 38.6
+        },
+        {
+          "attempt": 3,
+          "outcome": "diagnostics",
+          "seconds": 51.6
+        },
+        {
+          "attempt": 4,
+          "outcome": "diagnostics",
+          "seconds": 35.1
+        }
+      ],
+      "task": "shapes",
+      "tier": 2
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 22.6
+        },
+        {
+          "attempt": 2,
+          "outcome": "diagnostics",
+          "seconds": 80.0
+        },
+        {
+          "attempt": 3,
+          "outcome": "diagnostics",
+          "seconds": 51.8
+        },
+        {
+          "attempt": 4,
+          "outcome": "diagnostics",
+          "seconds": 17.6
+        }
+      ],
+      "task": "effects",
+      "tier": 3
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 14.5
+        },
+        {
+          "attempt": 2,
+          "outcome": "diagnostics",
+          "seconds": 20.5
+        },
+        {
+          "attempt": 3,
+          "outcome": "diagnostics",
+          "seconds": 17.0
+        },
+        {
+          "attempt": 4,
+          "outcome": "diagnostics",
+          "seconds": 19.0
+        }
+      ],
+      "task": "gcd",
+      "tier": 3
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 16.1
+        },
+        {
+          "attempt": 2,
+          "outcome": "diagnostics",
+          "seconds": 22.0
+        },
+        {
+          "attempt": 3,
+          "outcome": "diagnostics",
+          "seconds": 15.2
+        },
+        {
+          "attempt": 4,
+          "outcome": "diagnostics",
+          "seconds": 26.6
+        }
+      ],
+      "task": "overflow",
+      "tier": 3
+    }
+  ],
+  "totals": {
+    "pass_at_1": 0,
+    "passed": 0,
+    "tasks": 10
+  },
+  "unix_time": 1785640950
+}

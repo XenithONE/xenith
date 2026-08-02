@@ -1,16 +1,21 @@
 {
   "condition": "full-pack",
-  "model": "opencode",
+  "model": "cursor",
   "rounds_limit": 4,
   "tasks": [
     {
-      "pass_at_1": true,
+      "pass_at_1": false,
       "passed": true,
       "rounds": [
         {
           "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 63.5
+        },
+        {
+          "attempt": 2,
           "outcome": "pass",
-          "seconds": 15.6
+          "seconds": 65.6
         }
       ],
       "task": "multiples",
@@ -23,7 +28,7 @@
         {
           "attempt": 1,
           "outcome": "pass",
-          "seconds": 15.6
+          "seconds": 62.1
         }
       ],
       "task": "repeat",
@@ -36,7 +41,7 @@
         {
           "attempt": 1,
           "outcome": "pass",
-          "seconds": 13.1
+          "seconds": 44.6
         }
       ],
       "task": "sum-to-100",
@@ -49,7 +54,7 @@
         {
           "attempt": 1,
           "outcome": "pass",
-          "seconds": 11.6
+          "seconds": 38.6
         }
       ],
       "task": "account",
@@ -62,7 +67,7 @@
         {
           "attempt": 1,
           "outcome": "pass",
-          "seconds": 15.6
+          "seconds": 55.1
         }
       ],
       "task": "collatz",
@@ -75,7 +80,7 @@
         {
           "attempt": 1,
           "outcome": "pass",
-          "seconds": 14.1
+          "seconds": 38.7
         }
       ],
       "task": "reverse-digits",
@@ -88,7 +93,7 @@
         {
           "attempt": 1,
           "outcome": "pass",
-          "seconds": 12.1
+          "seconds": 34.2
         }
       ],
       "task": "shapes",
@@ -101,7 +106,7 @@
         {
           "attempt": 1,
           "outcome": "pass",
-          "seconds": 10.6
+          "seconds": 40.3
         }
       ],
       "task": "effects",
@@ -114,7 +119,7 @@
         {
           "attempt": 1,
           "outcome": "pass",
-          "seconds": 11.6
+          "seconds": 37.2
         }
       ],
       "task": "gcd",
@@ -127,7 +132,7 @@
         {
           "attempt": 1,
           "outcome": "pass",
-          "seconds": 11.6
+          "seconds": 45.6
         }
       ],
       "task": "overflow",
@@ -135,9 +140,9 @@
     }
   ],
   "totals": {
-    "pass_at_1": 10,
+    "pass_at_1": 9,
     "passed": 10,
     "tasks": 10
   },
-  "unix_time": 1785640649
+  "unix_time": 1785644110
 }

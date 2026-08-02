@@ -1,5 +1,8 @@
 # Rust
 /compiler/target/
+# Parallel bench bursts build into separate target dirs so a running
+# xenith-bench.exe never blocks a rebuild (Windows locks running images).
+/compiler/target-*/
 /tools/target/
 **/*.rs.bk
 *.pdb

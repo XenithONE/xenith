@@ -67,6 +67,31 @@ mixture, and labelled as one. `opencode-deepseek` and `opencode-nemotron` reach 
 by default: a cell is accumulated over short bursts, and re-invoking the same command continues
 where the last burst stopped.
 
+## The first full matrix (2026-08-02)
+
+Seven models, three conditions, ten tasks — 210 measured runs, accumulated over short local
+bursts. The generated table lives in [`results/summary.md`](results/summary.md); regenerate it
+with `xenith-bench summarize`. Four readings, including the one that did not go our way:
+
+1. **Bare is a wipeout: 0/70 pass@1.** No model — not one, on any task — writes correct
+   Xenith first-try from its priors, and repair rounds salvage only 7/70. Negative transfer
+   from Rust/TS is total on a training-data-zero language. This is the control the whole
+   project rests on, and it is unambiguous.
+2. **The field guide flips the board: 66/70 pass@1, 70/70 green.** ~1,500 tokens of context
+   pack turn every model near-perfect — including two free-tier models that scored zero bare.
+   Capability barely matters; context dominates. This is design/0002's context-pack thesis at
+   maximum amplitude.
+3. **Hole-guided ties full-pack (66 = 66) instead of beating it.** The premise's second
+   inequality — `hole-guided > full-pack` — is **not demonstrated at this task scale**, and
+   that is recorded rather than massaged. With the guide already at ~95% pass@1 there is no
+   headroom left for holes to show value: a ceiling effect, not a refutation. The separation
+   test needs tasks with genuine uncertainty — real APIs to discover, underspecified
+   requirements — which arrive with `std/`. Until then the central premise stands only on its
+   first inequality.
+4. **Mean rounds-to-green is ~1.0 with the guide, 2.3–3.5 without.** The guide does not make
+   models better at repairing — it makes repair unnecessary. Diagnostics earn their keep in
+   the rare miss (every full-pack/hole-guided miss recovered in one round).
+
 ## Two measurement bugs, caught and fixed
 
 Recorded here because the numbers only mean something if the instrument is honest.
