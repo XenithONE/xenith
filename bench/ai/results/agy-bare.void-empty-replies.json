@@ -1,0 +1,293 @@
+{
+  "condition": "bare",
+  "model": "agy",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 23.9
+        },
+        {
+          "attempt": 2,
+          "outcome": "runtime failure",
+          "seconds": 14.8
+        },
+        {
+          "attempt": 3,
+          "outcome": "runtime failure",
+          "seconds": 10.4
+        },
+        {
+          "attempt": 4,
+          "outcome": "runtime failure",
+          "seconds": 9.7
+        }
+      ],
+      "task": "multiples",
+      "tier": 1
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 13.9
+        },
+        {
+          "attempt": 2,
+          "outcome": "runtime failure",
+          "seconds": 11.6
+        },
+        {
+          "attempt": 3,
+          "outcome": "runtime failure",
+          "seconds": 9.9
+        },
+        {
+          "attempt": 4,
+          "outcome": "runtime failure",
+          "seconds": 10.6
+        }
+      ],
+      "task": "repeat",
+      "tier": 1
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 14.0
+        },
+        {
+          "attempt": 2,
+          "outcome": "runtime failure",
+          "seconds": 13.2
+        },
+        {
+          "attempt": 3,
+          "outcome": "runtime failure",
+          "seconds": 11.5
+        },
+        {
+          "attempt": 4,
+          "outcome": "runtime failure",
+          "seconds": 10.7
+        }
+      ],
+      "task": "sum-to-100",
+      "tier": 1
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 13.8
+        },
+        {
+          "attempt": 2,
+          "outcome": "runtime failure",
+          "seconds": 11.2
+        },
+        {
+          "attempt": 3,
+          "outcome": "runtime failure",
+          "seconds": 8.1
+        },
+        {
+          "attempt": 4,
+          "outcome": "runtime failure",
+          "seconds": 7.7
+        }
+      ],
+      "task": "account",
+      "tier": 2
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 16.5
+        },
+        {
+          "attempt": 2,
+          "outcome": "runtime failure",
+          "seconds": 12.8
+        },
+        {
+          "attempt": 3,
+          "outcome": "runtime failure",
+          "seconds": 9.1
+        },
+        {
+          "attempt": 4,
+          "outcome": "runtime failure",
+          "seconds": 9.4
+        }
+      ],
+      "task": "collatz",
+      "tier": 2
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 11.2
+        },
+        {
+          "attempt": 2,
+          "outcome": "runtime failure",
+          "seconds": 10.1
+        },
+        {
+          "attempt": 3,
+          "outcome": "runtime failure",
+          "seconds": 9.2
+        },
+        {
+          "attempt": 4,
+          "outcome": "runtime failure",
+          "seconds": 10.6
+        }
+      ],
+      "task": "reverse-digits",
+      "tier": 2
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 12.3
+        },
+        {
+          "attempt": 2,
+          "outcome": "runtime failure",
+          "seconds": 12.2
+        },
+        {
+          "attempt": 3,
+          "outcome": "runtime failure",
+          "seconds": 9.1
+        },
+        {
+          "attempt": 4,
+          "outcome": "runtime failure",
+          "seconds": 8.9
+        }
+      ],
+      "task": "shapes",
+      "tier": 2
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 26.4
+        },
+        {
+          "attempt": 2,
+          "outcome": "runtime failure",
+          "seconds": 8.2
+        },
+        {
+          "attempt": 3,
+          "outcome": "runtime failure",
+          "seconds": 9.7
+        },
+        {
+          "attempt": 4,
+          "outcome": "runtime failure",
+          "seconds": 10.2
+        }
+      ],
+      "task": "effects",
+      "tier": 3
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 15.8
+        },
+        {
+          "attempt": 2,
+          "outcome": "runtime failure",
+          "seconds": 14.0
+        },
+        {
+          "attempt": 3,
+          "outcome": "runtime failure",
+          "seconds": 12.3
+        },
+        {
+          "attempt": 4,
+          "outcome": "runtime failure",
+          "seconds": 8.9
+        }
+      ],
+      "task": "gcd",
+      "tier": 3
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 13.3
+        },
+        {
+          "attempt": 2,
+          "outcome": "runtime failure",
+          "seconds": 10.1
+        },
+        {
+          "attempt": 3,
+          "outcome": "runtime failure",
+          "seconds": 8.8
+        },
+        {
+          "attempt": 4,
+          "outcome": "runtime failure",
+          "seconds": 8.2
+        }
+      ],
+      "task": "overflow",
+      "tier": 3
+    }
+  ],
+  "totals": {
+    "pass_at_1": 0,
+    "passed": 0,
+    "tasks": 10
+  },
+  "unix_time": 1785637558
+}
