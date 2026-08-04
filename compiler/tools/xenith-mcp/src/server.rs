@@ -1,9 +1,17 @@
 //! JSON-RPC 2.0 message handling for the MCP stdio transport.
 //!
 //! One function matters: [`handle_message`]. It takes one decoded message and
-//! returns the response to write, or `None` for notifications. The main loop
-//! is a thin pipe around it, which is also what makes the protocol testable
-//! without spawning a process.
+//! the workspace root, and returns the response to write, or `None` for
+//! notifications. The main loop is a thin pipe around it, which is also what
+//! makes the protocol testable without spawning a process.
+//!
+//! Every tool that takes a path is confined to the workspace root: the path
+//! is canonicalized and refused unless it lands inside the canonicalized
+//! root. A server spawned for one project must not read — or, via
+//! `fmt write=true`, rewrite — files elsewhere on the machine just because a
+//! client asked.
+
+use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 use xenith_diag::{DiagCode, LineIndex};
@@ -16,7 +24,11 @@ const KNOWN_PROTOCOL_VERSIONS: &[&str] = &["2024-11-05", "2025-03-26", "2025-06-
 
 /// Handle one decoded JSON-RPC message. `None` means nothing is written back
 /// (notifications, and responses addressed to us, which we do not send).
-pub fn handle_message(message: &Value) -> Option<Value> {
+///
+/// `workspace_root` is the directory the file-taking tools are confined to.
+/// It is compared canonical-to-canonical on every call, so passing it
+/// uncanonicalized (as `main` does) is fine.
+pub fn handle_message(message: &Value, workspace_root: &Path) -> Option<Value> {
     let id = message.get("id").cloned();
     let Some(method) = message.get("method").and_then(Value::as_str) else {
         // Not a request. If it carries an id it deserves an error; a
@@ -64,7 +76,7 @@ pub fn handle_message(message: &Value) -> Option<Value> {
             if !TOOL_NAMES.contains(&name) {
                 return Some(error(id, -32602, &format!("no tool named `{name}`")));
             }
-            let reply = match call_tool(name, &arguments) {
+            let reply = match call_tool(name, &arguments, workspace_root) {
                 Ok(text) => json!({
                     "content": [{ "type": "text", "text": text }],
                     "isError": false,
@@ -111,7 +123,9 @@ const TOOL_NAMES: &[&str] = &[
 fn tool_definitions() -> Vec<Value> {
     let path_property = json!({
         "type": "string",
-        "description": "Path to a .xn file, absolute or relative to the server's working directory.",
+        "description": "Path to a .xn file, absolute or relative to the workspace root the \
+            server was started with (`--workspace-root`, default: its working directory). \
+            Paths outside the workspace root are refused.",
     });
     vec![
         json!({
@@ -217,24 +231,93 @@ fn tool_definitions() -> Vec<Value> {
     ]
 }
 
+/// Resolve a client-sent path against the workspace root and refuse anything
+/// that lands outside it.
+///
+/// Both sides of the containment check are canonicalized — on Windows,
+/// canonical paths carry the `\\?\` prefix, so comparing a canonical path
+/// against an uncanonicalized root would refuse everything. Relative inputs
+/// are joined to the root *as given* (not its canonical form) because a
+/// verbatim `\\?\` base would take `..` components literally instead of
+/// resolving them. Canonicalization also resolves symlinks, so a link inside
+/// the root pointing outside is refused for where it leads, not where it sits.
+fn confine(workspace_root: &Path, raw: &str) -> Result<PathBuf, String> {
+    let canonical_root = workspace_root
+        .canonicalize()
+        .map_err(|e| format!("workspace root {}: {e}", workspace_root.display()))?;
+    let candidate = Path::new(raw);
+    let joined = if candidate.is_absolute() {
+        candidate.to_path_buf()
+    } else {
+        workspace_root.join(candidate)
+    };
+    // A canonicalize failure is a file-not-found in client terms: the raw
+    // path goes in the message, since that is the name the client used.
+    let canonical = joined.canonicalize().map_err(|e| format!("{raw}: {e}"))?;
+    if canonical.starts_with(&canonical_root) {
+        Ok(canonical)
+    } else {
+        Err(format!("`{raw}` is outside the workspace root"))
+    }
+}
+
+/// Replace `target` with `contents` atomically: write a sibling temp file,
+/// then rename over the target. `std::fs::rename` replaces existing files on
+/// the same volume, and the temp file lives in the target's own directory so
+/// the rename never crosses one. The name carries pid and a counter so
+/// concurrent servers — or concurrent calls, should the transport ever grow
+/// them — cannot collide.
+fn replace_file(target: &Path, contents: &str) -> std::io::Result<()> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    let parent = target.parent().unwrap_or_else(|| Path::new("."));
+    let stem = target
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "file".to_string());
+    let temp = parent.join(format!(
+        ".{stem}.{}.{}.fmt-tmp",
+        std::process::id(),
+        COUNTER.fetch_add(1, Ordering::Relaxed),
+    ));
+
+    std::fs::write(&temp, contents)?;
+    std::fs::rename(&temp, target).inspect_err(|_| {
+        // Leave nothing behind on the failure path; the error to surface is
+        // the rename's, not the cleanup's.
+        let _ = std::fs::remove_file(&temp);
+    })
+}
+
 /// Run one tool. `Ok` is the payload text (JSON for everything but `explain`);
 /// `Err` is a human-readable failure the model can act on.
-fn call_tool(name: &str, arguments: &Value) -> Result<String, String> {
-    let path_of = |arguments: &Value| -> Result<String, String> {
-        arguments
+fn call_tool(name: &str, arguments: &Value, workspace_root: &Path) -> Result<String, String> {
+    // The raw string is kept for payloads and messages — it is the name the
+    // client knows the file by — while the canonical path does the I/O.
+    let path_of = |arguments: &Value| -> Result<(String, PathBuf), String> {
+        let raw = arguments
             .get("path")
             .and_then(Value::as_str)
-            .map(String::from)
-            .ok_or_else(|| "`path` is required".to_string())
+            .ok_or_else(|| "`path` is required".to_string())?;
+        let resolved = confine(workspace_root, raw)?;
+        Ok((raw.to_string(), resolved))
     };
-    let read = |path: &str| -> Result<String, String> {
-        std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))
+    let read = |raw: &str, resolved: &Path| -> Result<String, String> {
+        std::fs::read_to_string(resolved).map_err(|e| format!("{raw}: {e}"))
+    };
+    let u32_of = |arguments: &Value, name: &str| -> Result<u32, String> {
+        let wide = arguments
+            .get(name)
+            .and_then(Value::as_u64)
+            .ok_or_else(|| format!("`{name}` is required and one-based"))?;
+        u32::try_from(wide).map_err(|_| format!("`{name}` out of range"))
     };
 
     match name {
         "check" => {
-            let path = path_of(arguments)?;
-            let source = read(&path)?;
+            let (path, resolved) = path_of(arguments)?;
+            let source = read(&path, &resolved)?;
             let analysis = xenith_driver::analyze_source(&source);
             let value =
                 xenith_driver::wire::file_diagnostics(&path, &source, &analysis.diagnostics);
@@ -242,24 +325,18 @@ fn call_tool(name: &str, arguments: &Value) -> Result<String, String> {
         }
 
         "goals" => {
-            let path = path_of(arguments)?;
-            let source = read(&path)?;
+            let (path, resolved) = path_of(arguments)?;
+            let source = read(&path, &resolved)?;
             let analysis = xenith_driver::analyze_source(&source);
             let value = xenith_driver::wire::goals(&path, &source, &analysis.goals);
             serde_json::to_string_pretty(&value).map_err(|e| e.to_string())
         }
 
         "type_at" => {
-            let path = path_of(arguments)?;
-            let line = arguments
-                .get("line")
-                .and_then(Value::as_u64)
-                .ok_or("`line` is required and one-based")? as u32;
-            let column = arguments
-                .get("column")
-                .and_then(Value::as_u64)
-                .ok_or("`column` is required and one-based")? as u32;
-            let source = read(&path)?;
+            let (path, resolved) = path_of(arguments)?;
+            let line = u32_of(arguments, "line")?;
+            let column = u32_of(arguments, "column")?;
+            let source = read(&path, &resolved)?;
             let index = LineIndex::new(&source);
             let offset = xenith_driver::wire::position_to_offset(&source, &index, line, column)
                 .ok_or_else(|| format!("{path}:{line}:{column} is outside the file"))?;
@@ -274,12 +351,12 @@ fn call_tool(name: &str, arguments: &Value) -> Result<String, String> {
         }
 
         "producers" => {
-            let path = path_of(arguments)?;
+            let (path, resolved) = path_of(arguments)?;
             let type_text = arguments
                 .get("type")
                 .and_then(Value::as_str)
                 .ok_or("`type` is required, spelled as in source")?;
-            let source = read(&path)?;
+            let source = read(&path, &resolved)?;
             let parsed = xenith_syntax::parse(&source);
             let found = xenith_sema::producers(&parsed.module, type_text)?;
             let value = xenith_driver::wire::producers(&found);
@@ -287,16 +364,16 @@ fn call_tool(name: &str, arguments: &Value) -> Result<String, String> {
         }
 
         "fmt" => {
-            let path = path_of(arguments)?;
+            let (path, resolved) = path_of(arguments)?;
             let write = arguments
                 .get("write")
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
-            let source = read(&path)?;
+            let source = read(&path, &resolved)?;
             let formatted = xenith_syntax::format(&source).map_err(|e| e.to_string())?;
             let changed = formatted != source;
             if write && changed {
-                std::fs::write(&path, &formatted).map_err(|e| format!("{path}: {e}"))?;
+                replace_file(&resolved, &formatted).map_err(|e| format!("{path}: {e}"))?;
             }
             let value = if write {
                 json!({ "changed": changed })
@@ -321,8 +398,8 @@ fn call_tool(name: &str, arguments: &Value) -> Result<String, String> {
         }
 
         "run" => {
-            let path = path_of(arguments)?;
-            let source = read(&path)?;
+            let (path, resolved) = path_of(arguments)?;
+            let source = read(&path, &resolved)?;
             let analysis = xenith_driver::analyze_source(&source);
             if !analysis.diagnostics.is_empty() {
                 let value = json!({

@@ -2,13 +2,27 @@
 //!
 //! Nothing but protocol goes to stdout. Anything worth saying to a human —
 //! which should be rare — goes to stderr.
+//!
+//! One flag: `--workspace-root <dir>` names the directory the file-taking
+//! tools are confined to. It defaults to the working directory at startup,
+//! which is what an MCP client configured with a project directory gives us.
 
 use std::io::{BufRead, Write};
+use std::path::PathBuf;
+use std::process::ExitCode;
 
 use serde_json::{Value, json};
 use xenith_mcp::server::handle_message;
 
-fn main() {
+fn main() -> ExitCode {
+    let workspace_root = match workspace_root_from_args() {
+        Ok(root) => root,
+        Err(message) => {
+            eprintln!("xenith-mcp: {message}");
+            return ExitCode::FAILURE;
+        }
+    };
+
     let stdin = std::io::stdin();
     let stdout = std::io::stdout();
     let mut out = stdout.lock();
@@ -23,7 +37,7 @@ fn main() {
         }
 
         let reply = match serde_json::from_str::<Value>(&line) {
-            Ok(message) => handle_message(&message),
+            Ok(message) => handle_message(&message, &workspace_root),
             Err(_) => Some(json!({
                 "jsonrpc": "2.0",
                 "id": Value::Null,
@@ -37,4 +51,43 @@ fn main() {
             }
         }
     }
+    ExitCode::SUCCESS
+}
+
+/// Parse `--workspace-root <dir>` (or `--workspace-root=<dir>`) and validate
+/// it early: a root that does not resolve to a directory would otherwise
+/// surface as a baffling per-call error. The path handed to the server stays
+/// as given — containment canonicalizes both sides on every call.
+fn workspace_root_from_args() -> Result<PathBuf, String> {
+    let mut root: Option<PathBuf> = None;
+    let mut args = std::env::args().skip(1);
+    while let Some(argument) = args.next() {
+        let value = if argument == "--workspace-root" {
+            args.next()
+                .ok_or_else(|| "--workspace-root takes a directory".to_string())?
+        } else if let Some(value) = argument.strip_prefix("--workspace-root=") {
+            value.to_string()
+        } else {
+            return Err(format!(
+                "unexpected argument `{argument}`; usage: xenith-mcp [--workspace-root <dir>]"
+            ));
+        };
+        root = Some(PathBuf::from(value));
+    }
+
+    let root = match root {
+        Some(root) => root,
+        None => std::env::current_dir()
+            .map_err(|e| format!("cannot determine the working directory: {e}"))?,
+    };
+    let canonical = root
+        .canonicalize()
+        .map_err(|e| format!("workspace root {}: {e}", root.display()))?;
+    if !canonical.is_dir() {
+        return Err(format!(
+            "workspace root {} is not a directory",
+            root.display()
+        ));
+    }
+    Ok(root)
 }
