@@ -857,10 +857,18 @@ adds no newline.";
 // The separation arms share one skeleton; these two sentences are the only
 // permitted difference in it, and the delta between them is the description
 // of the feedback channel — nothing behavioral (0007 §5-1: no asymmetric
-// nudges, no hole invitations, no warnings against anything).
+// nudges, no warnings against anything).
 const FEEDBACK_PLAIN: &str = "After each attempt you will receive compiler feedback.";
 const FEEDBACK_WITH_GOALS: &str = "After each attempt you will receive compiler feedback; it \
 may include hole goals and producer listings.";
+
+// v2 of the experiment (0008 §3). The pilot showed the query channel never
+// fires when nobody writes a hole — 2 of 50 failure rounds carried goals
+// output. So the hole permission is part of the SHARED skeleton, identical
+// in every arm: symmetric by construction, it cannot be a nudge toward
+// either factor. The arms still differ only along docs × query.
+const HOLE_PERMISSION: &str = "If you cannot determine some expression, write `??` there \
+instead of guessing — the program still compiles with holes in it.";
 
 fn first_prompt(guide: &str, api_table: &str, task: &Task, condition: Condition) -> String {
     match condition {
@@ -899,7 +907,7 @@ fn first_prompt(guide: &str, api_table: &str, task: &Task, condition: Condition)
                 FEEDBACK_PLAIN
             };
             format!(
-                "{guide}\n\n---\n\n{feedback}\n\nTASK: {}\n\n{CONTRACT}",
+                "{guide}\n\n---\n\n{HOLE_PERMISSION}\n\n{feedback}\n\nTASK: {}\n\n{CONTRACT}",
                 task.prompt.trim()
             )
         }
@@ -1052,12 +1060,22 @@ mod tests {
 
     #[test]
     fn no_separation_arm_is_nudged() {
-        // 0007 §5-1: no asymmetric nudges. "guess" in any wording would be a
-        // behavioral instruction; `??` would be a hole invitation.
+        // 0008 §3 (v2): the hole permission is deliberately present — but it
+        // must be the SAME sentence in every arm. Any asymmetric behavioral
+        // wording would re-confound the factors the 2×2 exists to separate.
         for condition in Condition::SEPARATION {
             let prompt = separation_prompt(condition);
-            assert!(!prompt.contains("guess"), "{} nudges", condition.name());
-            assert!(!prompt.contains("??"), "{} invites holes", condition.name());
+            assert!(
+                prompt.contains(HOLE_PERMISSION),
+                "{} lacks the shared hole permission",
+                condition.name()
+            );
+            assert_eq!(
+                prompt.matches("??").count(),
+                HOLE_PERMISSION.matches("??").count(),
+                "{} mentions holes outside the shared sentence",
+                condition.name()
+            );
         }
     }
 
