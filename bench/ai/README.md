@@ -133,6 +133,39 @@ table is in [`results/summary.md`](results/summary.md). Totals (pass@1 · green 
    feedback-mechanics sentence the arms are allowed to differ by. Exploratory, per 0007 §5-5;
    no verdict is claimed.
 
+### v2: the hole permission changed nothing — and that is the finding
+
+The pilot's diagnosis was that the query channel never fired because no arm invited holes. v2
+added the same one sentence to every arm — *if you cannot determine an expression, write `??`
+instead of guessing* — re-ran all 28 cells, and the totals barely moved (pass@1 / 42):
+
+| | docs | query | docs-query | blind |
+| --- | --- | --- | --- | --- |
+| v1 | 29 | 21 | 36 | 22 |
+| v2 | 29 | 22 | **37** | 23 |
+
+And `goals` spoke in **2 of 46** failure rounds — the same as v1's 2 of 50. Three conclusions,
+one caveat:
+
+1. **Permission does not activate the channel either.** Across seven models and two runs,
+   models almost never choose to write a partial program; they commit to complete guesses.
+   The passive, hole-triggered query mechanism goes unused not because models were forbidden
+   but because holes are not in any model's writing habit. If the compiler's knowledge is to
+   matter, it has to be **volunteered** — surfaced on ordinary type errors and unknown-method
+   diagnostics without the model asking — which is the next design iteration (0008 §3 already
+   points there: active `producers-at` / `methods-of` style delivery).
+2. **The docs factor replicates exactly** (+7 to +15 pass@1 on both its edges, twice). The API
+   table — really the named-argument signatures — remains the one intervention that reliably
+   moves first-try correctness.
+3. **`docs-query` tops both runs** (36 then 37 of 42, perfect green twice) — but its pass@1
+   edge over `docs` cannot be caused by the query channel, which only speaks after a failure.
+   The only textual difference in the first prompt is the sentence describing the feedback
+   channel, so the edge is either replicated noise or a priming effect of mentioning goals and
+   producers. Recorded as unexplained rather than claimed.
+
+Caveat: the compiler changed between runs (XN1008/XN5001 landed), so v1↔v2 comparisons carry
+that confound; comparisons *between arms within v2* do not.
+
 ## Two measurement bugs, caught and fixed
 
 Recorded here because the numbers only mean something if the instrument is honest.

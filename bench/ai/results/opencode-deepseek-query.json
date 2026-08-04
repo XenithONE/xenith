@@ -1,0 +1,122 @@
+{
+  "condition": "query",
+  "model": "opencode-deepseek",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 119.4
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 82.4
+        }
+      ],
+      "task": "t4-01",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 76.9
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 44.3
+        }
+      ],
+      "task": "t4-02",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 115.4
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 13.6
+        }
+      ],
+      "task": "t4-03",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "goals": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-04-opencode-deepseek-query-r1.xn:5:32 — hole ??unique_words in main\n  expected: List<String>\n  in scope: io: Io, words: List<String>\n  effects:  Io.write\n  candidates:\n    1. words\n    2. words.concat(other: words)\n    3. words.sorted()\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-04-opencode-deepseek-query-r1.xn:6:32 — hole ??sorted_words in main\n  expected: List<String>\n  in scope: io: Io, words: List<String>, unique: List<String>\n  effects:  Io.write\n  candidates:\n    1. words\n    2. unique.sorted()\n    3. words.sorted()\n    4. unique\n    5. words.concat(other: words)\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-04-opencode-deepseek-query-r1.xn:7:26 — hole ??joined_output in main\n  expected: String\n  in scope: io: Io, words: List<String>, unique: List<String>, sorted: List<String>\n  effects:  Io.write\n  candidates:\n    1. sorted.join(sep: ??)\n    2. unique.join(sep: ??)\n    3. words.join(sep: ??)",
+          "outcome": "runtime failure",
+          "seconds": 103.1
+        },
+        {
+          "attempt": 2,
+          "outcome": "diagnostics",
+          "seconds": 39.8
+        },
+        {
+          "attempt": 3,
+          "outcome": "diagnostics",
+          "seconds": 42.4
+        },
+        {
+          "attempt": 4,
+          "outcome": "wrong output",
+          "seconds": 34.6
+        }
+      ],
+      "task": "t4-04",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 25.7
+        }
+      ],
+      "task": "t4-05",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 158.6
+        }
+      ],
+      "task": "t4-06",
+      "tier": 4
+    }
+  ],
+  "totals": {
+    "pass_at_1": 2,
+    "passed": 5,
+    "tasks": 6
+  },
+  "unix_time": 1785840806
+}

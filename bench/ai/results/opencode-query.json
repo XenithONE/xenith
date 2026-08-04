@@ -1,0 +1,107 @@
+{
+  "condition": "query",
+  "model": "opencode",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "wrong output",
+          "seconds": 18.6
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 11.6
+        }
+      ],
+      "task": "t4-01",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "goals": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-02-opencode-query-r1.xn:5:20 — hole ??sum in main\n  expected: Int\n  in scope: io: Io, input: String\n  effects:  Io.write\n  candidates:\n    1. input.len()",
+          "outcome": "runtime failure",
+          "seconds": 22.1
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 18.6
+        }
+      ],
+      "task": "t4-02",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 15.6
+        }
+      ],
+      "task": "t4-03",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 18.1
+        }
+      ],
+      "task": "t4-04",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 20.6
+        }
+      ],
+      "task": "t4-05",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "diagnostics",
+          "seconds": 30.1
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 13.6
+        }
+      ],
+      "task": "t4-06",
+      "tier": 4
+    }
+  ],
+  "totals": {
+    "pass_at_1": 3,
+    "passed": 6,
+    "tasks": 6
+  },
+  "unix_time": 1785839831
+}
