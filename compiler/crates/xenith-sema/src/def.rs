@@ -904,26 +904,17 @@ pub fn lower_type(
             Type::Hole(crate::ty::HoleId(u32::MAX))
         }
         ast::TypeKind::Error => Type::Error,
-        ast::TypeKind::Fn {
-            params,
-            ret,
-            effects,
-        } => Type::Fn {
-            params: params
-                .iter()
-                .map(|p| lower_type(p, table, generics, diagnostics))
-                .collect(),
-            ret: Box::new(lower_type(ret, table, generics, diagnostics)),
-            effects: EffectSet::new(effects.iter().flat_map(|set| {
-                set.effects.iter().map(|path| {
-                    path.segments
-                        .iter()
-                        .map(|s| s.name.as_str())
-                        .collect::<Vec<_>>()
-                        .join(".")
-                })
-            })),
-        },
+        ast::TypeKind::Fn { .. } => {
+            // Parsed for recovery, not shipped (design/0008 §1): function
+            // values do not exist (0007 D3), so no annotation may name their
+            // type until the closure-effects RFC lands.
+            diagnostics.push(Diagnostic::error(
+                DiagCode::UnshippedConstruct,
+                ty.span,
+                "function types are not part of the language yet",
+            ));
+            Type::Error
+        }
         ast::TypeKind::Named { path, args } => {
             let lowered: Vec<Type> = args
                 .iter()

@@ -75,7 +75,9 @@ fn load_config(fs: Fs, path: Path) -> Result<Config, ConfigError> uses {Fs.read}
 }
 ```
 
-A function that does not declare an effect cannot perform it — including through a captured closure.
+A function that does not declare an effect cannot perform it. Function values — closures, `fn`
+types, `async` — are rejected by the checker until the closure-effects RFC lands, so a capability
+cannot hide inside one: the lie is impossible rather than checked.
 
 **Type inference is local.** Public APIs and parameters are fully annotated. There is no
 whole-program inference, because non-local inference is repair poison: a model fixes a leaf and the

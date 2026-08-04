@@ -310,6 +310,15 @@ impl<'a> Checker<'a> {
         lowered
     }
 
+    /// XN5001: every value the scrutinee can hold must land on some arm.
+    /// The witness is a concrete value no arm covers, in source syntax.
+    fn check_exhaustiveness(&mut self, scrutinee: &Type, arms: &[ast::MatchArm], span: Span) {
+        if let Some(found) = crate::exhaustive::missing_witness(self.defs, scrutinee, arms) {
+            let message = format!("this `match` is not exhaustive: `{found}` is not covered");
+            self.error(DiagCode::NonExhaustiveMatch, span, message);
+        }
+    }
+
     /// One mismatch, reported once, between concrete types only.
     fn require_compatible(&mut self, found: &Type, expected: &Type, span: Span) {
         if found.is_compatible_with(expected) {
@@ -365,6 +374,16 @@ impl<'a> Checker<'a> {
     // ----- function body -----
 
     fn check_fn(&mut self) {
+        // Parsed for recovery, not shipped (design/0008 §1): `async` has no
+        // effect rules yet, so an `async fn` cannot be checked honestly.
+        if self.fn_ast.is_async {
+            self.error(
+                DiagCode::UnshippedConstruct,
+                self.sig.name_span,
+                "`async fn` is not part of the language yet; declare a plain `fn`",
+            );
+        }
+
         // Holes in the signature itself: collection lowered them to
         // placeholders; their goals are recorded here.
         for param in &self.fn_ast.params {
@@ -468,18 +487,19 @@ impl<'a> Checker<'a> {
                 iter,
                 body,
             } => {
+                // Parsed for recovery, not shipped (design/0008 §1; iteration
+                // is a future RFC). One diagnostic for the construct; the
+                // body is still walked so its own problems and goals survive.
+                self.error(
+                    DiagCode::UnshippedConstruct,
+                    stmt.span,
+                    "`for` is not part of the language yet — iterate with \
+                     `while` + `len()` + `get(index:)`",
+                );
                 let iter_ty = self.synth(iter);
                 let element = match &iter_ty {
                     Type::Named { def, args } if *def == self.defs.list => args[0].clone(),
-                    Type::Error | Type::Hole(_) => Type::Error,
-                    other => {
-                        let message = format!(
-                            "`for` iterates a `List<T>`; this is `{}`",
-                            self.render(other)
-                        );
-                        self.error(DiagCode::TypeMismatch, iter.span, message);
-                        Type::Error
-                    }
+                    _ => Type::Error,
                 };
                 self.scoped(|this| {
                     this.bind_pattern(pattern, &element, false);
@@ -536,6 +556,7 @@ impl<'a> Checker<'a> {
                         this.check(&arm.body, expected);
                     });
                 }
+                self.check_exhaustiveness(&scrutinee_ty, arms, expr.span);
             }
 
             ast::ExprKind::Block(block) => self.check_block(block, expected),
@@ -683,19 +704,16 @@ impl<'a> Checker<'a> {
             ast::ExprKind::Field { receiver, name } => self.field(receiver, name, expr.span),
 
             ast::ExprKind::Await(inner) => {
-                let ty = self.synth(inner);
-                match ty {
-                    Type::Named { def, mut args } if def == self.defs.task => args.remove(0),
-                    Type::Error | Type::Hole(_) => Type::Error,
-                    other => {
-                        let message = format!(
-                            "`.await` needs a `Task<T>`, found `{}`",
-                            self.render(&other)
-                        );
-                        self.error(DiagCode::TypeMismatch, inner.span, message);
-                        Type::Error
-                    }
-                }
+                // Parsed for recovery, not shipped (design/0008 §1). The
+                // operand is still synthesised so its own problems and goals
+                // survive.
+                let _ = self.synth(inner);
+                self.error(
+                    DiagCode::UnshippedConstruct,
+                    expr.span,
+                    "`.await` is not part of the language yet",
+                );
+                Type::Error
             }
 
             ast::ExprKind::Try(inner) => self.try_op(inner, expr.span),
@@ -739,6 +757,7 @@ impl<'a> Checker<'a> {
                         result = Some(ty);
                     }
                 }
+                self.check_exhaustiveness(&scrutinee_ty, arms, expr.span);
                 result.unwrap_or(Type::Unit)
             }
 
@@ -774,26 +793,17 @@ impl<'a> Checker<'a> {
                 self.struct_lit(path, fields, expr.span, None)
             }
 
-            ast::ExprKind::Lambda { params, body, .. } => {
-                let lowered: Vec<(String, Type)> = params
-                    .iter()
-                    .map(|p| (p.name.name.clone(), self.lower(&p.ty)))
-                    .collect();
-                let body_ty = self.scoped(|this| {
-                    for (name, ty) in &lowered {
-                        this.bind(name, ty.clone(), false);
-                    }
-                    this.synth(body)
-                });
-                Type::Fn {
-                    params: lowered.into_iter().map(|(_, t)| t).collect(),
-                    ret: Box::new(body_ty),
-                    // Effects of the lambda body are checked against the
-                    // enclosing function's budget at each call site inside it;
-                    // the lambda type itself claims none yet. Honest once
-                    // effect inference for closures lands (deferred, 0006 §5).
-                    effects: EffectSet::empty(),
-                }
+            // Parsed for recovery, not shipped (design/0008 §1): a lambda's
+            // effect set cannot be stated honestly until closure effect rules
+            // land, and a dishonest one lets a captured capability escape as
+            // a pure value. One diagnostic; the body is not descended into.
+            ast::ExprKind::Lambda { .. } => {
+                self.error(
+                    DiagCode::UnshippedConstruct,
+                    expr.span,
+                    "closures are not part of the language yet; use a named function",
+                );
+                Type::Error
             }
 
             ast::ExprKind::Error => Type::Error,

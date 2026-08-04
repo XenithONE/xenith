@@ -175,8 +175,9 @@ fn generic_arguments_are_inferred_from_the_call_site() {
 
 #[test]
 fn a_bound_violation_names_the_property_and_the_type() {
+    // `Shared` satisfies no property — its identity is compared with `is`.
     let source = "fn same<T: Eq>(a: T, b: T) -> Bool { a == b }\n\
-                  fn g(f: fn(Int) -> Int) -> Bool { same(a: f, b: f) }";
+                  fn g(s: Shared<Int>) -> Bool { same(a: s, b: s) }";
     let found = diagnostics_of(source);
     let (code, message) = &found[0];
     assert_eq!(code, "XN3010");
@@ -202,7 +203,11 @@ fn an_unknown_property_in_a_bound_is_reported_at_the_signature() {
 
 #[test]
 fn equality_on_functions_is_rejected() {
-    let codes = codes_of("fn g(f: fn(Int) -> Int) -> Bool { f == f }");
+    // Function-type annotations are unshipped (0008 §1), but a named
+    // function bound as a value still exists — and still compares as nothing.
+    let source = "fn double(n: Int) -> Int { n + n }\n\
+                  fn g() -> Bool { let f = double; f == f }";
+    let codes = codes_of(source);
     assert_eq!(codes, ["XN3010"]);
 }
 
@@ -480,9 +485,9 @@ fn sorted_on_floats_is_rejected_by_the_ord_bound() {
 
 #[test]
 fn contains_on_a_non_eq_element_is_rejected() {
-    // Function values satisfy no properties.
+    // `Shared` satisfies no property, so a list of them has no `contains`.
     let found = diagnostics_of(
-        "fn f(fs: List<fn(Int) -> Int>, g: fn(Int) -> Int) -> Bool { fs.contains(item: g) }",
+        "fn f(xs: List<Shared<Int>>, s: Shared<Int>) -> Bool { xs.contains(item: s) }",
     );
     let (code, message) = &found[0];
     assert_eq!(code, "XN3010");
@@ -655,6 +660,160 @@ fn effects_propagate_through_user_functions() {
                   }";
     let codes = codes_of(source);
     assert_eq!(codes, ["XN4001"]);
+}
+
+// ------------------------------------------------------- unshipped constructs
+
+#[test]
+fn closures_are_rejected_until_their_rfc() {
+    // 0007 D3: function values do not exist. The parser accepts the syntax
+    // for recovery; the checker refuses it (0008 §1).
+    let codes = codes_of("fn f() -> Int { let g = |x: Int| x; 1 }");
+    assert_eq!(codes, ["XN1008"]);
+}
+
+#[test]
+fn await_is_rejected_until_the_async_rfc() {
+    let source = "fn g() -> Int { 1 }\nfn f() -> Int { g().await }";
+    assert_eq!(codes_of(source), ["XN1008"]);
+}
+
+#[test]
+fn async_fn_is_rejected_until_the_async_rfc() {
+    assert_eq!(codes_of("async fn g() -> Int { 1 }"), ["XN1008"]);
+}
+
+#[test]
+fn for_is_rejected_but_its_body_still_checks() {
+    // One diagnostic for the construct; the body's own mistake still
+    // surfaces, because recovery keeps walking.
+    let source = "fn f(xs: List<Int>) -> Int { for x in xs { let y: Bool = x; } 1 }";
+    assert_eq!(codes_of(source), ["XN1008", "XN3001"]);
+}
+
+#[test]
+fn fn_type_annotations_are_rejected() {
+    assert_eq!(
+        codes_of("fn apply(f: fn(Int) -> Int) -> Int { 1 }"),
+        ["XN1008"]
+    );
+    assert_eq!(
+        codes_of("fn f() -> Int { let g: fn() -> Int = ??; 1 }"),
+        ["XN1008"]
+    );
+}
+
+// ------------------------------------------------------------- exhaustiveness
+
+#[test]
+fn a_bool_match_missing_false_is_refused_with_the_witness() {
+    let found = diagnostics_of("fn f(b: Bool) -> Int { match b { true => 1 } }");
+    let (code, message) = &found[0];
+    assert_eq!(code, "XN5001");
+    assert!(message.contains("`false`"), "{message}");
+}
+
+#[test]
+fn a_complete_bool_match_checks_cleanly() {
+    expect_clean("fn f(b: Bool) -> Int { match b { true => 1, false => 0 } }");
+}
+
+#[test]
+fn an_enum_match_missing_a_variant_names_it() {
+    let source = "enum Rank { Bronze, Silver, Gold }\n\
+                  fn f(r: Rank) -> Int { match r { Rank.Bronze => 1, Rank.Silver => 2 } }";
+    let found = diagnostics_of(source);
+    let (code, message) = &found[0];
+    assert_eq!(code, "XN5001");
+    assert!(message.contains("Rank.Gold"), "{message}");
+}
+
+#[test]
+fn payload_patterns_recurse_for_coverage() {
+    let source = "fn f(o: Option<Bool>) -> Int { match o { Some(true) => 1, None => 0 } }";
+    let found = diagnostics_of(source);
+    let (code, message) = &found[0];
+    assert_eq!(code, "XN5001");
+    assert!(message.contains("Some(false)"), "{message}");
+    expect_clean(
+        "fn f(o: Option<Bool>) -> Int { match o { Some(true) => 1, Some(false) => 2, None => 0 } }",
+    );
+}
+
+#[test]
+fn a_missing_payload_variant_renders_a_wildcard_payload() {
+    let source = "enum Shape { Rect(Int, Int), Dot }\n\
+                  fn f(s: Shape) -> Int { match s { Shape.Dot => 0 } }";
+    let found = diagnostics_of(source);
+    assert!(found[0].1.contains("Shape.Rect(_, _)"), "{}", found[0].1);
+}
+
+#[test]
+fn or_patterns_cover_each_alternative() {
+    expect_clean(
+        "enum Rank { Bronze, Silver, Gold }\n\
+         fn f(r: Rank) -> Int { match r { Rank.Bronze | Rank.Silver => 1, Rank.Gold => 2 } }",
+    );
+}
+
+#[test]
+fn a_guarded_arm_contributes_nothing_to_coverage() {
+    // The guard can be false at runtime, so the value must land elsewhere.
+    let source = "fn f(b: Bool, c: Bool) -> Int { match b { true => 1, false if c => 0 } }";
+    let found = diagnostics_of(source);
+    let (code, message) = &found[0];
+    assert_eq!(code, "XN5001");
+    assert!(message.contains("`false`"), "{message}");
+    expect_clean(
+        "fn f(b: Bool, c: Bool) -> Int { match b { true if c => 1, true => 2, false => 0 } }",
+    );
+}
+
+#[test]
+fn a_wildcard_or_binding_arm_covers_non_enumerable_scrutinees() {
+    expect_clean("fn f(n: Int) -> Int { match n { 0 => 1, _ => 2 } }");
+    expect_clean("fn f(s: String) -> Int { match s { text => text.len() } }");
+}
+
+#[test]
+fn an_int_match_without_a_wildcard_is_refused() {
+    // Int cannot be enumerated by literals; the witness is the catch-all.
+    let found = diagnostics_of("fn f(n: Int) -> Int { match n { 0 => 1, 1 => 2 } }");
+    let (code, message) = &found[0];
+    assert_eq!(code, "XN5001");
+    assert!(message.contains("`_`"), "{message}");
+}
+
+#[test]
+fn option_and_result_misses_render_unqualified() {
+    let found = diagnostics_of("fn f(o: Option<Int>) -> Int { match o { Some(v) => v } }");
+    assert!(found[0].1.contains("`None`"), "{}", found[0].1);
+    // The payload enum is enumerable, so the witness is concrete rather
+    // than `_` — `Err(E.X)` names an exact value the arms miss.
+    let found =
+        diagnostics_of("enum E { X }\nfn f(r: Result<Int, E>) -> Int { match r { Ok(v) => v } }");
+    assert!(found[0].1.contains("Err(E.X)"), "{}", found[0].1);
+}
+
+#[test]
+fn struct_patterns_recurse_into_fields() {
+    let source = "struct Flag { alive: Bool }\n\
+                  fn f(p: Flag) -> Int { match p { Flag { alive: true } => 1 } }";
+    let found = diagnostics_of(source);
+    let (code, message) = &found[0];
+    assert_eq!(code, "XN5001");
+    assert!(message.contains("alive: false"), "{message}");
+    expect_clean(
+        "struct Flag { alive: Bool }\n\
+         fn f(p: Flag) -> Int { match p { Flag { alive } => 1 } }",
+    );
+}
+
+#[test]
+fn exhaustiveness_still_runs_when_an_arm_body_is_rejected() {
+    // A rejected construct in one arm's body must not mask the missing arm.
+    let source = "fn f(b: Bool) -> Int { match b { true => { let g = |x: Int| x; 1 } } }";
+    assert_eq!(codes_of(source), ["XN1008", "XN5001"]);
 }
 
 // --------------------------------------------------------------------- holes

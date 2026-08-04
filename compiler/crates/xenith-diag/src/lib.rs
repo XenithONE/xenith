@@ -137,6 +137,9 @@ pub enum DiagCode {
     ExpectedPattern,
     /// XN1007 — a declaration was required at the top level of a module.
     ExpectedItem,
+    /// XN1008 — a construct the parser accepts for recovery but the shipped
+    /// language does not include.
+    UnshippedConstruct,
 
     /// XN2001 — a type name that resolves to nothing.
     UnknownType,
@@ -174,6 +177,9 @@ pub enum DiagCode {
 
     /// XN4001 — a call performs an effect the enclosing function does not declare.
     EffectNotPermitted,
+
+    /// XN5001 — a `match` does not cover every possible value.
+    NonExhaustiveMatch,
 }
 
 impl DiagCode {
@@ -193,6 +199,7 @@ impl DiagCode {
         DiagCode::ExpectedType,
         DiagCode::ExpectedPattern,
         DiagCode::ExpectedItem,
+        DiagCode::UnshippedConstruct,
         DiagCode::UnknownType,
         DiagCode::UnknownName,
         DiagCode::UnknownMethod,
@@ -210,6 +217,7 @@ impl DiagCode {
         DiagCode::AssignmentToImmutable,
         DiagCode::PropertyNotSatisfied,
         DiagCode::EffectNotPermitted,
+        DiagCode::NonExhaustiveMatch,
     ];
 
     /// The stable textual identifier, for example `"XN0002"`.
@@ -228,6 +236,7 @@ impl DiagCode {
             DiagCode::ExpectedType => "XN1005",
             DiagCode::ExpectedPattern => "XN1006",
             DiagCode::ExpectedItem => "XN1007",
+            DiagCode::UnshippedConstruct => "XN1008",
             DiagCode::UnknownType => "XN2001",
             DiagCode::UnknownName => "XN2002",
             DiagCode::UnknownMethod => "XN2003",
@@ -245,6 +254,7 @@ impl DiagCode {
             DiagCode::AssignmentToImmutable => "XN3009",
             DiagCode::PropertyNotSatisfied => "XN3010",
             DiagCode::EffectNotPermitted => "XN4001",
+            DiagCode::NonExhaustiveMatch => "XN5001",
         }
     }
 
@@ -366,6 +376,18 @@ impl DiagCode {
                  A program starts at `fn main`, which receives its capabilities as \
                  parameters — there is no ambient environment to reach for, so there \
                  is nothing a top-level statement could usefully do."
+            }
+            DiagCode::UnshippedConstruct => {
+                "This construct is parsed but is not part of the shipped language.\n\n\
+                 The parser is total: it accepts closures, function types, `.await`, \
+                 `async fn` and `for` so that a broken or half-edited file still \
+                 yields a tree to repair from. Accepting the syntax is not shipping \
+                 the feature — each of these is gated on a future RFC (closure \
+                 effect rules for function values and `async`; an iteration RFC for \
+                 `for`), and passing them through half-checked would let an effect \
+                 escape its declaration.\n\n\
+                 Until then: write a named function instead of a closure, and \
+                 iterate with `while` + `len()` + `get(index:)`."
             }
             DiagCode::UnknownType => {
                 "This type name does not resolve to anything.\n\n\
@@ -528,6 +550,19 @@ impl DiagCode {
                  which also widens what *its* callers must permit — or move the \
                  effectful call out to a caller that already holds the capability, \
                  and pass the result in as a value."
+            }
+            DiagCode::NonExhaustiveMatch => {
+                "This `match` does not cover every value its scrutinee can hold.\n\n\
+                 Every possible value must land on some arm. A wildcard `_` or a \
+                 binding covers everything at its position; an OR pattern covers \
+                 each alternative; enum variants with payloads are covered when \
+                 their payload patterns are. `Int`, `Float`, `String` and `Char` \
+                 cannot be enumerated by literals, so a `match` on one of them \
+                 needs a `_` or binding arm.\n\n\
+                 A guarded arm contributes nothing to coverage: its guard can be \
+                 false at runtime, so the value must still land somewhere else.\n\n\
+                 The message names a value no arm covers; add an arm for it, or a \
+                 `_` arm to catch what is left."
             }
         }
     }
@@ -735,6 +770,7 @@ mod tests {
                 | DiagCode::ExpectedType
                 | DiagCode::ExpectedPattern
                 | DiagCode::ExpectedItem
+                | DiagCode::UnshippedConstruct
                 | DiagCode::UnknownType
                 | DiagCode::UnknownName
                 | DiagCode::UnknownMethod
@@ -751,11 +787,12 @@ mod tests {
                 | DiagCode::NamedArgumentsRequired
                 | DiagCode::AssignmentToImmutable
                 | DiagCode::PropertyNotSatisfied
-                | DiagCode::EffectNotPermitted => seen += 1,
+                | DiagCode::EffectNotPermitted
+                | DiagCode::NonExhaustiveMatch => seen += 1,
             }
         }
-        assert_eq!(seen, 30, "update DiagCode::ALL when adding a variant");
-        assert_eq!(DiagCode::ALL.len(), 30);
+        assert_eq!(seen, 32, "update DiagCode::ALL when adding a variant");
+        assert_eq!(DiagCode::ALL.len(), 32);
     }
 
     #[test]

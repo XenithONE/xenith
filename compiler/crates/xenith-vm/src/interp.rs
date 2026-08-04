@@ -519,11 +519,12 @@ impl<'a> Interp<'a> {
                     }
                     env.scopes.pop();
                 }
-                // Exhaustiveness checking is deferred (design/0006 §5), so
-                // this is reachable and must be a precise trap, not UB.
+                // XN5001 refuses non-exhaustive matches, and `run` refuses
+                // files with diagnostics — so this is a checker gap, reported
+                // as one rather than as undefined behaviour.
                 trap(
                     expr.span,
-                    "no `match` arm matched — exhaustiveness is on you until XN5xxx lands",
+                    "no `match` arm matched — XN5001 should have refused this program; checker gap",
                 )
             }
 

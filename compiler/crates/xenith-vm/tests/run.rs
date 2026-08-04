@@ -811,26 +811,53 @@ fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
     assert_eq!(stdout_of(source), "{a: 1, b: 2}");
 }
 
-// ------------------------------------------------------------------ closures
+// ------------------------------------------------- unshipped constructs
 
 #[test]
-fn lambdas_capture_by_value() {
-    let source = "fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    \
-                      var base = 10;\n    \
-                      let add_base = |n: Int| n + base;\n    \
-                      base = 100;\n    \
-                      io.write(text: add_base(5).to_text())?;\n    return Ok(unit);\n}";
-    // Captured when the lambda was made: 10, not 100. Value semantics.
-    assert_eq!(stdout_of(source), "15");
+fn a_lambda_is_refused_at_check_not_run() {
+    // 0008 §1: closures parse for recovery and are refused by the checker,
+    // so no program reaches the interpreter holding one.
+    let parsed = parse("fn main() -> Int {\n    let add = |n: Int| n + 1;\n    add(5)\n}");
+    assert!(parsed.diagnostics.is_empty(), "the parser still accepts it");
+    let analysis = xenith_sema::analyze(&parsed.module);
+    assert!(
+        analysis.diagnostics.iter().any(|d| d.code.id() == "XN1008"),
+        "{:?}",
+        analysis.diagnostics
+    );
 }
 
 #[test]
-fn async_fn_returns_a_task_and_await_unwraps_it() {
+fn async_fn_and_await_are_refused_at_check_not_run() {
     let source = "async fn compute() -> Int {\n    40 + 2\n}\n\n\
                   fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    \
                       let value = compute().await;\n    \
                       io.write(text: value.to_text())?;\n    return Ok(unit);\n}";
-    assert_eq!(stdout_of(source), "42");
+    let parsed = parse(source);
+    assert!(parsed.diagnostics.is_empty(), "the parser still accepts it");
+    let analysis = xenith_sema::analyze(&parsed.module);
+    let unshipped = analysis
+        .diagnostics
+        .iter()
+        .filter(|d| d.code.id() == "XN1008")
+        .count();
+    assert_eq!(unshipped, 2, "one for `async fn`, one for `.await`");
+}
+
+#[test]
+fn a_non_exhaustive_match_is_refused_at_check_not_trapped() {
+    // Before XN5001 this program ran and trapped on the missing arm; now it
+    // never reaches the interpreter.
+    let source = "fn main() -> Int {\n    let o: Option<Int> = Some(1);\n    \
+                  match o {\n        Some(value) => value,\n    }\n}";
+    let parsed = parse(source);
+    assert!(parsed.diagnostics.is_empty());
+    let analysis = xenith_sema::analyze(&parsed.module);
+    assert!(
+        analysis.diagnostics.iter().any(|d| d.code.id() == "XN5001"),
+        "{:?}",
+        analysis.diagnostics
+    );
 }
 
 // ------------------------------------------------------------------ strings
