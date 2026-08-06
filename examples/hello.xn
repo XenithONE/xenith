@@ -4,8 +4,6 @@
 // environment to reach for, so a function that is not handed `Io` cannot
 // write to the console -- and its signature says so.
 
-use std.io;
-
 /// Greet someone by name.
 ///
 /// This function takes no capability and declares no effects, so its signature

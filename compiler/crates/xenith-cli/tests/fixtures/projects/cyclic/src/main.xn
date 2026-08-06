@@ -1,0 +1,12 @@
+use alpha;
+use beta;
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    let leaf = beta.Beta { label: "leaf", next: None };
+    let mid = alpha.Alpha { label: "mid", next: Some(leaf) };
+    let top = beta.Beta { label: "top", next: Some(mid) };
+    io.write(text: alpha.depth(a: mid).to_text())?;
+    io.write(text: ",")?;
+    io.write(text: beta.deeper(b: top).to_text())?;
+    return Ok(unit);
+}

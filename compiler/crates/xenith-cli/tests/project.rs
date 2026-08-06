@@ -101,6 +101,40 @@ fn a_file_that_cannot_name_a_module_is_refused() {
 }
 
 #[test]
+fn an_import_cycle_between_modules_checks_and_runs() {
+    // Two modules `use` each other, types linked through `Option` — legal,
+    // and the two-phase order makes it uneventful (design/0010 §5).
+    let entry = fixture("cyclic", "src/main.xn");
+    let (stdout, _, code) = xenith(&["check", &entry]);
+    assert_eq!(
+        stdout, "",
+        "no diagnostics expected:
+{stdout}"
+    );
+    assert_eq!(code, Some(0));
+    let (stdout, _, code) = xenith(&["run", &entry]);
+    assert_eq!(stdout, "2,3");
+    assert_eq!(code, Some(0));
+}
+
+#[test]
+fn the_guestbook_example_checks_and_runs() {
+    // The shipped multi-module example is documentation, and documentation
+    // rots — so it goes through the real pipe here and in CI.
+    let entry = "../../../examples/guestbook/src/main.xn";
+    let (stdout, _, code) = xenith(&["check", entry]);
+    assert_eq!(
+        stdout, "",
+        "no diagnostics expected:
+{stdout}"
+    );
+    assert_eq!(code, Some(0));
+    let (stdout, _, code) = xenith(&["run", entry]);
+    assert_eq!(stdout, "guestbook: ada");
+    assert_eq!(code, Some(0));
+}
+
+#[test]
 fn a_file_without_a_manifest_stays_single_file() {
     // The frozen diagnostics fixtures live outside any project; the whole
     // pre-module pipeline — `use std.io;` inertness included — is pinned by

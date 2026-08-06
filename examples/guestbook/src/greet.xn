@@ -1,0 +1,8 @@
+// One module of the guestbook: the whole public surface is one function.
+//
+// `entry` is `pub`, so `main` may call it as `greet.entry(..)` once it has
+// declared `use greet;`. Everything else here would be private.
+
+pub fn entry(name: String) -> String {
+    "guestbook: ".concat(other: name)
+}

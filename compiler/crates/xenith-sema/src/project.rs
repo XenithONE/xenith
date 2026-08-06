@@ -97,6 +97,27 @@ pub fn analyze_project(units: &[ModuleUnit]) -> ProjectAnalysis {
         out[order[sorted_index]].push(diagnostic);
     }
 
+    // Infinite-size cycles, attributed to the module that owns the first
+    // member (design/0010 §5).
+    for cycle in crate::recursion::value_cycles(&table) {
+        let first = &cycle[0];
+        let (owner, bare) = first.rsplit_once('.').unwrap_or(("", first.as_str()));
+        let Some(unit_index) = units.iter().position(|u| u.path == owner) else {
+            continue;
+        };
+        let span = units[unit_index]
+            .module
+            .items
+            .iter()
+            .find_map(|item| match &item.kind {
+                ast::ItemKind::Struct(s) if s.name.name == bare => Some(s.name.span),
+                ast::ItemKind::Enum(e) if e.name.name == bare => Some(e.name.span),
+                _ => None,
+            })
+            .unwrap_or(Span::EMPTY);
+        out[unit_index].push(check::infinite_size_diagnostic(&cycle, span));
+    }
+
     // ----- the project's public surface, for the XN2002 use-fix -----
     let mut pub_index: HashMap<String, Vec<String>> = HashMap::new();
     for info in table.defs_iter() {

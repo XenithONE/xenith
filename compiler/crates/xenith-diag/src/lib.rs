@@ -183,6 +183,8 @@ pub enum DiagCode {
     AssignmentToImmutable,
     /// XN3010 — a type does not satisfy a required sealed property.
     PropertyNotSatisfied,
+    /// XN3011 — a struct or enum contains itself by value.
+    InfiniteSizeType,
 
     /// XN4001 — a call performs an effect the enclosing function does not declare.
     EffectNotPermitted,
@@ -246,6 +248,7 @@ impl DiagCode {
         DiagCode::NamedArgumentsRequired,
         DiagCode::AssignmentToImmutable,
         DiagCode::PropertyNotSatisfied,
+        DiagCode::InfiniteSizeType,
         DiagCode::EffectNotPermitted,
         DiagCode::NonExhaustiveMatch,
         DiagCode::InvalidModulePath,
@@ -295,6 +298,7 @@ impl DiagCode {
             DiagCode::NamedArgumentsRequired => "XN3008",
             DiagCode::AssignmentToImmutable => "XN3009",
             DiagCode::PropertyNotSatisfied => "XN3010",
+            DiagCode::InfiniteSizeType => "XN3011",
             DiagCode::EffectNotPermitted => "XN4001",
             DiagCode::NonExhaustiveMatch => "XN5001",
             DiagCode::InvalidModulePath => "XN7001",
@@ -625,6 +629,13 @@ impl DiagCode {
                  from field declaration order changes when fields are reordered. In \
                  both cases, pass an explicit comparison: `sorted_by(compare: ...)`. \
                  What runs is then readable at the call site."
+            }
+            DiagCode::InfiniteSizeType => {
+                "This struct or enum contains itself by value, so no value of                  it could ever be finished.
+
+                 Values are values in Xenith: a struct holds its fields                  directly, an enum holds its payloads directly. A type that                  reaches itself that way — directly, or through a chain of                  other types, across modules or not — would need infinite                  space.
+
+                 The containers break the chain: `Option`, `List` and `Map`                  hold their contents indirectly, so `next: Option<Node>` is                  the ordinary way to write a recursive shape. The message                  names the cycle; put one of them on any link in it."
             }
             DiagCode::EffectNotPermitted => {
                 "This call performs an effect the enclosing function does not \
@@ -1078,6 +1089,7 @@ mod tests {
                 | DiagCode::NamedArgumentsRequired
                 | DiagCode::AssignmentToImmutable
                 | DiagCode::PropertyNotSatisfied
+                | DiagCode::InfiniteSizeType
                 | DiagCode::EffectNotPermitted
                 | DiagCode::NonExhaustiveMatch
                 | DiagCode::InvalidModulePath
@@ -1090,8 +1102,8 @@ mod tests {
                 | DiagCode::CrossModuleAssignment => seen += 1,
             }
         }
-        assert_eq!(seen, 44, "update DiagCode::ALL when adding a variant");
-        assert_eq!(DiagCode::ALL.len(), 44);
+        assert_eq!(seen, 45, "update DiagCode::ALL when adding a variant");
+        assert_eq!(DiagCode::ALL.len(), 45);
     }
 
     #[test]

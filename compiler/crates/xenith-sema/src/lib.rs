@@ -13,6 +13,7 @@ pub mod def;
 mod exhaustive;
 pub mod project;
 pub mod query;
+mod recursion;
 pub mod ty;
 
 pub use candidates::Candidate;

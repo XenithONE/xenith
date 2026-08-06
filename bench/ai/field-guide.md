@@ -7,8 +7,6 @@ Do not import knowledge from Rust — where Xenith differs, this guide says so.
 ## A complete program
 
 ```xenith
-use std.io;
-
 struct Player {
     name: String,
     var score: Int,
@@ -130,6 +128,16 @@ let description = match count {
 variants (`Ok(v)`, `Rank.Gold`, `Shape.Rect(w, h)`), struct patterns
 (`Player { name, score: s }`), alternatives (`Shape.Empty | Shape.Circle(_)`), and guards
 (`n if n > 0`).
+
+## Modules
+
+A file under `src/` is one module when `xenith.toml` marks the project root: `src/game/player.xn`
+is the module `game.player`. A lone file needs neither. `use game.player;` declares a dependency
+on that module — the only form `use` takes — and items are then referenced fully qualified
+(`game.player.Player`), never imported or aliased. Top-level items are private to their module
+unless declared `pub`. A `pub` struct can be constructed, read and matched from outside, but its
+fields cannot be assigned across the boundary — mutation goes through the owning module's `pub`
+functions. An unused `use` is an error.
 
 ## Types and the prelude
 

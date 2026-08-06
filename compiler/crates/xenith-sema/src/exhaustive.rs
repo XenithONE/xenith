@@ -68,6 +68,25 @@ fn witness<'p>(
         expand_first(row, &mut expanded);
     }
 
+    // The walk is bounded by the patterns, not the types — otherwise a
+    // recursive shape behind `Option` would send it down forever. No rows:
+    // the first value of every column is a witness. Rows that all ignore
+    // the column: no constructor distinguishes them, so the column is `_`.
+    if expanded.is_empty() {
+        let mut found = vec![sample(defs, head, &mut Vec::new())];
+        found.extend(rest.iter().map(|ty| sample(defs, ty, &mut Vec::new())));
+        return Some(found);
+    }
+    if expanded
+        .iter()
+        .all(|row| is_wildcard_like(row[0], head, defs))
+    {
+        let specialized = expanded.iter().map(|row| row[1..].to_vec()).collect();
+        let mut found = witness(defs, rest, specialized)?;
+        found.insert(0, "_".to_string());
+        return Some(found);
+    }
+
     match head {
         // Poison never witnesses a gap: treat the column as covered by
         // every row, and blame nothing here.
@@ -225,6 +244,71 @@ fn witness<'p>(
         // Int, Float, String, Char, type parameters, function values: no
         // literal set enumerates them, so only `_` or a binding covers.
         _ => non_enumerable(defs, head, rest, &expanded),
+    }
+}
+
+/// The first value of a type, rendered in source syntax — what an empty
+/// row set is missing. Recursive shapes are cut at `_` by the visited set,
+/// which is what keeps this finite where the pattern space is not.
+fn sample(defs: &DefTable, ty: &Type, visited: &mut Vec<crate::ty::DefId>) -> String {
+    match ty {
+        Type::Bool => "true".to_string(),
+        Type::Unit => "unit".to_string(),
+        Type::Named { def, args } if !visited.contains(def) => {
+            let info = defs.def(*def);
+            let bindings: Vec<(String, Type)> = info
+                .generics
+                .iter()
+                .cloned()
+                .zip(args.iter().cloned())
+                .collect();
+            match &defs.def(*def).kind {
+                DefKind::Enum { variants } => {
+                    let Some(variant) = variants.first() else {
+                        return "_".to_string();
+                    };
+                    let shown = if *def == defs.option || *def == defs.result {
+                        variant.name.clone()
+                    } else {
+                        format!("{}.{}", info.name, variant.name)
+                    };
+                    if variant.payload.is_empty() {
+                        shown
+                    } else {
+                        visited.push(*def);
+                        let parts: Vec<String> = variant
+                            .payload
+                            .iter()
+                            .map(|p| sample(defs, &p.substitute(&bindings), visited))
+                            .collect();
+                        visited.pop();
+                        format!("{shown}({})", parts.join(", "))
+                    }
+                }
+                DefKind::Struct { fields } => {
+                    visited.push(*def);
+                    let interesting: Vec<String> = fields
+                        .iter()
+                        .map(|field| {
+                            (
+                                field.name.clone(),
+                                sample(defs, &field.ty.substitute(&bindings), visited),
+                            )
+                        })
+                        .filter(|(_, value)| value != "_")
+                        .map(|(name, value)| format!("{name}: {value}"))
+                        .collect();
+                    visited.pop();
+                    if interesting.is_empty() {
+                        format!("{} {{ }}", info.name)
+                    } else {
+                        format!("{} {{ {} }}", info.name, interesting.join(", "))
+                    }
+                }
+                DefKind::Opaque => "_".to_string(),
+            }
+        }
+        _ => "_".to_string(),
     }
 }
 

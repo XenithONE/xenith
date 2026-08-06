@@ -1,0 +1,10 @@
+// The smallest multi-module project: `xenith.toml` marks the root, every
+// file under `src/` is a module, and `use` declares this file's exact
+// dependency list.
+
+use greet;
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    io.write(text: greet.entry(name: "ada"))?;
+    return Ok(unit);
+}

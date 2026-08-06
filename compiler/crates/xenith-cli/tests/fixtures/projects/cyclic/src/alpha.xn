@@ -1,0 +1,13 @@
+use beta;
+
+pub struct Alpha {
+    label: String,
+    next: Option<beta.Beta>,
+}
+
+pub fn depth(a: Alpha) -> Int {
+    match a.next {
+        Some(b) => 1 + beta.deeper(b: b),
+        None => 1,
+    }
+}

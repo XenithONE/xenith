@@ -80,7 +80,7 @@ jobs:
         run: cargo run --manifest-path compiler/Cargo.toml -p xenith -- check examples/*.xn
 
       - name: Formatted
-        run: cargo run --manifest-path compiler/Cargo.toml -p xenith -- fmt --check examples/*.xn
+        run: cargo run --manifest-path compiler/Cargo.toml -p xenith -- fmt --check examples/*.xn examples/guestbook/src/*.xn
 
       # The README shows this exact output; if it drifts, the documentation
       # is teaching an interface that no longer exists.
@@ -96,6 +96,14 @@ jobs:
         run: |
           cargo run --manifest-path compiler/Cargo.toml -p xenith -- run examples/hello.xn | tee /tmp/run.txt
           grep -q "Hello, world" /tmp/run.txt
+
+      # The multi-module example goes through the whole pipe: manifest
+      # discovery, indexing, cross-module resolution, and the interpreter.
+      - name: Guestbook (multi-module)
+        run: |
+          cargo run --manifest-path compiler/Cargo.toml -p xenith -- check examples/guestbook/src/main.xn
+          cargo run --manifest-path compiler/Cargo.toml -p xenith -- run examples/guestbook/src/main.xn | tee /tmp/guestbook.txt
+          grep -q "guestbook: ada" /tmp/guestbook.txt
 
       # Every benchmark task's reference solution must check, run, and print
       # its expected output. Measuring models against broken tasks lies.

@@ -67,6 +67,23 @@ pub fn analyze(module: &ast::Module) -> Analysis {
 /// query is just a hole the author did not have to write.
 pub fn analyze_at(module: &ast::Module, offset: Option<u32>) -> (Analysis, Option<Probe>) {
     let (table, mut diagnostics) = def::collect(module);
+
+    // A type that contains itself by value has no size; refuse it before
+    // any body pretends otherwise (design/0010 §5).
+    for cycle in crate::recursion::value_cycles(&table) {
+        let first = &cycle[0];
+        let span = module
+            .items
+            .iter()
+            .find_map(|item| match &item.kind {
+                ast::ItemKind::Struct(s) if s.name.name == *first => Some(s.name.span),
+                ast::ItemKind::Enum(e) if e.name.name == *first => Some(e.name.span),
+                _ => None,
+            })
+            .unwrap_or(Span::EMPTY);
+        diagnostics.push(infinite_size_diagnostic(&cycle, span));
+    }
+
     let mut goals = Vec::new();
     let mut next_hole = 0u32;
     let mut probe = None;
@@ -210,6 +227,23 @@ impl ModuleCtx {
             ),
         }
     }
+}
+
+/// XN3011, spelled the same in single-file and project mode: the cycle in
+/// order, closed back on its first member.
+pub(crate) fn infinite_size_diagnostic(cycle: &[String], span: Span) -> Diagnostic {
+    let first = &cycle[0];
+    let mut chain = cycle.to_vec();
+    chain.push(first.clone());
+    Diagnostic::error(
+        DiagCode::InfiniteSizeType,
+        span,
+        format!(
+            "`{first}` contains itself by value ({}); box a link in the cycle \
+             behind `Option`, `List` or `Map`",
+            chain.join(" -> ")
+        ),
+    )
 }
 
 /// What a dotted chain of names turned out to be, once the module set had
@@ -584,6 +618,19 @@ impl<'a> Checker<'a> {
         self.defs.fn_named(bare).map(|_| bare.to_string())
     }
 
+    /// A function key as this module spells it: its own items bare,
+    /// everything else fully qualified.
+    fn display_fn(&self, key: &str) -> String {
+        if let Some(ctx) = self.ctx {
+            if !ctx.prefix.is_empty() {
+                if let Some(bare) = key.strip_prefix(&format!("{}.", ctx.prefix)) {
+                    return bare.to_string();
+                }
+            }
+        }
+        key.to_string()
+    }
+
     /// The dotted names of a pure field chain (`game.player.Player`), for
     /// module-path resolution. Anything not name-shaped answers `None`.
     fn expr_segments(expr: &ast::Expr) -> Option<Vec<String>> {
@@ -773,13 +820,11 @@ impl<'a> Checker<'a> {
             return;
         }
         let listed = missing.join(", ");
+        let shown = self.display_fn(&self.sig.name);
         let mut diagnostic = Diagnostic::error(
             DiagCode::EffectNotPermitted,
             span,
-            format!(
-                "this call uses {{{listed}}}, which `{}` does not declare",
-                self.sig.name
-            ),
+            format!("this call uses {{{listed}}}, which `{shown}` does not declare"),
         );
         let addition = missing.join(", ");
         let fix = match self.sig.uses_insertion {
@@ -1031,6 +1076,30 @@ impl<'a> Checker<'a> {
                     }
                 }
             },
+
+            // A bare unit variant takes its enum's arguments from the expected
+            // type, exactly as constructor calls do: `let o: Option<Int> =
+            // None;` needs no further annotation.
+            ast::ExprKind::Path(path) => {
+                if let [single] = path.segments.as_slice() {
+                    if self.lookup(&single.name).is_none() {
+                        if let Some((def, variant)) = self.defs.unqualified_variant(&single.name) {
+                            if variant.payload.is_empty() {
+                                if let Type::Named {
+                                    def: expected_def, ..
+                                } = expected
+                                {
+                                    if *expected_def == def {
+                                        return;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                let found = self.synth(expr);
+                self.require_compatible(&found, expected, expr.span);
+            }
 
             // Constructors gain their type parameters from the expected type:
             // `check(Ok(x), Result<Player, ScoreError>)` binds T and E with no
@@ -1991,6 +2060,7 @@ impl<'a> Checker<'a> {
         span: Span,
     ) -> Type {
         let sig = self.defs.fn_named(name).expect("checked by caller");
+        let shown = self.display_fn(name);
         let param_names: Vec<String> = sig.params.iter().map(|(n, _)| n.clone()).collect();
         let param_types: Vec<Type> = sig.params.iter().map(|(_, t)| t.clone()).collect();
         let ret = sig.ret.clone();
@@ -2018,14 +2088,14 @@ impl<'a> Checker<'a> {
         let teach = Some(Teach::call_signature(
             String::new(),
             TeachItem::new(
-                name,
-                self.signature_text(name, &param_names, &param_types, &ret, &effects),
+                shown.clone(),
+                self.signature_text(&shown, &param_names, &param_types, &ret, &effects),
             ),
         ));
 
         self.check_args(
             Callee {
-                name,
+                name: &shown,
                 param_names: &param_names,
                 param_types: &param_types,
                 teach,
@@ -2039,7 +2109,7 @@ impl<'a> Checker<'a> {
         for generic in &generics {
             if !bindings.iter().any(|(n, _)| *n == generic.name) {
                 let message = format!(
-                    "cannot determine `{}` for this call to `{name}`; \
+                    "cannot determine `{}` for this call to `{shown}`; \
                      annotate the surrounding binding",
                     generic.name
                 );
@@ -2056,7 +2126,7 @@ impl<'a> Checker<'a> {
             for &bound in &generic.bounds {
                 if !self.defs.has_property(concrete, bound, &self.sig.generics) {
                     let message = format!(
-                        "`{name}` requires `{}: {}`, but `{}` does not satisfy it",
+                        "`{shown}` requires `{}: {}`, but `{}` does not satisfy it",
                         generic.name,
                         bound.name(),
                         self.render(concrete)

@@ -662,6 +662,99 @@ fn effects_propagate_through_user_functions() {
     assert_eq!(codes, ["XN4001"]);
 }
 
+// ---------------------------------------------------------- infinite sizes
+
+#[test]
+fn a_struct_containing_itself_by_value_is_refused() {
+    let found = diagnostics_of(
+        "struct A {
+    a: A,
+}",
+    );
+    let (code, message) = &found[0];
+    assert_eq!(code, "XN3011");
+    assert!(message.contains("contains itself by value"), "{message}");
+}
+
+#[test]
+fn an_enum_holding_itself_by_payload_is_refused() {
+    assert_eq!(
+        codes_of(
+            "enum E {
+    Leaf,
+    More(E),
+}"
+        ),
+        ["XN3011"]
+    );
+}
+
+#[test]
+fn indirection_through_a_container_is_finite() {
+    expect_clean(
+        "struct Node {
+    next: Option<Node>,
+}",
+    );
+    expect_clean(
+        "struct Tree {
+    kids: List<Tree>,
+}",
+    );
+}
+
+#[test]
+fn a_generic_wrapper_is_judged_by_how_it_holds_its_parameter() {
+    // `B` holds `T` directly, so `B<A>` holds `A` by value — infinite.
+    assert_eq!(
+        codes_of(
+            "struct B<T> {
+    t: T,
+}
+
+struct A {
+    x: B<A>,
+}"
+        ),
+        ["XN3011"]
+    );
+    // `C` holds `T` behind `Option`, so `C<A>` is a finite wrapper.
+    expect_clean(
+        "struct C<T> {
+    t: Option<T>,
+}
+
+struct A {
+    x: C<A>,
+}",
+    );
+}
+
+#[test]
+fn a_mutual_cycle_names_the_chain() {
+    let found = diagnostics_of(
+        "struct A {
+    b: B,
+}
+
+struct B {
+    a: A,
+}",
+    );
+    assert_eq!(found.len(), 1, "one cycle, one diagnostic: {found:#?}");
+    assert!(found[0].1.contains("A -> B -> A"), "{}", found[0].1);
+}
+
+// -------------------------------------------------------------- bare variants
+
+#[test]
+fn none_in_check_position_takes_the_expected_type() {
+    expect_clean("fn f() -> Option<Int> { None }");
+    expect_clean("fn f() -> Int { let o: Option<Int> = None; 1 }");
+    // With nothing pushed down it still fails closed (0006 §1-1).
+    assert_eq!(codes_of("fn f() -> Int { let o = None; 1 }"), ["XN3005"]);
+}
+
 // ------------------------------------------------------- unshipped constructs
 
 #[test]

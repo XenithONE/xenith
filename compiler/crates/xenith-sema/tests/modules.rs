@@ -305,6 +305,102 @@ fn the_use_fix_inserts_in_dictionary_order_among_existing_uses() {
     assert_eq!(fix.edits[0].span.start, 0, "before `use zoo;`");
 }
 
+// -------------------------------------------------------------------- cycles
+
+#[test]
+fn import_cycles_between_modules_check_cleanly() {
+    // Xenith has no module initialisers, so mutual `use` carries no
+    // execution-order question (design/0010 §5).
+    let found = analyze(&[
+        (
+            "alpha",
+            "use beta;
+
+pub struct Alpha {
+    next: Option<beta.Beta>,
+}
+
+             pub fn depth(a: Alpha) -> Int {
+    match a.next {
+                     Some(b) => 1 + beta.deeper(b: b),
+        None => 1,
+    }
+}
+",
+        ),
+        (
+            "beta",
+            "use alpha;
+
+pub struct Beta {
+    next: Option<alpha.Alpha>,
+}
+
+             pub fn deeper(b: Beta) -> Int {
+    match b.next {
+                     Some(a) => 1 + alpha.depth(a: a),
+        None => 1,
+    }
+}
+",
+        ),
+    ]);
+    assert!(found.iter().all(|per| per.is_empty()), "{found:#?}");
+}
+
+#[test]
+fn a_value_cycle_across_modules_is_refused() {
+    let found = analyze(&[
+        (
+            "alpha",
+            "use beta;
+
+pub struct Alpha {
+    b: beta.Beta,
+}
+",
+        ),
+        (
+            "beta",
+            "use alpha;
+
+pub struct Beta {
+    a: alpha.Alpha,
+}
+",
+        ),
+    ]);
+    let (code, message) = &found[0][0];
+    assert_eq!(code, "XN3011");
+    assert!(
+        message.contains("alpha.Alpha -> beta.Beta -> alpha.Alpha"),
+        "{message}"
+    );
+    assert!(found[1].is_empty(), "one cycle, one diagnostic: {found:#?}");
+}
+
+#[test]
+fn own_functions_render_bare_in_arity_errors() {
+    let found = analyze(&[(
+        "game.util",
+        "fn helper(a: Int, b: Int) -> Int {
+    a + b
+}
+
+         pub fn caller() -> Int {
+    helper(1)
+}
+",
+    )]);
+    let (code, message) = &found[0][0];
+    assert_eq!(code, "XN3002");
+    assert!(
+        message.contains("`helper` takes"),
+        "own names stay bare: {message}"
+    );
+    assert!(!message.contains("game.util.helper"), "{message}");
+}
+
 // ------------------------------------------------------------- entry + misc
 
 #[test]

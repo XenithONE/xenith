@@ -186,6 +186,24 @@ impl DefTable {
         self.defs.iter()
     }
 
+    pub fn def_ids(&self) -> impl Iterator<Item = DefId> + use<> {
+        (0..self.defs.len() as u32).map(DefId)
+    }
+
+    /// Prelude types hold their contents indirectly, so they are the walls
+    /// the value-size rule stops at (design/0010 §5) and never part of a
+    /// user cycle.
+    pub fn is_prelude_def(&self, def: DefId) -> bool {
+        def == self.list
+            || def == self.option
+            || def == self.result
+            || def == self.map
+            || def == self.shared
+            || def == self.task
+            || self.lookup("Io") == Some(def)
+            || self.lookup("Error") == Some(def)
+    }
+
     pub fn fn_named(&self, name: &str) -> Option<&FnSig> {
         self.fn_by_name.get(name).map(|&i| &self.fns[i])
     }
