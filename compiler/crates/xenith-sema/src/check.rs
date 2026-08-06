@@ -1009,11 +1009,18 @@ impl<'a> Checker<'a> {
             return Type::Error;
         }
 
-        self.error(
-            DiagCode::UnknownName,
-            span,
-            format!("nothing named `{name}` is in scope"),
-        );
+        let mut message = format!("nothing named `{name}` is in scope");
+        // Bindings and functions are the names a typo could have meant;
+        // prelude functions ride along because they live in `defs.fns` too.
+        let candidates = self
+            .scopes
+            .iter()
+            .flat_map(|scope| scope.iter().map(|binding| binding.name.clone()))
+            .chain(self.defs.fns.iter().map(|f| f.name.clone()));
+        if let Some(meant) = did_you_mean(name, candidates) {
+            message.push_str(&format!("; did you mean `{meant}`?"));
+        }
+        self.error(DiagCode::UnknownName, span, message);
         Type::Error
     }
 
@@ -1753,11 +1760,16 @@ impl<'a> Checker<'a> {
 
         let methods = self.defs.methods_of(&receiver_ty);
         let Some(found) = methods.iter().find(|m| m.name == method.name) else {
-            let message = format!(
+            let mut message = format!(
                 "`{}` has no method named `{}`",
                 self.render(&receiver_ty),
                 method.name
             );
+            if let Some(meant) =
+                did_you_mean(&method.name, methods.iter().map(|m| m.name.to_string()))
+            {
+                message.push_str(&format!("; did you mean `{meant}`?"));
+            }
             let mut diagnostic = Diagnostic::error(DiagCode::UnknownMethod, method.span, message);
             // The receiver's catalogue is the measured payload (0009 §6
             // step 0: XN2003 dominates unrepaired failures). An empty
@@ -2235,6 +2247,67 @@ impl<'a> Checker<'a> {
             }
         }
     }
+}
+
+/// The unique nearest name within two edits of `written`, or nothing.
+///
+/// A tie is silence: suggesting one of two equally close names is a coin
+/// toss presented as knowledge (design/0009 §3, the cursor minimal form).
+/// Duplicate candidates collapse first so a name shadowed in two scopes
+/// cannot tie with itself.
+fn did_you_mean<I>(written: &str, candidates: I) -> Option<String>
+where
+    I: IntoIterator<Item = String>,
+{
+    let mut seen: Vec<String> = Vec::new();
+    let mut best: Option<(usize, String)> = None;
+    let mut tied = false;
+    for candidate in candidates {
+        if seen.contains(&candidate) {
+            continue;
+        }
+        seen.push(candidate.clone());
+        let distance = edit_distance(written, &candidate);
+        match &best {
+            Some((held, _)) if distance > *held => {}
+            Some((held, _)) if distance == *held => tied = true,
+            _ => {
+                best = Some((distance, candidate));
+                tied = false;
+            }
+        }
+    }
+    match best {
+        Some((distance, name)) if distance <= 2 && !tied => Some(name),
+        _ => None,
+    }
+}
+
+/// Restricted Damerau-Levenshtein (optimal string alignment): insert,
+/// delete, substitute, and adjacent transposition each cost one. Counted in
+/// characters, case not folded — the naming rules make case meaningful.
+fn edit_distance(a: &str, b: &str) -> usize {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+    // Three rolling rows; the row before last is what prices transposition.
+    let mut before_prev: Vec<usize> = vec![0; b.len() + 1];
+    let mut prev: Vec<usize> = (0..=b.len()).collect();
+    let mut current: Vec<usize> = vec![0; b.len() + 1];
+    for i in 1..=a.len() {
+        current[0] = i;
+        for j in 1..=b.len() {
+            let cost = usize::from(a[i - 1] != b[j - 1]);
+            current[j] = (prev[j] + 1)
+                .min(current[j - 1] + 1)
+                .min(prev[j - 1] + cost);
+            if i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1] {
+                current[j] = current[j].min(before_prev[j - 2] + 1);
+            }
+        }
+        std::mem::swap(&mut before_prev, &mut prev);
+        std::mem::swap(&mut prev, &mut current);
+    }
+    prev[b.len()]
 }
 
 /// A type with no unbound `Type::Param` left in it.

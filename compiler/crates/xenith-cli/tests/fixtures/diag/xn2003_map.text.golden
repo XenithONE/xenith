@@ -1,4 +1,4 @@
-tests/fixtures/diag/xn2003_map.xn:2:7: error[XN2003]: `Map<String, Int>` has no method named `set`
+tests/fixtures/diag/xn2003_map.xn:2:7: error[XN2003]: `Map<String, Int>` has no method named `set`; did you mean `get`?
 2 |     m.set(key: "a", value: 1);
   |       ^^^
   run `xenith explain XN2003` for the rule

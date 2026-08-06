@@ -5,7 +5,7 @@
         "code": "XN2003",
         "column": 7,
         "line": 2,
-        "message": "`Map<String, Int>` has no method named `set`",
+        "message": "`Map<String, Int>` has no method named `set`; did you mean `get`?",
         "severity": "error",
         "span": {
           "end": 44,

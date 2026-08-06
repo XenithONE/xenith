@@ -407,7 +407,10 @@ impl DiagCode {
                  unqualified.\n\n\
                  If the value does not exist yet, write a hole: `??name`. The \
                  compiler will report what type is required there and what is in \
-                 scope to build it from."
+                 scope to build it from.\n\n\
+                 When exactly one known name sits within two edits of what was \
+                 written, the message suggests it; a tie between equally close \
+                 names suggests nothing."
             }
             DiagCode::UnknownMethod => {
                 "The receiver's type has no method of this name.\n\n\
@@ -415,7 +418,10 @@ impl DiagCode {
                  currently provided by the language, not declared by user code, so a \
                  misspelling is the usual cause — the naming rules make the correct \
                  spelling guessable: `to_` converts totally, `try_` returns `Result`, \
-                 `is_`/`has_` return `Bool`, `checked_` returns `Option`."
+                 `is_`/`has_` return `Bool`, `checked_` returns `Option`.\n\n\
+                 When exactly one of the receiver's methods sits within two edits \
+                 of what was written, the message suggests it; a tie between \
+                 equally close names suggests nothing."
             }
             DiagCode::UnknownField => {
                 "The type has no field of this name.\n\n\

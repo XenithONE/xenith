@@ -949,6 +949,75 @@ fn a_receiver_with_no_methods_teaches_nothing() {
     );
 }
 
+// -------------------------------------------------------------- did-you-mean
+
+#[test]
+fn a_one_edit_method_typo_gets_a_did_you_mean() {
+    let found = diagnostics_of("fn f(xs: List<Int>) -> Unit { xs.pussh(item: 2) }");
+    assert!(
+        found[0].1.ends_with("; did you mean `push`?"),
+        "{}",
+        found[0].1
+    );
+    let found = diagnostics_of("fn f(xs: List<Int>) -> Int { xs.lenn() }");
+    assert!(
+        found[0].1.ends_with("; did you mean `len`?"),
+        "{}",
+        found[0].1
+    );
+    let found = diagnostics_of("fn f(m: Map<String, Int>) -> Bool { m.has_keys(key: \"a\") }");
+    assert!(
+        found[0].1.ends_with("; did you mean `has_key`?"),
+        "{}",
+        found[0].1
+    );
+}
+
+#[test]
+fn a_distant_method_name_suggests_nothing() {
+    let found = diagnostics_of("fn f(xs: List<Int>) -> Int { xs.size() }");
+    assert_eq!(found[0].1, "`List<Int>` has no method named `size`");
+}
+
+#[test]
+fn a_method_tie_suggests_nothing() {
+    // `gen` is one edit from both `get` and `len`; a coin toss is not a
+    // suggestion.
+    let found = diagnostics_of("fn f(xs: List<Int>) -> Int { xs.gen() }");
+    assert_eq!(found[0].1, "`List<Int>` has no method named `gen`");
+}
+
+#[test]
+fn a_transposed_binding_gets_a_did_you_mean() {
+    // A transposition costs one — Damerau, not plain Levenshtein.
+    let found = diagnostics_of("fn f() -> Int { let count = 1; cuont }");
+    assert_eq!(found[0].0, "XN2002");
+    assert!(
+        found[0].1.ends_with("; did you mean `count`?"),
+        "{}",
+        found[0].1
+    );
+}
+
+#[test]
+fn a_misspelled_function_gets_a_did_you_mean() {
+    let found = diagnostics_of(
+        "fn double(n: Int) -> Int { n + n }\n\
+         fn g() -> Int { doubel(3) }",
+    );
+    assert!(
+        found[0].1.ends_with("; did you mean `double`?"),
+        "{}",
+        found[0].1
+    );
+}
+
+#[test]
+fn a_binding_tie_suggests_nothing() {
+    let found = diagnostics_of("fn f(rate: Int, late: Int) -> Int { gate }");
+    assert_eq!(found[0].1, "nothing named `gate` is in scope");
+}
+
 // --------------------------------------------------------------------- holes
 
 #[test]
