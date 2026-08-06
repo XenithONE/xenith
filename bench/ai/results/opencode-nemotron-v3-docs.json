@@ -1,0 +1,121 @@
+{
+  "condition": "v3-docs",
+  "model": "opencode-nemotron",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN3001"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-01-opencode-nemotron-v3-docs-r1.xn:19:9: error[XN3001]: `?` on an `Option` needs `main` to return `Option<_>`; it returns `Result<Unit, Error>`\n19 |         counts.insert(key: word, value: new_count)?;\n   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN3001` for the rule\n",
+          "outcome": "diagnostics",
+          "seconds": 139.7
+        },
+        {
+          "attempt": 2,
+          "diag_codes": [],
+          "feedback_text": "The program compiled and ran, but printed \"102\" where \"and:2,bird:1,cat:1,dog:1,the:3\" was required.",
+          "outcome": "wrong output",
+          "seconds": 37.8
+        },
+        {
+          "attempt": 3,
+          "outcome": "pass",
+          "seconds": 26.1
+        }
+      ],
+      "task": "t4-01",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 79.2
+        }
+      ],
+      "task": "t4-02",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "model error: no reply within 240s",
+          "seconds": 241.0
+        }
+      ],
+      "task": "t4-03",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 109.9
+        }
+      ],
+      "task": "t4-04",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 82.7
+        }
+      ],
+      "task": "t4-05",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "empty reply",
+          "seconds": 10.0
+        },
+        {
+          "attempt": 2,
+          "diag_codes": [
+            "XN3001"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-06-opencode-nemotron-v3-docs-r2.xn:5:5: error[XN3001]: `?` on an `Option` needs `main` to return `Option<_>`; it returns `Result<Unit, Error>`\n5 |     forward.insert(key: \"red\", value: 1)?;\n  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN3001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-06-opencode-nemotron-v3-docs-r2.xn:6:5: error[XN3001]: `?` on an `Option` needs `main` to return `Option<_>`; it returns `Result<Unit, Error>`\n6 |     forward.insert(key: \"green\", value: 2)?;\n  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN3001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-06-opencode-nemotron-v3-docs-r2.xn:7:5: error[XN3001]: `?` on an `Option` needs `main` to return `Option<_>`; it returns `Result<Unit, Error>`\n7 |     forward.insert(key: \"blue\", value: 1)?;\n  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN3001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-06-opencode-nemotron-v3-docs-r2.xn:8:5: error[XN3001]: `?` on an `Option` needs `main` to return `Option<_>`; it returns `Result<Unit, Error>`\n8 |     forward.insert(key: \"gray\", value: 3)?;\n  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN3001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-06-opencode-nemotron-v3-docs-r2.xn:14:19: error[XN3001]: `?` on an `Option` needs `main` to return `Option<_>`; it returns `Result<Unit, Error>`\n14 |         let key = keys.get(index: i)?;\n   |                   ^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN3001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-06-opencode-nemotron-v3-docs-r2.xn:15:21: error[XN3001]: `?` on an `Option` needs `main` to return `Option<_>`; it returns `Result<Unit, Error>`\n15 |         let value = forward.get(key: key)?;\n   |                     ^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN3001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-06-opencode-nemotron-v3-docs-r2.xn:17:13: error[XN3001]: `?` on an `Option` needs `main` to return `Option<_>`; it returns `Result<Unit, Error>`\n17 |             reverse.insert(key: value, value: key)?;\n   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN3001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-06-opencode-nemotron-v3-docs-r2.xn:29:23: error[XN3001]: `?` on an `Option` needs `main` to return `Option<_>`; it returns `Result<Unit, Error>`\n29 |         let int_key = sorted_keys.get(index: j)?;\n   |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN3001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-06-opencode-nemotron-v3-docs-r2.xn:30:26: error[XN3001]: `?` on an `Option` needs `main` to return `Option<_>`; it returns `Result<Unit, Error>`\n30 |         let text_value = reverse.get(key: int_key)?;\n   |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN3001` for the rule\n",
+          "outcome": "diagnostics",
+          "seconds": 61.6
+        },
+        {
+          "attempt": 3,
+          "outcome": "pass",
+          "seconds": 22.1
+        }
+      ],
+      "task": "t4-06",
+      "tier": 4
+    }
+  ],
+  "totals": {
+    "pass_at_1": 3,
+    "passed": 5,
+    "tasks": 6
+  },
+  "unix_time": 1786016390
+}

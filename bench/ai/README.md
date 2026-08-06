@@ -187,6 +187,30 @@ one caveat:
 Caveat: the compiler changed between runs (XN1008/XN5001 landed), so v1↔v2 comparisons carry
 that confound; comparisons *between arms within v2* do not.
 
+## The teaching experiment (0009 v3, exploratory)
+
+Seven models × the four v3 arms × the six frozen tasks — 168 runs. Totals (pass@1 · green
+of 42): `v3-plain` 24 · 34, `v3-teach` 24 · **40**, `v3-docs` 33 · 41, `v3-docs-teach` 30 · 41.
+Three readings:
+
+1. **The sanity check holds exactly: pass@1 is 24 = 24 across the teaching factor.** Teaching
+   lives in post-failure feedback and cannot touch the first attempt — and it didn't, to the
+   point. This is what a clean design looks like, and it is also 0009 §1's admission made
+   visible: the north star did not move.
+2. **Teaching lifts final green from 34 to 40 of 42 with no documentation at all** — nearly
+   matching the docs arm's 41. The weakest models gain the most (nemotron 1/6 → 4/6,
+   deepseek 4/6 → 6/6 green). Where the hole channel spoke in 4–5% of failure rounds across
+   two experiments, **teaches fired in 19 of 31** — because XN2003 and the argument-shape
+   family are the errors models actually make. Delivery at the diagnostic works; delivery at
+   the hole never did.
+3. **Docs and teaching are substitutes on final success** (41 = 41 green with docs, with or
+   without teaching): once the table is in context, the catalogue in the diagnostic answers a
+   question already answered. The practical reading for real projects: past the context
+   budget, the compiler can carry what the guide cannot.
+
+Exploratory per 0007 §5-5; per-round feedback and diagnostic codes are recorded in the result
+files for deeper consumption analysis.
+
 ## Two measurement bugs, caught and fixed
 
 Recorded here because the numbers only mean something if the instrument is honest.

@@ -1,0 +1,118 @@
+{
+  "condition": "v3-docs-teach",
+  "model": "grok",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 66.6
+        }
+      ],
+      "task": "t4-01",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 64.9
+        }
+      ],
+      "task": "t4-02",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 69.1
+        }
+      ],
+      "task": "t4-03",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN1004"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-04-grok-v3-docs-teach-r1.xn:19:6: error[XN1004]: expected an expression, found `;`\n19 |     };\n   |      ^\n  run `xenith explain XN1004` for the rule\n",
+          "outcome": "diagnostics",
+          "seconds": 64.9
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 77.6
+        }
+      ],
+      "task": "t4-04",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN1004"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-05-grok-v3-docs-teach-r1.xn:30:6: error[XN1004]: expected an expression, found `;`\n30 |     };\n   |      ^\n  run `xenith explain XN1004` for the rule\n",
+          "outcome": "diagnostics",
+          "seconds": 119.3
+        },
+        {
+          "attempt": 2,
+          "diag_codes": [
+            "XN1004"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-05-grok-v3-docs-teach-r2.xn:30:6: error[XN1004]: expected an expression, found `;`\n30 |     };\n   |      ^\n  run `xenith explain XN1004` for the rule\n",
+          "outcome": "diagnostics",
+          "seconds": 70.2
+        },
+        {
+          "attempt": 3,
+          "outcome": "pass",
+          "seconds": 146.9
+        }
+      ],
+      "task": "t4-05",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 109.5
+        }
+      ],
+      "task": "t4-06",
+      "tier": 4
+    }
+  ],
+  "totals": {
+    "pass_at_1": 4,
+    "passed": 6,
+    "tasks": 6
+  },
+  "unix_time": 1786015642
+}

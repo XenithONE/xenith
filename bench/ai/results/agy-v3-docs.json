@@ -1,0 +1,105 @@
+{
+  "condition": "v3-docs",
+  "model": "agy",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 14.6
+        }
+      ],
+      "task": "t4-01",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 16.6
+        }
+      ],
+      "task": "t4-02",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 21.2
+        }
+      ],
+      "task": "t4-03",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [],
+          "feedback_text": "The program compiled and ran, but printed \"102\" where \"apple,fig,pear\" was required.",
+          "outcome": "wrong output",
+          "seconds": 25.2
+        },
+        {
+          "attempt": 2,
+          "diag_codes": [],
+          "feedback_text": "The program compiled and ran, but printed \"2:ox|3:cat,owl,bee|4:deer\" where \"apple,fig,pear\" was required.",
+          "outcome": "wrong output",
+          "seconds": 21.8
+        },
+        {
+          "attempt": 3,
+          "outcome": "pass",
+          "seconds": 15.2
+        }
+      ],
+      "task": "t4-04",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 16.7
+        }
+      ],
+      "task": "t4-05",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 22.6
+        }
+      ],
+      "task": "t4-06",
+      "tier": 4
+    }
+  ],
+  "totals": {
+    "pass_at_1": 5,
+    "passed": 6,
+    "tasks": 6
+  },
+  "unix_time": 1786014202
+}

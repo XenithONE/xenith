@@ -1,0 +1,131 @@
+{
+  "condition": "v3-plain",
+  "model": "grok",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [],
+          "feedback_text": "The program compiled and ran, but printed \"and:2,bird:1,cat:1,dog:1,the:2\" where \"and:2,bird:1,cat:1,dog:1,the:3\" was required.",
+          "outcome": "wrong output",
+          "seconds": 66.9
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 85.6
+        }
+      ],
+      "task": "t4-01",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN1007",
+            "XN0005",
+            "XN1008",
+            "XN0001"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-02-grok-v3-plain-r1.xn:1:1: error[XN1007]: expected a declaration, found identifier\n1 | I'll write a complete Xenith program from the field guide: split the fixed input on commas, trim each piece, parse integers, skip invalid ones, and print the sum.```xenith\n  | ^\n  run `xenith explain XN1007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-02-grok-v3-plain-r1.xn:1:2: error[XN0005]: unterminated character literal\n1 | I'll write a complete Xenith program from the field guide: split the fixed input on commas, trim each piece, parse integers, skip invalid ones, and print the sum.```xenith\n  |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN0005` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-02-grok-v3-plain-r1.xn:8:5: error[XN1008]: `for` is not part of the language yet — iterate with `while` + `len()` + `get(index:)`\n8 |     for part in parts {\n  |     ^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN1008` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-02-grok-v3-plain-r1.xn:21:1: error[XN0001]: ``` cannot start a token\n21 | ```\n   | ^\n  run `xenith explain XN0001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-02-grok-v3-plain-r1.xn:21:1: error[XN1007]: expected a declaration, found unrecognised character\n21 | ```\n   | ^\n  run `xenith explain XN1007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-02-grok-v3-plain-r1.xn:21:2: error[XN0001]: ``` cannot start a token\n21 | ```\n   |  ^\n  run `xenith explain XN0001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-02-grok-v3-plain-r1.xn:21:3: error[XN0001]: ``` cannot start a token\n21 | ```\n   |   ^\n  run `xenith explain XN0001` for the rule\n",
+          "outcome": "diagnostics",
+          "seconds": 82.9
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 101.2
+        }
+      ],
+      "task": "t4-02",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN1004"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-grok-v3-plain-r1.xn:28:22: error[XN1004]: expected an expression, found `;`\n28 |                     };\n   |                      ^\n  run `xenith explain XN1004` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-grok-v3-plain-r1.xn:33:10: error[XN1004]: expected an expression, found `;`\n33 |         };\n   |          ^\n  run `xenith explain XN1004` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-grok-v3-plain-r1.xn:35:6: error[XN1004]: expected an expression, found `;`\n35 |     };\n   |      ^\n  run `xenith explain XN1004` for the rule\n",
+          "outcome": "diagnostics",
+          "seconds": 46.8
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 32.4
+        }
+      ],
+      "task": "t4-03",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN3001",
+            "XN2003",
+            "XN3003",
+            "XN1004"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-04-grok-v3-plain-r1.xn:10:26: error[XN3001]: expected `String`, found `Option<String>`\n10 |         if seen.get(key: w).is_none() {\n   |                          ^\n  run `xenith explain XN3001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-04-grok-v3-plain-r1.xn:10:29: error[XN2003]: `Option<Bool>` has no method named `is_none`\n10 |         if seen.get(key: w).is_none() {\n   |                             ^^^^^^^\n  run `xenith explain XN2003` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-04-grok-v3-plain-r1.xn:11:30: error[XN3001]: expected `String`, found `Option<String>`\n11 |             seen.insert(key: w, value: true);\n   |                              ^\n  run `xenith explain XN3001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-04-grok-v3-plain-r1.xn:12:25: error[XN3003]: this argument is `item`, not `value`\n12 |             unique.push(value: w);\n   |                         ^^^^^\n  fix: name it `item`\n  run `xenith explain XN3003` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-04-grok-v3-plain-r1.xn:12:32: error[XN3001]: expected `String`, found `Option<String>`\n12 |             unique.push(value: w);\n   |                                ^\n  run `xenith explain XN3001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-04-grok-v3-plain-r1.xn:15:6: error[XN1004]: expected an expression, found `;`\n15 |     };\n   |      ^\n  run `xenith explain XN1004` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-04-grok-v3-plain-r1.xn:16:12: error[XN2003]: `List<String>` has no method named `sort`\n16 |     unique.sort();\n   |            ^^^^\n  run `xenith explain XN2003` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-04-grok-v3-plain-r1.xn:23:33: error[XN3001]: expected `String`, found `Option<String>`\n23 |         out = out.concat(other: unique.get(index: j));\n   |                                 ^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN3001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-04-grok-v3-plain-r1.xn:25:6: error[XN1004]: expected an expression, found `;`\n25 |     };\n   |      ^\n  run `xenith explain XN1004` for the rule\n",
+          "outcome": "diagnostics",
+          "seconds": 52.0
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 101.8
+        }
+      ],
+      "task": "t4-04",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 37.2
+        }
+      ],
+      "task": "t4-05",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 132.0
+        }
+      ],
+      "task": "t4-06",
+      "tier": 4
+    }
+  ],
+  "totals": {
+    "pass_at_1": 2,
+    "passed": 6,
+    "tasks": 6
+  },
+  "unix_time": 1786014831
+}

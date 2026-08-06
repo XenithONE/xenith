@@ -1,0 +1,137 @@
+{
+  "condition": "v3-plain",
+  "model": "agy",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN3003"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-01-agy-v3-plain-r1.xn:5:28: error[XN3003]: this argument is `sep`, not `other`\n5 |     let words = text.split(other: \" \");\n  |                            ^^^^^\n  fix: name it `sep`\n  run `xenith explain XN3003` for the rule\n",
+          "outcome": "diagnostics",
+          "seconds": 39.6
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 15.1
+        }
+      ],
+      "task": "t4-01",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN2003",
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-02-agy-v3-plain-r1.xn:9:42: error[XN2003]: `Option<String>` has no method named `trim`\n9 |         let piece = pieces.get(index: i).trim();\n  |                                          ^^^^\n  run `xenith explain XN2003` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-02-agy-v3-plain-r1.xn:10:15: error[XN2002]: nothing named `Int` is in scope\n10 |         match Int.from_text(piece) {\n   |               ^^^\n  run `xenith explain XN2002` for the rule\n",
+          "outcome": "diagnostics",
+          "seconds": 26.1
+        },
+        {
+          "attempt": 2,
+          "diag_codes": [
+            "XN2003"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-02-agy-v3-plain-r2.xn:12:29: error[XN2003]: `String` has no method named `to_int`\n12 |                 match piece.to_int() {\n   |                             ^^^^^^\n  run `xenith explain XN2003` for the rule\n",
+          "outcome": "diagnostics",
+          "seconds": 18.1
+        },
+        {
+          "attempt": 3,
+          "outcome": "empty reply",
+          "seconds": 11.5
+        },
+        {
+          "attempt": 4,
+          "diag_codes": [
+            "XN2003"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-02-agy-v3-plain-r4.xn:12:29: error[XN2003]: `String` has no method named `checked_to_int`\n12 |                 match piece.checked_to_int() {\n   |                             ^^^^^^^^^^^^^^\n  run `xenith explain XN2003` for the rule\n",
+          "outcome": "diagnostics",
+          "seconds": 23.1
+        }
+      ],
+      "task": "t4-02",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 13.1
+        }
+      ],
+      "task": "t4-03",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 18.1
+        }
+      ],
+      "task": "t4-04",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 15.6
+        }
+      ],
+      "task": "t4-05",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN3003"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-06-agy-v3-plain-r1.xn:26:25: error[XN3003]: this argument is `index`, not `key`\n26 |         match items.get(key: i) {\n   |                         ^^^\n  fix: name it `index`\n  run `xenith explain XN3003` for the rule\n",
+          "outcome": "diagnostics",
+          "seconds": 27.6
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 12.6
+        }
+      ],
+      "task": "t4-06",
+      "tier": 4
+    }
+  ],
+  "totals": {
+    "pass_at_1": 3,
+    "passed": 5,
+    "tasks": 6
+  },
+  "unix_time": 1786014066
+}

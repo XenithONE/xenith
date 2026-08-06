@@ -1,0 +1,116 @@
+{
+  "condition": "v3-plain",
+  "model": "cursor",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 152.0
+        }
+      ],
+      "task": "t4-01",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 71.7
+        }
+      ],
+      "task": "t4-02",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN1001",
+            "XN1002",
+            "XN2004",
+            "XN3005",
+            "XN3001",
+            "XN3009",
+            "XN1004",
+            "XN2003"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:17:40: error[XN1001]: expected identifier, found hole\n17 |         let word = words.get(index: i).??;\n   |                                        ^^\n  run `xenith explain XN1001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:17:40: error[XN1002]: expected `;`\n17 |         let word = words.get(index: i).??;\n   |                                        ^\n  fix: insert `;`\n  run `xenith explain XN1002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:17:40: error[XN2004]: `Option<String>` has no fields to access\n17 |         let word = words.get(index: i).??;\n   |                                        ^\n  run `xenith explain XN2004` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:17:40: error[XN3005]: nothing determines the type of `??` here; annotate the surrounding binding or position\n17 |         let word = words.get(index: i).??;\n   |                                        ^^\n  run `xenith explain XN3005` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:21:26: error[XN3001]: expected `Map<Int, List<String>>`, found `Option<List<String>>`\n21 |                 groups = groups.insert(key: n, value: existing.push(item: word));\n   |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN3001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:21:55: error[XN3009]: `existing` is a `let` binding; declare it with `var` to call `push` on it\n21 |                 groups = groups.insert(key: n, value: existing.push(item: word));\n   |                                                       ^^^^^^^^\n  run `xenith explain XN3009` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:21:55: error[XN3001]: expected `List<String>`, found `Unit`\n21 |                 groups = groups.insert(key: n, value: existing.push(item: word));\n   |                                                       ^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN3001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:24:26: error[XN3001]: expected `Map<Int, List<String>>`, found `Option<List<String>>`\n24 |                 groups = groups.insert(key: n, value: [word]);\n   |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN3001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:25:27: error[XN3001]: expected `List<Int>`, found `Unit`\n25 |                 lengths = lengths.push(item: n);\n   |                           ^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN3001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:29:6: error[XN1004]: expected an expression, found `;`\n29 |     };\n   |      ^\n  run `xenith explain XN1004` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:36:38: error[XN1001]: expected identifier, found hole\n36 |             if lengths.get(index: j).?? < lengths.get(index: min_idx).?? {\n   |                                      ^^\n  run `xenith explain XN1001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:36:38: error[XN1001]: expected `{`, found hole\n36 |             if lengths.get(index: j).?? < lengths.get(index: min_idx).?? {\n   |                                      ^\n  fix: insert `{`\n  run `xenith explain XN1001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:36:38: error[XN2004]: `Option<Int>` has no fields to access\n36 |             if lengths.get(index: j).?? < lengths.get(index: min_idx).?? {\n   |                                      ^\n  run `xenith explain XN2004` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:36:38: error[XN3005]: nothing determines the type of `??` here; annotate the surrounding binding or position\n36 |             if lengths.get(index: j).?? < lengths.get(index: min_idx).?? {\n   |                                      ^^\n  run `xenith explain XN3005` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:36:71: error[XN1001]: expected identifier, found hole\n36 |             if lengths.get(index: j).?? < lengths.get(index: min_idx).?? {\n   |                                                                       ^^\n  run `xenith explain XN1001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:36:71: error[XN1002]: expected `;`\n36 |             if lengths.get(index: j).?? < lengths.get(index: min_idx).?? {\n   |                                                                       ^\n  fix: insert `;`\n  run `xenith explain XN1002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:36:71: error[XN2004]: `Option<Int>` has no fields to access\n36 |             if lengths.get(index: j).?? < lengths.get(index: min_idx).?? {\n   |                                                                       ^\n  run `xenith explain XN2004` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:40:10: error[XN1004]: expected an expression, found `;`\n40 |         };\n   |          ^\n  run `xenith explain XN1004` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:41:18: error[XN3001]: expected `List<Int>`, found `Unit`\n41 |         sorted = sorted.push(item: lengths.get(index: min_idx).??);\n   |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN3001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:41:64: error[XN1001]: expected identifier, found hole\n41 |         sorted = sorted.push(item: lengths.get(index: min_idx).??);\n   |                                                                ^^\n  run `xenith explain XN1001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:41:64: error[XN1001]: expected `)`, found hole\n41 |         sorted = sorted.push(item: lengths.get(index: min_idx).??);\n   |                                                                ^\n  fix: insert `)`\n  run `xenith explain XN1001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:41:64: error[XN1002]: expected `;`\n41 |         sorted = sorted.push(item: lengths.get(index: min_idx).??);\n   |                                                                ^\n  fix: insert `;`\n  run `xenith explain XN1002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:41:64: error[XN2004]: `Option<Int>` has no fields to access\n41 |         sorted = sorted.push(item: lengths.get(index: min_idx).??);\n   |                                                                ^\n  run `xenith explain XN2004` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:41:66: error[XN1004]: expected an expression, found `)`\n41 |         sorted = sorted.push(item: lengths.get(index: min_idx).??);\n   |                                                                  ^\n  run `xenith explain XN1004` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:41:66: error[XN1002]: expected `;`\n41 |         sorted = sorted.push(item: lengths.get(index: min_idx).??);\n   |                                                                  ^\n  fix: insert `;`\n  run `xenith explain XN1002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:41:67: error[XN1004]: expected an expression, found `;`\n41 |         sorted = sorted.push(item: lengths.get(index: min_idx).??);\n   |                                                                   ^\n  run `xenith explain XN1004` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:42:27: error[XN2003]: `List<Int>` has no method named `remove`\n42 |         lengths = lengths.remove(index: min_idx);\n   |                           ^^^^^^\n  run `xenith explain XN2003` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:43:6: error[XN1004]: expected an expression, found `;`\n43 |     };\n   |      ^\n  run `xenith explain XN1004` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:48:38: error[XN1001]: expected identifier, found hole\n48 |         let n = sorted.get(index: g).??;\n   |                                      ^^\n  run `xenith explain XN1001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:48:38: error[XN1002]: expected `;`\n48 |         let n = sorted.get(index: g).??;\n   |                                      ^\n  fix: insert `;`\n  run `xenith explain XN1002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:48:38: error[XN2004]: `Option<Int>` has no fields to access\n48 |         let n = sorted.get(index: g).??;\n   |                                      ^\n  run `xenith explain XN2004` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:48:38: error[XN3005]: nothing determines the type of `??` here; annotate the surrounding binding or position\n48 |         let n = sorted.get(index: g).??;\n   |                                      ^^\n  run `xenith explain XN3005` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:49:40: error[XN1001]: expected identifier, found hole\n49 |         let group = groups.get(key: n).??;\n   |                                        ^^\n  run `xenith explain XN1001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:49:40: error[XN1002]: expected `;`\n49 |         let group = groups.get(key: n).??;\n   |                                        ^\n  fix: insert `;`\n  run `xenith explain XN1002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:49:40: error[XN2004]: `Option<List<String>>` has no fields to access\n49 |         let group = groups.get(key: n).??;\n   |                                        ^\n  run `xenith explain XN2004` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:49:40: error[XN3005]: nothing determines the type of `??` here; annotate the surrounding binding or position\n49 |         let group = groups.get(key: n).??;\n   |                                        ^^\n  run `xenith explain XN3005` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:59:57: error[XN1001]: expected identifier, found hole\n59 |             out = out.concat(other: group.get(index: w).??);\n   |                                                         ^^\n  run `xenith explain XN1001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:59:57: error[XN1001]: expected `)`, found hole\n59 |             out = out.concat(other: group.get(index: w).??);\n   |                                                         ^\n  fix: insert `)`\n  run `xenith explain XN1001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:59:57: error[XN1002]: expected `;`\n59 |             out = out.concat(other: group.get(index: w).??);\n   |                                                         ^\n  fix: insert `;`\n  run `xenith explain XN1002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:59:59: error[XN1004]: expected an expression, found `)`\n59 |             out = out.concat(other: group.get(index: w).??);\n   |                                                           ^\n  run `xenith explain XN1004` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:59:59: error[XN1002]: expected `;`\n59 |             out = out.concat(other: group.get(index: w).??);\n   |                                                           ^\n  fix: insert `;`\n  run `xenith explain XN1002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:59:60: error[XN1004]: expected an expression, found `;`\n59 |             out = out.concat(other: group.get(index: w).??);\n   |                                                            ^\n  run `xenith explain XN1004` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:61:10: error[XN1004]: expected an expression, found `;`\n61 |         };\n   |          ^\n  run `xenith explain XN1004` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-cursor-v3-plain-r1.xn:63:6: error[XN1004]: expected an expression, found `;`\n63 |     };\n   |      ^\n  run `xenith explain XN1004` for the rule\n",
+          "outcome": "diagnostics",
+          "seconds": 63.2
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 87.1
+        }
+      ],
+      "task": "t4-03",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN2003"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-04-cursor-v3-plain-r1.xn:25:12: error[XN2003]: `List<String>` has no method named `sort`\n25 |     unique.sort();\n   |            ^^^^\n  run `xenith explain XN2003` for the rule\n",
+          "outcome": "diagnostics",
+          "seconds": 89.9
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 67.7
+        }
+      ],
+      "task": "t4-04",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 102.5
+        }
+      ],
+      "task": "t4-05",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 96.8
+        }
+      ],
+      "task": "t4-06",
+      "tier": 4
+    }
+  ],
+  "totals": {
+    "pass_at_1": 4,
+    "passed": 6,
+    "tasks": 6
+  },
+  "unix_time": 1786014836
+}

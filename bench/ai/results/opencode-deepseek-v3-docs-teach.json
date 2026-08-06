@@ -1,0 +1,109 @@
+{
+  "condition": "v3-docs-teach",
+  "model": "opencode-deepseek",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [],
+          "feedback_text": "The program compiled and ran, but printed \"the:3,dog:1,cat:1,bird:1,and:2\" where \"and:2,bird:1,cat:1,dog:1,the:3\" was required.",
+          "outcome": "wrong output",
+          "seconds": 97.9
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 51.1
+        }
+      ],
+      "task": "t4-01",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 53.4
+        }
+      ],
+      "task": "t4-02",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 79.5
+        }
+      ],
+      "task": "t4-03",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 34.1
+        }
+      ],
+      "task": "t4-04",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN3001",
+            "XN1001",
+            "XN1004"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-05-opencode-deepseek-v3-docs-teach-r1.xn:9:16: error[XN3001]: `?` on an `Option` needs `best_player` to return `Option<_>`; it returns `Player`\n9 |     var best = players.get(index: 0)?;\n  |                ^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN3001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-05-opencode-deepseek-v3-docs-teach-r1.xn:20:20: error[XN1001]: expected `,`, found `break`\n20 |             None => break,\n   |                    ^\n  fix: insert `,`\n  run `xenith explain XN1001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-05-opencode-deepseek-v3-docs-teach-r1.xn:20:21: error[XN1004]: expected an expression, found `break`\n20 |             None => break,\n   |                     ^^^^^\n  run `xenith explain XN1004` for the rule\n",
+          "outcome": "diagnostics",
+          "seconds": 100.2
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 102.8
+        }
+      ],
+      "task": "t4-05",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 59.7
+        }
+      ],
+      "task": "t4-06",
+      "tier": 4
+    }
+  ],
+  "totals": {
+    "pass_at_1": 4,
+    "passed": 6,
+    "tasks": 6
+  },
+  "unix_time": 1786016056
+}

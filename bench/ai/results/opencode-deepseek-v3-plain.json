@@ -1,0 +1,137 @@
+{
+  "condition": "v3-plain",
+  "model": "opencode-deepseek",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN3003",
+            "XN1002",
+            "XN3001",
+            "XN2003",
+            "XN1001",
+            "XN1004",
+            "XN5001",
+            "XN3005",
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-01-opencode-deepseek-v3-plain-r1.xn:5:28: error[XN3003]: this argument is `sep`, not `separator`\n5 |     let words = text.split(separator: \" \");\n  |                            ^^^^^^^^^\n  fix: name it `sep`\n  run `xenith explain XN3003` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-01-opencode-deepseek-v3-plain-r1.xn:9:22: error[XN1002]: expected `;`\n9 |         let w = words[i];\n  |                      ^\n  fix: insert `;`\n  run `xenith explain XN1002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-01-opencode-deepseek-v3-plain-r1.xn:10:39: error[XN3001]: expected `String`, found `List<String>`\n10 |         let n = match counts.get(key: w) {\n   |                                       ^\n  run `xenith explain XN3001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-01-opencode-deepseek-v3-plain-r1.xn:14:16: error[XN2003]: `Map<String, Int>` has no method named `put`\n14 |         counts.put(key: words[i], value: n);\n   |                ^^^\n  run `xenith explain XN2003` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-01-opencode-deepseek-v3-plain-r1.xn:14:30: error[XN1001]: expected `)`, found `[`\n14 |         counts.put(key: words[i], value: n);\n   |                              ^\n  fix: insert `)`\n  run `xenith explain XN1001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-01-opencode-deepseek-v3-plain-r1.xn:14:30: error[XN1002]: expected `;`\n14 |         counts.put(key: words[i], value: n);\n   |                              ^\n  fix: insert `;`\n  run `xenith explain XN1002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-01-opencode-deepseek-v3-plain-r1.xn:14:43: error[XN1004]: expected an expression, found `)`\n14 |         counts.put(key: words[i], value: n);\n   |                                           ^\n  run `xenith explain XN1004` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-01-opencode-deepseek-v3-plain-r1.xn:14:43: error[XN1002]: expected `;`\n14 |         counts.put(key: words[i], value: n);\n   |                                           ^\n  fix: insert `;`\n  run `xenith explain XN1002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-01-opencode-deepseek-v3-plain-r1.xn:14:44: error[XN1004]: expected an expression, found `;`\n14 |         counts.put(key: words[i], value: n);\n   |                                            ^\n  run `xenith explain XN1004` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-01-opencode-deepseek-v3-plain-r1.xn:22:24: error[XN1002]: expected `;`\n22 |         let word = keys[j];\n   |                        ^\n  fix: insert `;`\n  run `xenith explain XN1002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-01-opencode-deepseek-v3-plain-r1.xn:23:21: error[XN5001]: this `match` is not exhaustive: `Some(_)` is not covered\n23 |         let count = match counts.get(key: keys[j]) {\n   |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN5001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-01-opencode-deepseek-v3-plain-r1.xn:23:43: error[XN3001]: expected `String`, found `List<String>`\n23 |         let count = match counts.get(key: keys[j]) {\n   |                                           ^^^^\n  run `xenith explain XN3001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-01-opencode-deepseek-v3-plain-r1.xn:23:47: error[XN1001]: expected `)`, found `[`\n23 |         let count = match counts.get(key: keys[j]) {\n   |                                               ^\n  fix: insert `)`\n  run `xenith explain XN1001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-01-opencode-deepseek-v3-plain-r1.xn:23:47: error[XN1001]: expected `{`, found `[`\n23 |         let count = match counts.get(key: keys[j]) {\n   |                                               ^\n  fix: insert `{`\n  run `xenith explain XN1001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-01-opencode-deepseek-v3-plain-r1.xn:23:47: error[XN1002]: expected `;`\n23 |         let count = match counts.get(key: keys[j]) {\n   |                                               ^\n  fix: insert `;`\n  run `xenith explain XN1002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-01-opencode-deepseek-v3-plain-r1.xn:23:50: error[XN1002]: expected `;`\n23 |         let count = match counts.get(key: keys[j]) {\n   |                                                  ^\n  fix: insert `;`\n  run `xenith explain XN1002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-01-opencode-deepseek-v3-plain-r1.xn:23:50: error[XN1004]: expected an expression, found `)`\n23 |         let count = match counts.get(key: keys[j]) {\n   |                                                  ^\n  run `xenith explain XN1004` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-01-opencode-deepseek-v3-plain-r1.xn:23:50: error[XN1002]: expected `;`\n23 |         let count = match counts.get(key: keys[j]) {\n   |                                                  ^\n  fix: insert `;`\n  run `xenith explain XN1002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-01-opencode-deepseek-v3-plain-r1.xn:24:13: error[XN3005]: cannot determine `T` of `Option` here; annotate the surrounding binding\n24 |             Some(n) => n,\n   |             ^^^^^^^\n  run `xenith explain XN3005` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-01-opencode-deepseek-v3-plain-r1.xn:24:18: error[XN2002]: nothing named `n` is in scope\n24 |             Some(n) => n,\n   |                  ^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-01-opencode-deepseek-v3-plain-r1.xn:24:20: error[XN1002]: expected `;`\n24 |             Some(n) => n,\n   |                    ^\n  fix: insert `;`\n  run `xenith explain XN1002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-01-opencode-deepseek-v3-plain-r1.xn:30:33: error[XN3001]: expected `String`, found `List<String>`\n30 |         out = out.concat(other: word).concat(other: \":\").concat(other: count.to_text());\n   |                                 ^^^^\n  run `xenith explain XN3001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-01-opencode-deepseek-v3-plain-r1.xn:30:78: error[XN2003]: `Unit` has no method named `to_text`\n30 |         out = out.concat(other: word).concat(other: \":\").concat(other: count.to_text());\n   |                                                                              ^^^^^^^\n  run `xenith explain XN2003` for the rule\n",
+          "outcome": "diagnostics",
+          "seconds": 115.2
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 101.8
+        }
+      ],
+      "task": "t4-01",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN3003",
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-02-opencode-deepseek-v3-plain-r1.xn:5:39: error[XN3003]: this argument is `sep`, not `separator`\n5 |     let parts = \"12, 34, x, 56\".split(separator: \", \");\n  |                                       ^^^^^^^^^\n  fix: name it `sep`\n  run `xenith explain XN3003` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-02-opencode-deepseek-v3-plain-r1.xn:8:22: error[XN2002]: nothing named `Int` is in scope\n8 |         let parsed = Int.from_text(text: parts.get(i));\n  |                      ^^^\n  run `xenith explain XN2002` for the rule\n",
+          "outcome": "diagnostics",
+          "seconds": 69.7
+        },
+        {
+          "attempt": 2,
+          "diag_codes": [
+            "XN2003",
+            "XN3005"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-02-opencode-deepseek-v3-plain-r2.xn:9:32: error[XN2003]: `String` has no method named `to_int`\n9 |             Some(text) => text.to_int(),\n  |                                ^^^^^^\n  run `xenith explain XN2003` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-02-opencode-deepseek-v3-plain-r2.xn:10:21: error[XN3005]: `None` needs the surrounding type to be known; annotate the binding or position\n10 |             None => None,\n   |                     ^^^^\n  run `xenith explain XN3005` for the rule\n",
+          "outcome": "diagnostics",
+          "seconds": 167.7
+        },
+        {
+          "attempt": 3,
+          "diag_codes": [
+            "XN2003"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-02-opencode-deepseek-v3-plain-r3.xn:10:38: error[XN2003]: `String` has no method named `parse_int`\n10 |             Some(text) => match text.parse_int() {\n   |                                      ^^^^^^^^^\n  run `xenith explain XN2003` for the rule\n",
+          "outcome": "diagnostics",
+          "seconds": 75.8
+        },
+        {
+          "attempt": 4,
+          "outcome": "empty reply",
+          "seconds": 99.9
+        }
+      ],
+      "task": "t4-02",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 102.4
+        }
+      ],
+      "task": "t4-03",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 175.1
+        }
+      ],
+      "task": "t4-04",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 103.6
+        }
+      ],
+      "task": "t4-05",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "model error: no reply within 240s",
+          "seconds": 241.1
+        }
+      ],
+      "task": "t4-06",
+      "tier": 4
+    }
+  ],
+  "totals": {
+    "pass_at_1": 3,
+    "passed": 4,
+    "tasks": 6
+  },
+  "unix_time": 1786015425
+}

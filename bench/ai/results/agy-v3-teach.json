@@ -1,0 +1,118 @@
+{
+  "condition": "v3-teach",
+  "model": "agy",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 25.1
+        }
+      ],
+      "task": "t4-01",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-02-agy-v3-teach-r1.xn:13:23: error[XN2002]: nothing named `Int` is in scope\n13 |                 match Int.from_text(trimmed) {\n   |                       ^^^\n  run `xenith explain XN2002` for the rule\n",
+          "outcome": "diagnostics",
+          "seconds": 21.0
+        },
+        {
+          "attempt": 2,
+          "diag_codes": [
+            "XN2003"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-02-agy-v3-teach-r2.xn:13:31: error[XN2003]: `String` has no method named `to_int`\n  methods of String (6 of 7):\n      concat(other: String) -> String\n      len() -> Int\n      split(sep: String) -> List<String>\n      trim() -> String\n      try_to_int() -> Result<Int, Error>\n      starts_with(prefix: String) -> Bool\n13 |                 match trimmed.to_int() {\n   |                               ^^^^^^\n  run `xenith explain XN2003` for the rule\n",
+          "outcome": "diagnostics",
+          "seconds": 19.6
+        },
+        {
+          "attempt": 3,
+          "outcome": "pass",
+          "seconds": 12.1
+        }
+      ],
+      "task": "t4-02",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 14.6
+        }
+      ],
+      "task": "t4-03",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN2003"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-04-agy-v3-teach-r1.xn:46:24: error[XN2003]: `List<String>` has no method named `set`\n  methods of List<String> (6 of 10):\n      len() -> Int\n      is_empty() -> Bool\n      push(item: String) -> Unit\n      pop() -> Option<String>\n      get(index: Int) -> Option<String>\n      replace(index: Int, value: String) -> Option<String>\n46 |                 unique.set(index: a, value: item_b);\n   |                        ^^^\n  run `xenith explain XN2003` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-04-agy-v3-teach-r1.xn:47:24: error[XN2003]: `List<String>` has no method named `set`\n47 |                 unique.set(index: b, value: item_a);\n   |                        ^^^\n  run `xenith explain XN2003` for the rule\n",
+          "outcome": "diagnostics",
+          "seconds": 30.1
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 12.6
+        }
+      ],
+      "task": "t4-04",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 17.6
+        }
+      ],
+      "task": "t4-05",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 23.1
+        }
+      ],
+      "task": "t4-06",
+      "tier": 4
+    }
+  ],
+  "totals": {
+    "pass_at_1": 4,
+    "passed": 6,
+    "tasks": 6
+  },
+  "unix_time": 1786014013
+}

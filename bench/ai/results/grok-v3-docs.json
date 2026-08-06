@@ -1,0 +1,128 @@
+{
+  "condition": "v3-docs",
+  "model": "grok",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 68.9
+        }
+      ],
+      "task": "t4-01",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 63.6
+        }
+      ],
+      "task": "t4-02",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN1004"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-grok-v3-docs-r1.xn:28:6: error[XN1004]: expected an expression, found `;`\n28 |     };\n   |      ^\n  run `xenith explain XN1004` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-grok-v3-docs-r1.xn:47:6: error[XN1004]: expected an expression, found `;`\n47 |     };\n   |      ^\n  run `xenith explain XN1004` for the rule\n",
+          "outcome": "diagnostics",
+          "seconds": 88.6
+        },
+        {
+          "attempt": 2,
+          "diag_codes": [
+            "XN1004"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-grok-v3-docs-r2.xn:32:6: error[XN1004]: expected an expression, found `;`\n32 |     };\n   |      ^\n  run `xenith explain XN1004` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-grok-v3-docs-r2.xn:56:6: error[XN1004]: expected an expression, found `;`\n56 |     };\n   |      ^\n  run `xenith explain XN1004` for the rule\n",
+          "outcome": "diagnostics",
+          "seconds": 123.3
+        },
+        {
+          "attempt": 3,
+          "diag_codes": [
+            "XN1007",
+            "XN0001"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-grok-v3-docs-r3.xn:1:1: error[XN1007]: expected a declaration, found identifier\n1 | The errors come from trailing `;` after statement-form `match`/`while` (and expression-form arms). Fixing by using statement blocks and dropping those semicolons.```xenith\n  | ^^^\n  run `xenith explain XN1007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-grok-v3-docs-r3.xn:1:31: error[XN0001]: ``` cannot start a token\n1 | The errors come from trailing `;` after statement-form `match`/`while` (and expression-form arms). Fixing by using statement blocks and dropping those semicolons.```xenith\n  |                               ^\n  run `xenith explain XN0001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-grok-v3-docs-r3.xn:1:33: error[XN0001]: ``` cannot start a token\n1 | The errors come from trailing `;` after statement-form `match`/`while` (and expression-form arms). Fixing by using statement blocks and dropping those semicolons.```xenith\n  |                                 ^\n  run `xenith explain XN0001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-grok-v3-docs-r3.xn:1:56: error[XN0001]: ``` cannot start a token\n1 | The errors come from trailing `;` after statement-form `match`/`while` (and expression-form arms). Fixing by using statement blocks and dropping those semicolons.```xenith\n  |                                                        ^\n  run `xenith explain XN0001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-grok-v3-docs-r3.xn:1:62: error[XN0001]: ``` cannot start a token\n1 | The errors come from trailing `;` after statement-form `match`/`while` (and expression-form arms). Fixing by using statement blocks and dropping those semicolons.```xenith\n  |                                                              ^\n  run `xenith explain XN0001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-grok-v3-docs-r3.xn:1:64: error[XN0001]: ``` cannot start a token\n1 | The errors come from trailing `;` after statement-form `match`/`while` (and expression-form arms). Fixing by using statement blocks and dropping those semicolons.```xenith\n  |                                                                ^\n  run `xenith explain XN0001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-grok-v3-docs-r3.xn:1:70: error[XN0001]: ``` cannot start a token\n1 | The errors come from trailing `;` after statement-form `match`/`while` (and expression-form arms). Fixing by using statement blocks and dropping those semicolons.```xenith\n  |                                                                      ^\n  run `xenith explain XN0001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-grok-v3-docs-r3.xn:1:163: error[XN0001]: ``` cannot start a token\n1 | The errors come from trailing `;` after statement-form `match`/`while` (and expression-form arms). Fixing by using statement blocks and dropping those semicolons.```xenith\n  |                                                                                                                                                                   ^\n  run `xenith explain XN0001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-grok-v3-docs-r3.xn:1:164: error[XN0001]: ``` cannot start a token\n1 | The errors come from trailing `;` after statement-form `match`/`while` (and expression-form arms). Fixing by using statement blocks and dropping those semicolons.```xenith\n  |                                                                                                                                                                    ^\n  run `xenith explain XN0001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-grok-v3-docs-r3.xn:1:165: error[XN0001]: ``` cannot start a token\n1 | The errors come from trailing `;` after statement-form `match`/`while` (and expression-form arms). Fixing by using statement blocks and dropping those semicolons.```xenith\n  |                                                                                                                                                                     ^\n  run `xenith explain XN0001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-grok-v3-docs-r3.xn:54:1: error[XN0001]: ``` cannot start a token\n54 | ```\n   | ^\n  run `xenith explain XN0001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-grok-v3-docs-r3.xn:54:1: error[XN1007]: expected a declaration, found unrecognised character\n54 | ```\n   | ^\n  run `xenith explain XN1007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-grok-v3-docs-r3.xn:54:2: error[XN0001]: ``` cannot start a token\n54 | ```\n   |  ^\n  run `xenith explain XN0001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-03-grok-v3-docs-r3.xn:54:3: error[XN0001]: ``` cannot start a token\n54 | ```\n   |   ^\n  run `xenith explain XN0001` for the rule\n",
+          "outcome": "diagnostics",
+          "seconds": 140.3
+        },
+        {
+          "attempt": 4,
+          "outcome": "pass",
+          "seconds": 81.1
+        }
+      ],
+      "task": "t4-03",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 129.3
+        }
+      ],
+      "task": "t4-04",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN1004"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-05-grok-v3-docs-r1.xn:29:6: error[XN1004]: expected an expression, found `;`\n29 |     };\n   |      ^\n  run `xenith explain XN1004` for the rule\n",
+          "outcome": "diagnostics",
+          "seconds": 106.9
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 96.3
+        }
+      ],
+      "task": "t4-05",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 67.8
+        }
+      ],
+      "task": "t4-06",
+      "tier": 4
+    }
+  ],
+  "totals": {
+    "pass_at_1": 4,
+    "passed": 6,
+    "tasks": 6
+  },
+  "unix_time": 1786015727
+}

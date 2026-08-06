@@ -1,0 +1,133 @@
+{
+  "condition": "v3-teach",
+  "model": "opencode-deepseek",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN2003"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-01-opencode-deepseek-v3-teach-r1.xn:21:10: error[XN2003]: `List<String>` has no method named `sort`\n  methods of List<String> (6 of 10):\n      len() -> Int\n      is_empty() -> Bool\n      push(item: String) -> Unit\n      pop() -> Option<String>\n      get(index: Int) -> Option<String>\n      replace(index: Int, value: String) -> Option<String>\n21 |     keys.sort();\n   |          ^^^^\n  run `xenith explain XN2003` for the rule\n",
+          "outcome": "diagnostics",
+          "seconds": 138.6
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 86.2
+        }
+      ],
+      "task": "t4-01",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN3003",
+            "XN2003"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-02-opencode-deepseek-v3-teach-r1.xn:5:28: error[XN3003]: this argument is `sep`, not `delimiter`\n  call shape: split(sep: String) -> List<String>\n5 |     let parts = text.split(delimiter: \",\");\n  |                            ^^^^^^^^^\n  fix: name it `sep`\n  run `xenith explain XN3003` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-02-opencode-deepseek-v3-teach-r1.xn:8:21: error[XN2003]: `List<String>` has no method named `size`\n  methods of List<String> (6 of 10):\n      len() -> Int\n      is_empty() -> Bool\n      push(item: String) -> Unit\n      pop() -> Option<String>\n      get(index: Int) -> Option<String>\n      replace(index: Int, value: String) -> Option<String>\n8 |     while i < parts.size() {\n  |                     ^^^^\n  run `xenith explain XN2003` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-02-opencode-deepseek-v3-teach-r1.xn:9:41: error[XN2003]: `Option<String>` has no method named `trim`\n  methods of Option<String>:\n      to_result(error: E) -> Result<String, E>\n9 |         let piece = parts.get(index: i).trim();\n  |                                         ^^^^\n  run `xenith explain XN2003` for the rule\n",
+          "outcome": "diagnostics",
+          "seconds": 82.4
+        },
+        {
+          "attempt": 2,
+          "diag_codes": [
+            "XN2003"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-02-opencode-deepseek-v3-teach-r2.xn:12:38: error[XN2003]: `String` has no method named `parse_int`\n  methods of String (6 of 7):\n      concat(other: String) -> String\n      len() -> Int\n      split(sep: String) -> List<String>\n      trim() -> String\n      try_to_int() -> Result<Int, Error>\n      starts_with(prefix: String) -> Bool\n12 |                 let maybe = p.trim().parse_int();\n   |                                      ^^^^^^^^^\n  run `xenith explain XN2003` for the rule\n",
+          "outcome": "diagnostics",
+          "seconds": 37.0
+        },
+        {
+          "attempt": 3,
+          "outcome": "pass",
+          "seconds": 45.4
+        }
+      ],
+      "task": "t4-02",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 99.4
+        }
+      ],
+      "task": "t4-03",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 241.3
+        }
+      ],
+      "task": "t4-04",
+      "tier": 4
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 47.5
+        }
+      ],
+      "task": "t4-05",
+      "tier": 4
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "empty reply",
+          "seconds": 43.9
+        },
+        {
+          "attempt": 2,
+          "diag_codes": [
+            "XN3005"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-06-opencode-deepseek-v3-teach-r2.xn:16:35: error[XN3005]: `None` needs the surrounding type to be known; annotate the binding or position\n16 |     if reverse.get(key: red_v) == None {\n   |                                   ^^^^\n  run `xenith explain XN3005` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-06-opencode-deepseek-v3-teach-r2.xn:24:37: error[XN3005]: `None` needs the surrounding type to be known; annotate the binding or position\n24 |     if reverse.get(key: green_v) == None {\n   |                                     ^^^^\n  run `xenith explain XN3005` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-06-opencode-deepseek-v3-teach-r2.xn:32:36: error[XN3005]: `None` needs the surrounding type to be known; annotate the binding or position\n32 |     if reverse.get(key: blue_v) == None {\n   |                                    ^^^^\n  run `xenith explain XN3005` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t4-06-opencode-deepseek-v3-teach-r2.xn:40:36: error[XN3005]: `None` needs the surrounding type to be known; annotate the binding or position\n40 |     if reverse.get(key: gray_v) == None {\n   |                                    ^^^^\n  run `xenith explain XN3005` for the rule\n",
+          "outcome": "diagnostics",
+          "seconds": 142.5
+        },
+        {
+          "attempt": 3,
+          "outcome": "pass",
+          "seconds": 59.3
+        }
+      ],
+      "task": "t4-06",
+      "tier": 4
+    }
+  ],
+  "totals": {
+    "pass_at_1": 3,
+    "passed": 6,
+    "tasks": 6
+  },
+  "unix_time": 1786015191
+}
