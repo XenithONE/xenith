@@ -41,6 +41,27 @@ All four arms share identical budgets (rounds cap 4) and identical prompts apart
 two factors — no asymmetric nudges in any arm. The main comparisons are `query` vs `blind`
 and `docs-query` vs `docs`, and results are reported as an exploratory pilot per 0007 §5-5.
 
+### Teaching conditions (0009 v3)
+
+The 2×2 arms of [design/0009 §4](../../design/0009-diagnostics-that-teach.md): the docs factor
+again, crossed with whether diagnostics carry their structured `teaches` section (the off arms
+pass `--diagnostic-teaching=off` to every compiler call):
+
+| Condition | API table in guide | Diagnostic teaching in feedback |
+| --- | --- | --- |
+| `v3-plain` | no | no |
+| `v3-teach` | no | yes |
+| `v3-docs` | yes | no |
+| `v3-docs-teach` | yes | yes |
+
+Round-1 prompts are byte-identical across the teaching factor — teaching exists only in
+post-failure compiler output, so a prompt cannot reveal which arm a model is in. The
+goals-on-holes channel is disabled in all four arms, so the teaches section is the only
+feedback difference. Primary endpoints are rounds-to-green, final green, and signature
+adoption judged from the recorded per-round feedback (the consumption oracle, 0009 §1b), with
+pass@1 kept as a sanity check that must stay flat across the teaching factor; results are
+exploratory per 0007 §5-5.
+
 ## Metrics
 
 - **pass@1** — first attempt passes the hidden expectation

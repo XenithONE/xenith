@@ -21,6 +21,13 @@
 //! in the feedback". Everything else — rounds cap, prompt skeleton,
 //! diagnostics, tasks — is identical across the four, so a gap between cells
 //! is attributable to the two factors and nothing else.
+//! `v3-plain` / `v3-teach` / `v3-docs` / `v3-docs-teach` — the 0009 §4
+//! teaching arms: the docs factor crossed with "diagnostics carry their
+//! `teaches` section" (the off arms pass `--diagnostic-teaching=off` to every
+//! compiler call). Teaching exists only in post-failure compiler output, so
+//! round-1 prompts are byte-identical across that factor, and goals-on-holes
+//! stays disabled in all four arms — teaching is the only feedback
+//! difference.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -102,9 +109,10 @@ impl Model {
     }
 }
 
-/// The first three are the original matrix and stay frozen for
-/// reproducibility. The last four are the 0007 §5 separation arms; their CLI
-/// names double as the `{model}-{condition}.json` result-file suffix.
+/// The first three are the original matrix and the next four are the 0007 §5
+/// separation arms; all seven stay frozen for reproducibility. The `v3-*`
+/// quartet is the 0009 §4 teaching experiment. Every CLI name doubles as the
+/// `{model}-{condition}.json` result-file suffix.
 #[derive(Clone, Copy, ValueEnum, PartialEq)]
 enum Condition {
     Bare,
@@ -114,6 +122,16 @@ enum Condition {
     Query,
     DocsQuery,
     Blind,
+    // The names are result-file suffixes, so they are pinned rather than
+    // trusted to the derive's kebab-casing across the `V3` digit boundary.
+    #[value(name = "v3-plain")]
+    V3Plain,
+    #[value(name = "v3-teach")]
+    V3Teach,
+    #[value(name = "v3-docs")]
+    V3Docs,
+    #[value(name = "v3-docs-teach")]
+    V3DocsTeach,
 }
 
 impl Condition {
@@ -123,6 +141,12 @@ impl Condition {
         Condition::Query,
         Condition::DocsQuery,
         Condition::Blind,
+    ];
+    const V3: [Condition; 4] = [
+        Condition::V3Plain,
+        Condition::V3Teach,
+        Condition::V3Docs,
+        Condition::V3DocsTeach,
     ];
 
     fn name(self) -> &'static str {
@@ -134,20 +158,48 @@ impl Condition {
             Condition::Query => "query",
             Condition::DocsQuery => "docs-query",
             Condition::Blind => "blind",
+            Condition::V3Plain => "v3-plain",
+            Condition::V3Teach => "v3-teach",
+            Condition::V3Docs => "v3-docs",
+            Condition::V3DocsTeach => "v3-docs-teach",
         }
     }
 
     /// The docs factor: these arms carry the std API table in the guide.
     fn has_api_table(self) -> bool {
-        matches!(self, Condition::Docs | Condition::DocsQuery)
+        matches!(
+            self,
+            Condition::Docs | Condition::DocsQuery | Condition::V3Docs | Condition::V3DocsTeach
+        )
     }
 
     /// The query factor: these arms get `xenith goals` appended to failing
-    /// feedback. `hole-guided` predates the 2×2 and keeps its channel.
+    /// feedback. `hole-guided` predates the 2×2 and keeps its channel. No v3
+    /// arm feeds goals — in v3, teaching must be the only feedback difference
+    /// (0009 §4).
     fn feeds_goals(self) -> bool {
         matches!(
             self,
             Condition::HoleGuided | Condition::Query | Condition::DocsQuery
+        )
+    }
+
+    /// The teaching factor (0009 §3): when false, every `check`/`run` this
+    /// arm makes carries `--diagnostic-teaching=off`. Teaching is the
+    /// compiler's default, and every pre-0009 arm ran before the flag
+    /// existed — they keep the default so re-running a legacy cell still
+    /// measures what its result file says it measured.
+    fn teaching(self) -> bool {
+        !matches!(self, Condition::V3Plain | Condition::V3Docs)
+    }
+
+    /// The 0009 arms store each failed round's feedback verbatim plus its
+    /// diagnostic codes — the consumption-oracle raw material (0009 §1b).
+    /// Teach-off rounds are recorded too: they are the oracle's control text.
+    fn records_feedback(self) -> bool {
+        matches!(
+            self,
+            Condition::V3Plain | Condition::V3Teach | Condition::V3Docs | Condition::V3DocsTeach
         )
     }
 }
@@ -203,6 +255,17 @@ fn summarize(paths: &Paths) -> ExitCode {
              in the feedback. Same cell format as above.\n\n",
         );
         table.push_str(&separation_block);
+    }
+
+    // Likewise for the 0009 teaching arms.
+    let (teaching_block, measured) = matrix_block(paths, &Condition::V3);
+    if measured {
+        table.push_str(
+            "\n## Teaching experiment (0009 v3)\n\n\
+             The 2×2 of design/0009 §4: std API table in the guide × diagnostic teaching\n\
+             in the compiler feedback. Same cell format as above.\n\n",
+        );
+        table.push_str(&teaching_block);
     }
 
     let out = paths.results.join("summary.md");
@@ -386,7 +449,9 @@ fn verify(paths: &Paths) -> ExitCode {
             broken += 1;
             continue;
         }
-        match execute(&xenith, &file) {
+        // References are checked under the compiler's default (teaching on):
+        // a clean reference produces no diagnostics for the flag to alter.
+        match execute(&xenith, &file, true) {
             Execution::Passed { stdout } if stdout == task.expected_stdout => {
                 println!("ok       {} (tier {})", task.name, task.tier);
             }
@@ -423,12 +488,33 @@ enum Execution {
     RunFailed { exit: i32, error: String },
 }
 
+const TEACHING_OFF: &str = "--diagnostic-teaching=off";
+
+/// Build one compiler invocation. Every `check`/`run` the harness makes goes
+/// through here, so the teaching flag cannot reach one phase and miss the
+/// other.
+fn xenith_cmd(
+    xenith: &Path,
+    subcommand: &str,
+    teaching: bool,
+    file: &Path,
+) -> std::process::Command {
+    let mut cmd = std::process::Command::new(xenith);
+    cmd.arg(subcommand);
+    if !teaching {
+        // Strips the teaches section only; the diagnostics are otherwise
+        // byte-identical (0009 §3, pinned by the compiler's frozen tests).
+        cmd.arg(TEACHING_OFF);
+    }
+    cmd.arg(file);
+    cmd
+}
+
 /// `xenith check` then `xenith run`, mirroring what a model's attempt faces.
-fn execute(xenith: &Path, file: &Path) -> Execution {
-    let check = std::process::Command::new(xenith)
-        .arg("check")
-        .arg(file)
-        .output();
+/// `teaching` follows the condition (0009): the off arms see diagnostics
+/// without the teaches section.
+fn execute(xenith: &Path, file: &Path, teaching: bool) -> Execution {
+    let check = xenith_cmd(xenith, "check", teaching, file).output();
     let check = match check {
         Ok(output) => output,
         Err(e) => {
@@ -443,10 +529,7 @@ fn execute(xenith: &Path, file: &Path) -> Execution {
         };
     }
 
-    let run = std::process::Command::new(xenith)
-        .arg("run")
-        .arg(file)
-        .output();
+    let run = xenith_cmd(xenith, "run", teaching, file).output();
     let run = match run {
         Ok(output) => output,
         Err(e) => {
@@ -592,8 +675,16 @@ fn load_prior_reports(file: &Path) -> Vec<TaskReport> {
                             outcome: r["outcome"].as_str()?.to_string(),
                             seconds: r["seconds"].as_f64()?,
                             // Absent in every pre-0007 report; absence is not
-                            // an error, it is the common case.
+                            // an error, it is the common case. Same for the
+                            // 0009 fields below.
                             goals: r["goals"].as_str().map(str::to_string),
+                            diag_codes: r["diag_codes"].as_array().map(|codes| {
+                                codes
+                                    .iter()
+                                    .filter_map(|c| c.as_str().map(str::to_string))
+                                    .collect()
+                            }),
+                            feedback_text: r["feedback_text"].as_str().map(str::to_string),
                         })
                     })
                     .collect(),
@@ -640,6 +731,14 @@ struct RoundRecord {
     /// the query-family separation arms; everywhere else it stays `None` so
     /// pre-0007 result files keep their exact shape.
     goals: Option<String>,
+    /// The distinct XN codes in this round's feedback, and that feedback
+    /// verbatim — the consumption-oracle raw material (0009 §1b): did the
+    /// next attempt adopt an attached signature, and at what transcription
+    /// cost? Recorded only in the v3 arms (teach-off rounds too — they are
+    /// the control text); `None` everywhere else so earlier result files keep
+    /// their exact shape.
+    diag_codes: Option<Vec<String>>,
+    feedback_text: Option<String>,
 }
 
 struct TaskReport {
@@ -666,10 +765,16 @@ fn round_json(round: &RoundRecord) -> serde_json::Value {
         "outcome": round.outcome,
         "seconds": (round.seconds * 10.0).round() / 10.0,
     });
-    // Serialized only when present: rounds outside the query-family arms must
-    // not grow a null field that old readers and old diffs never had.
+    // Serialized only when present: rounds outside the experiment arms must
+    // not grow null fields that old readers and old diffs never had.
     if let Some(goals) = &round.goals {
         json["goals"] = serde_json::json!(goals);
+    }
+    if let Some(codes) = &round.diag_codes {
+        json["diag_codes"] = serde_json::json!(codes);
+    }
+    if let Some(text) = &round.feedback_text {
+        json["feedback_text"] = serde_json::json!(text);
     }
     json
 }
@@ -706,6 +811,8 @@ fn run_one_task(
                     outcome: format!("model error: {message}"),
                     seconds: started.elapsed().as_secs_f64(),
                     goals: None,
+                    diag_codes: None,
+                    feedback_text: None,
                 });
                 return report;
             }
@@ -722,6 +829,8 @@ fn run_one_task(
                 outcome: "empty reply".into(),
                 seconds: started.elapsed().as_secs_f64(),
                 goals: None,
+                diag_codes: None,
+                feedback_text: None,
             });
             transcript.push_str(
                 "\n\n--- note ---\nYour previous reply came back empty (the CLI produced no \
@@ -743,6 +852,8 @@ fn run_one_task(
                 outcome: "scratch write failed".into(),
                 seconds: started.elapsed().as_secs_f64(),
                 goals: None,
+                diag_codes: None,
+                feedback_text: None,
             });
             return report;
         }
@@ -754,6 +865,8 @@ fn run_one_task(
             outcome: judgement.outcome,
             seconds: started.elapsed().as_secs_f64(),
             goals: judgement.goals,
+            diag_codes: judgement.diag_codes,
+            feedback_text: judgement.feedback_text,
         });
 
         if done {
@@ -782,18 +895,25 @@ struct Judgement {
     /// The goals text appended to `feedback`, when this round both failed
     /// check/run and belongs to a query-family separation arm (0007 §5-5).
     goals: Option<String>,
+    /// v3 only (0009 §1b): the distinct XN codes in this round's feedback.
+    diag_codes: Option<Vec<String>>,
+    /// v3 only: the feedback verbatim — in teach-off arms this is the control
+    /// text the consumption oracle compares against.
+    feedback_text: Option<String>,
 }
 
 /// Judge one attempt. Goals enrichment happens only on failed check/run —
 /// wrong output is not a hole problem — and only for conditions whose
 /// feedback channel includes it.
 fn judge(xenith: &Path, file: &Path, task: &Task, condition: Condition) -> Judgement {
-    let (outcome, mut feedback, enrich) = match execute(xenith, file) {
+    let (outcome, mut feedback, enrich) = match execute(xenith, file, condition.teaching()) {
         Execution::Passed { stdout } if stdout == task.expected_stdout => {
             return Judgement {
                 outcome: "pass".to_string(),
                 feedback: None,
                 goals: None,
+                diag_codes: None,
+                feedback_text: None,
             };
         }
         Execution::Passed { stdout } => (
@@ -825,11 +945,47 @@ fn judge(xenith: &Path, file: &Path, task: &Task, condition: Condition) -> Judge
         }
     }
 
+    // The consumption oracle needs the round's codes and the exact text the
+    // model saw, in every v3 arm — an adoption claim without the off-arm
+    // control text would be indistinguishable from ordinary repair habit.
+    let (diag_codes, feedback_text) = if condition.records_feedback() {
+        (Some(distinct_xn_codes(&feedback)), Some(feedback.clone()))
+    } else {
+        (None, None)
+    };
+
     Judgement {
         outcome,
         feedback: Some(feedback),
         goals,
+        diag_codes,
+        feedback_text,
     }
+}
+
+/// Distinct `XN`-prefixed diagnostic codes in first-appearance order. A code
+/// is `XN` plus digits, not embedded in a longer identifier.
+fn distinct_xn_codes(text: &str) -> Vec<String> {
+    let bytes = text.as_bytes();
+    let mut codes: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i + 2 < bytes.len() {
+        let boundary = i == 0 || !bytes[i - 1].is_ascii_alphanumeric();
+        if boundary && bytes[i] == b'X' && bytes[i + 1] == b'N' && bytes[i + 2].is_ascii_digit() {
+            let mut end = i + 2;
+            while end < bytes.len() && bytes[end].is_ascii_digit() {
+                end += 1;
+            }
+            let code = &text[i..end];
+            if !codes.iter().any(|c| c == code) {
+                codes.push(code.to_string());
+            }
+            i = end;
+        } else {
+            i += 1;
+        }
+    }
+    codes
 }
 
 fn goals_output(xenith: &Path, file: &Path) -> Option<String> {
@@ -908,6 +1064,23 @@ fn first_prompt(guide: &str, api_table: &str, task: &Task, condition: Condition)
             };
             format!(
                 "{guide}\n\n---\n\n{HOLE_PERMISSION}\n\n{feedback}\n\nTASK: {}\n\n{CONTRACT}",
+                task.prompt.trim()
+            )
+        }
+        // v3 (0009 §4): docs × diagnostic teaching. Teaching exists only in
+        // post-failure compiler output, so it must be invisible here — the
+        // four arms produce exactly two prompt texts (with and without the
+        // API table), asserted byte-for-byte in tests. The hole permission
+        // stays, unchanged and shared (v2 showed it moves nothing), and the
+        // feedback sentence never names a channel.
+        Condition::V3Plain | Condition::V3Teach | Condition::V3Docs | Condition::V3DocsTeach => {
+            let guide = if condition.has_api_table() {
+                format!("{guide}\n\n## std API reference\n\n{api_table}")
+            } else {
+                guide.to_string()
+            };
+            format!(
+                "{guide}\n\n---\n\n{HOLE_PERMISSION}\n\n{FEEDBACK_PLAIN}\n\nTASK: {}\n\n{CONTRACT}",
                 task.prompt.trim()
             )
         }
@@ -1118,12 +1291,16 @@ mod tests {
                     outcome: "diagnostics".into(),
                     seconds: 1.5,
                     goals: Some("?? : Int — candidates: len, get".into()),
+                    diag_codes: None,
+                    feedback_text: None,
                 },
                 RoundRecord {
                     attempt: 2,
                     outcome: "pass".into(),
                     seconds: 2.0,
                     goals: None,
+                    diag_codes: None,
+                    feedback_text: None,
                 },
             ],
         }];
@@ -1157,5 +1334,174 @@ mod tests {
         assert_eq!(loaded.len(), 1);
         assert!(loaded[0].passed);
         assert!(loaded[0].rounds[0].goals.is_none());
+        assert!(loaded[0].rounds[0].diag_codes.is_none());
+        assert!(loaded[0].rounds[0].feedback_text.is_none());
+    }
+
+    #[test]
+    fn v3_prompts_are_byte_identical_across_the_teaching_factor() {
+        // 0009 §4: teaching lives in post-failure compiler output only. If
+        // either pair diverges, the experiment is measuring prompts, not
+        // diagnostics.
+        assert_eq!(
+            separation_prompt(Condition::V3Plain),
+            separation_prompt(Condition::V3Teach)
+        );
+        assert_eq!(
+            separation_prompt(Condition::V3Docs),
+            separation_prompt(Condition::V3DocsTeach)
+        );
+    }
+
+    #[test]
+    fn the_v3_docs_factor_matches_the_original_docs_factor() {
+        assert!(separation_prompt(Condition::V3Docs).contains("## std API reference"));
+        assert!(separation_prompt(Condition::V3DocsTeach).contains("## std API reference"));
+        assert!(!separation_prompt(Condition::V3Plain).contains("## std API reference"));
+        assert!(!separation_prompt(Condition::V3Teach).contains("## std API reference"));
+    }
+
+    #[test]
+    fn v3_prompts_never_name_a_feedback_channel() {
+        // No goals invitation, no producers, no mention of teaching: the
+        // model must not be told there is anything special to look for in
+        // the diagnostics (0009 §4 — the v2 "query" wording confound).
+        for condition in Condition::V3 {
+            let prompt = separation_prompt(condition);
+            assert!(!prompt.contains("goals"), "{}", condition.name());
+            assert!(!prompt.contains("producer"), "{}", condition.name());
+            assert!(!prompt.contains("teach"), "{}", condition.name());
+            assert!(
+                prompt.contains(HOLE_PERMISSION),
+                "{} lacks the shared hole permission",
+                condition.name()
+            );
+            assert!(
+                prompt.contains(FEEDBACK_PLAIN),
+                "{} lacks the shared feedback sentence",
+                condition.name()
+            );
+        }
+    }
+
+    #[test]
+    fn v3_condition_names_match_result_files() {
+        let names: Vec<&str> = Condition::V3.iter().map(|c| c.name()).collect();
+        assert_eq!(names, ["v3-plain", "v3-teach", "v3-docs", "v3-docs-teach"]);
+        // The clap-facing value name is the result-file suffix; it must agree
+        // with `name()` for every condition, not just the pinned v3 ones.
+        for condition in Condition::ALL
+            .into_iter()
+            .chain(Condition::SEPARATION)
+            .chain(Condition::V3)
+        {
+            let value = condition.to_possible_value().expect("hidden variant");
+            assert_eq!(value.get_name(), condition.name());
+        }
+    }
+
+    #[test]
+    fn teaching_is_off_only_in_the_v3_off_arms() {
+        assert!(!Condition::V3Plain.teaching());
+        assert!(!Condition::V3Docs.teaching());
+        assert!(Condition::V3Teach.teaching());
+        assert!(Condition::V3DocsTeach.teaching());
+        // Legacy arms predate the flag and keep the compiler default, so
+        // re-running one measures what its result file says it measured.
+        for condition in Condition::ALL.into_iter().chain(Condition::SEPARATION) {
+            assert!(condition.teaching(), "{}", condition.name());
+            assert!(!condition.records_feedback(), "{}", condition.name());
+        }
+        // And no v3 arm feeds goals or skips recording — teaching must be
+        // the only feedback-channel difference inside the quartet.
+        for condition in Condition::V3 {
+            assert!(!condition.feeds_goals(), "{}", condition.name());
+            assert!(condition.records_feedback(), "{}", condition.name());
+        }
+        assert!(Condition::V3Docs.has_api_table());
+        assert!(Condition::V3DocsTeach.has_api_table());
+        assert!(!Condition::V3Plain.has_api_table());
+        assert!(!Condition::V3Teach.has_api_table());
+    }
+
+    #[test]
+    fn the_teaching_flag_reaches_check_and_run() {
+        let xenith = Path::new("xenith");
+        let file = Path::new("t.xn");
+        for subcommand in ["check", "run"] {
+            let off: Vec<String> = xenith_cmd(xenith, subcommand, false, file)
+                .get_args()
+                .map(|a| a.to_string_lossy().into_owned())
+                .collect();
+            assert_eq!(off, [subcommand, TEACHING_OFF, "t.xn"]);
+            let on: Vec<String> = xenith_cmd(xenith, subcommand, true, file)
+                .get_args()
+                .map(|a| a.to_string_lossy().into_owned())
+                .collect();
+            assert_eq!(on, [subcommand, "t.xn"]);
+        }
+    }
+
+    #[test]
+    fn xn_codes_are_distinct_and_in_first_appearance_order() {
+        let text = "error[XN2003]: unknown method `shove`\nnote: XN2003 again\n\
+                    error[XN3008]: bad call\nFOOXN9999 is an identifier, XN12 is a code";
+        assert_eq!(distinct_xn_codes(text), ["XN2003", "XN3008", "XN12"]);
+        assert!(distinct_xn_codes("no codes here").is_empty());
+        assert!(distinct_xn_codes("XNX XN XN-3").is_empty());
+    }
+
+    #[test]
+    fn v3_feedback_fields_survive_the_results_round_trip() {
+        let dir = std::env::temp_dir().join(format!("xenith-bench-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("codex-v3-teach.json");
+        let written = vec![TaskReport {
+            task: "t4-02".into(),
+            tier: 4,
+            passed: true,
+            pass_at_1: false,
+            rounds: vec![
+                RoundRecord {
+                    attempt: 1,
+                    outcome: "diagnostics".into(),
+                    seconds: 1.5,
+                    goals: None,
+                    diag_codes: Some(vec!["XN2003".into(), "XN3008".into()]),
+                    feedback_text: Some(
+                        "error[XN2003]: unknown method `shove`\n\
+                         teaches: push(item: T) -> Unit"
+                            .into(),
+                    ),
+                },
+                RoundRecord {
+                    attempt: 2,
+                    outcome: "pass".into(),
+                    seconds: 2.0,
+                    goals: None,
+                    diag_codes: None,
+                    feedback_text: None,
+                },
+            ],
+        }];
+        write_results(&file, Model::Codex, Condition::V3Teach, 4, &written).unwrap();
+        let loaded = load_prior_reports(&file);
+        std::fs::remove_file(&file).ok();
+        assert_eq!(loaded.len(), 1);
+        let rounds = &loaded[0].rounds;
+        assert_eq!(rounds.len(), 2);
+        assert_eq!(
+            rounds[0].diag_codes.clone().unwrap(),
+            vec!["XN2003", "XN3008"]
+        );
+        assert!(
+            rounds[0]
+                .feedback_text
+                .as_deref()
+                .unwrap()
+                .contains("teaches:")
+        );
+        assert!(rounds[1].diag_codes.is_none());
+        assert!(rounds[1].feedback_text.is_none());
     }
 }
