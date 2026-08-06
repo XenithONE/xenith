@@ -86,10 +86,14 @@ pub enum DefKind {
 }
 
 pub struct DefInfo {
+    /// Qualified name in project mode ("game.player.Player"); bare otherwise.
     pub name: String,
     /// Type parameter names, e.g. `["T", "E"]` for `Result`.
     pub generics: Vec<String>,
     pub kind: DefKind,
+    /// Visible across module boundaries. Prelude types always are; the flag
+    /// is inert in single-file mode (design/0010 §4).
+    pub is_pub: bool,
 }
 
 pub struct GenericInfo {
@@ -112,7 +116,10 @@ pub enum UsesInsertion {
 }
 
 pub struct FnSig {
+    /// Qualified name in project mode ("game.scores.best"); bare otherwise.
     pub name: String,
+    /// Callable across module boundaries (design/0010 §4).
+    pub is_pub: bool,
     pub generics: Vec<GenericInfo>,
     pub params: Vec<(String, Type)>,
     pub ret: Type,
@@ -147,6 +154,9 @@ pub struct DefTable {
     by_name: HashMap<String, DefId>,
     pub fns: Vec<FnSig>,
     fn_by_name: HashMap<String, usize>,
+    /// Every module path in the project, dotted, sorted. Empty in
+    /// single-file mode.
+    pub modules: Vec<String>,
 
     // Prelude ids, resolved once.
     pub list: DefId,
@@ -164,6 +174,16 @@ impl DefTable {
 
     pub fn lookup(&self, name: &str) -> Option<DefId> {
         self.by_name.get(name).copied()
+    }
+
+    pub fn module_exists(&self, path: &str) -> bool {
+        self.modules.iter().any(|m| m == path)
+    }
+
+    /// Every definition, prelude included — the project layer builds its
+    /// pub-item index from this.
+    pub fn defs_iter(&self) -> impl Iterator<Item = &DefInfo> {
+        self.defs.iter()
     }
 
     pub fn fn_named(&self, name: &str) -> Option<&FnSig> {
@@ -608,15 +628,54 @@ impl DefTable {
     }
 }
 
+/// One module's contribution to a collection run. `prefix` is the dotted
+/// module path; the empty prefix is single-file mode, where every project
+/// rule below stays dormant and behaviour is byte-identical to before
+/// modules existed.
+pub struct CollectUnit<'a> {
+    pub prefix: &'a str,
+    pub module: &'a ast::Module,
+    /// Modules this unit `use`s — the only prefixes its qualified
+    /// references may name (design/0010 §1).
+    pub uses: &'a [String],
+    /// Marked when a signature consumes a `use`; the unused-use check runs
+    /// after bodies, over the union.
+    pub used: Option<&'a std::cell::RefCell<std::collections::HashSet<String>>>,
+}
+
+/// `game.player` + `Player` -> `game.player.Player`; the empty prefix keeps
+/// names bare.
+pub fn qualified(prefix: &str, name: &str) -> String {
+    if prefix.is_empty() {
+        name.to_string()
+    } else {
+        format!("{prefix}.{name}")
+    }
+}
+
 /// Pass A: register every type name. Pass B: lower fields, variants and
 /// signatures against the complete name table.
 pub fn collect(module: &ast::Module) -> (DefTable, Vec<Diagnostic>) {
-    let mut diagnostics = Vec::new();
+    let unit = CollectUnit {
+        prefix: "",
+        module,
+        uses: &[],
+        used: None,
+    };
+    let (table, diagnostics) = collect_units(std::slice::from_ref(&unit));
+    (table, diagnostics.into_iter().map(|(_, d)| d).collect())
+}
+
+/// Multi-module collection: one shared table, names qualified by module.
+/// Diagnostics come back tagged with the unit that owns them.
+pub fn collect_units(units: &[CollectUnit]) -> (DefTable, Vec<(usize, Diagnostic)>) {
+    let mut diagnostics: Vec<(usize, Diagnostic)> = Vec::new();
     let mut defs: Vec<DefInfo> = Vec::new();
     let mut by_name: HashMap<String, DefId> = HashMap::new();
 
     let register = |name: &str,
                     generics: Vec<String>,
+                    is_pub: bool,
                     defs: &mut Vec<DefInfo>,
                     by_name: &mut HashMap<String, DefId>|
      -> DefId {
@@ -625,25 +684,33 @@ pub fn collect(module: &ast::Module) -> (DefTable, Vec<Diagnostic>) {
             name: name.to_string(),
             generics,
             kind: DefKind::Opaque,
+            is_pub,
         });
         by_name.insert(name.to_string(), id);
         id
     };
 
     // ----- prelude -----
-    let list = register("List", vec!["T".into()], &mut defs, &mut by_name);
-    let option = register("Option", vec!["T".into()], &mut defs, &mut by_name);
+    let list = register("List", vec!["T".into()], true, &mut defs, &mut by_name);
+    let option = register("Option", vec!["T".into()], true, &mut defs, &mut by_name);
     let result = register(
         "Result",
         vec!["T".into(), "E".into()],
+        true,
         &mut defs,
         &mut by_name,
     );
-    let map = register("Map", vec!["K".into(), "V".into()], &mut defs, &mut by_name);
-    let shared = register("Shared", vec!["T".into()], &mut defs, &mut by_name);
-    let task = register("Task", vec!["T".into()], &mut defs, &mut by_name);
-    register("Io", vec![], &mut defs, &mut by_name);
-    register("Error", vec![], &mut defs, &mut by_name);
+    let map = register(
+        "Map",
+        vec!["K".into(), "V".into()],
+        true,
+        &mut defs,
+        &mut by_name,
+    );
+    let shared = register("Shared", vec!["T".into()], true, &mut defs, &mut by_name);
+    let task = register("Task", vec!["T".into()], true, &mut defs, &mut by_name);
+    register("Io", vec![], true, &mut defs, &mut by_name);
+    register("Error", vec![], true, &mut defs, &mut by_name);
 
     defs[option.0 as usize].kind = DefKind::Enum {
         variants: vec![
@@ -670,30 +737,78 @@ pub fn collect(module: &ast::Module) -> (DefTable, Vec<Diagnostic>) {
         ],
     };
 
-    // ----- pass A: user type names -----
-    for item in &module.items {
-        let (name, span, generics) = match &item.kind {
-            ast::ItemKind::Struct(s) => (&s.name, s.name.span, &s.generics),
-            ast::ItemKind::Enum(e) => (&e.name, e.name.span, &e.generics),
-            _ => continue,
-        };
-        if name.name.is_empty() {
-            continue; // parser recovery
+    // ----- pass A: user type names, across every unit -----
+    for (index, unit) in units.iter().enumerate() {
+        for item in &unit.module.items {
+            let (name, span, generics, is_pub) = match &item.kind {
+                ast::ItemKind::Struct(s) => (&s.name, s.name.span, &s.generics, s.is_pub),
+                ast::ItemKind::Enum(e) => (&e.name, e.name.span, &e.generics, e.is_pub),
+                _ => continue,
+            };
+            if name.name.is_empty() {
+                continue; // parser recovery
+            }
+            // Prelude names stay global in every mode; the qualified key
+            // only has to guard against a duplicate within the same module.
+            let key = qualified(unit.prefix, &name.name);
+            if by_name.contains_key(&key) || by_name.contains_key(&name.name) {
+                diagnostics.push((
+                    index,
+                    Diagnostic::error(
+                        DiagCode::DuplicateDefinition,
+                        span,
+                        format!("`{}` is declared more than once", name.name),
+                    ),
+                ));
+                continue;
+            }
+            register(
+                &key,
+                generics.iter().map(|g| g.name.name.clone()).collect(),
+                is_pub,
+                &mut defs,
+                &mut by_name,
+            );
         }
-        if by_name.contains_key(&name.name) {
-            diagnostics.push(Diagnostic::error(
-                DiagCode::DuplicateDefinition,
-                span,
-                format!("`{}` is declared more than once", name.name),
-            ));
+    }
+
+    let mut modules: Vec<String> = units
+        .iter()
+        .filter(|u| !u.prefix.is_empty())
+        .map(|u| u.prefix.to_string())
+        .collect();
+    modules.sort();
+
+    // Module paths and item names are exclusive under one parent, so every
+    // dotted reference keeps a single reading (design/0010 §2).
+    for unit in units {
+        let Some((parent, last)) = unit.prefix.rsplit_once('.') else {
             continue;
+        };
+        let Some((parent_index, parent_unit)) =
+            units.iter().enumerate().find(|(_, u)| u.prefix == parent)
+        else {
+            continue;
+        };
+        for item in &parent_unit.module.items {
+            let name = match &item.kind {
+                ast::ItemKind::Fn(f) => &f.name,
+                ast::ItemKind::Struct(s) => &s.name,
+                ast::ItemKind::Enum(e) => &e.name,
+                ast::ItemKind::Const(c) => &c.name,
+                _ => continue,
+            };
+            if name.name == last {
+                let message = format!(
+                    "`{}` is also the module `{}`; module paths and item names are exclusive under one parent",
+                    name.name, unit.prefix
+                );
+                diagnostics.push((
+                    parent_index,
+                    Diagnostic::error(DiagCode::ModuleItemClash, name.span, message),
+                ));
+            }
         }
-        register(
-            &name.name,
-            generics.iter().map(|g| g.name.name.clone()).collect(),
-            &mut defs,
-            &mut by_name,
-        );
     }
 
     let mut table = DefTable {
@@ -701,6 +816,7 @@ pub fn collect(module: &ast::Module) -> (DefTable, Vec<Diagnostic>) {
         by_name,
         fns: Vec::new(),
         fn_by_name: HashMap::new(),
+        modules,
         list,
         option,
         result,
@@ -719,6 +835,7 @@ pub fn collect(module: &ast::Module) -> (DefTable, Vec<Diagnostic>) {
         .insert("empty_map".to_string(), table.fns.len());
     table.fns.push(FnSig {
         name: "empty_map".to_string(),
+        is_pub: true,
         generics: vec![
             GenericInfo {
                 name: "K".to_string(),
@@ -741,69 +858,145 @@ pub fn collect(module: &ast::Module) -> (DefTable, Vec<Diagnostic>) {
     });
 
     // ----- pass B: bodies of type declarations -----
-    for item in &module.items {
-        match &item.kind {
-            ast::ItemKind::Struct(s) => {
-                let Some(id) = table.lookup(&s.name.name) else {
-                    continue;
-                };
-                let generic_names: Vec<String> =
-                    s.generics.iter().map(|g| g.name.name.clone()).collect();
-                let fields = s
-                    .fields
-                    .iter()
-                    .map(|f| FieldInfo {
-                        name: f.name.name.clone(),
-                        ty: lower_type(&f.ty, &table, &generic_names, &mut diagnostics),
-                        mutable: f.mutable,
-                    })
-                    .collect();
-                table.defs[id.0 as usize].kind = DefKind::Struct { fields };
+    for (index, unit) in units.iter().enumerate() {
+        let resolver = ResolveCtx {
+            prefix: unit.prefix,
+            uses: unit.uses,
+            used: unit.used,
+        };
+        let resolve = (!unit.prefix.is_empty()).then_some(&resolver);
+        let mut unit_diagnostics = Vec::new();
+        for item in &unit.module.items {
+            match &item.kind {
+                ast::ItemKind::Struct(st) => {
+                    let Some(id) = table.lookup(&qualified(unit.prefix, &st.name.name)) else {
+                        continue;
+                    };
+                    let generic_names: Vec<String> =
+                        st.generics.iter().map(|g| g.name.name.clone()).collect();
+                    let fields: Vec<FieldInfo> = st
+                        .fields
+                        .iter()
+                        .map(|f| FieldInfo {
+                            name: f.name.name.clone(),
+                            ty: lower_type(
+                                &f.ty,
+                                &table,
+                                &generic_names,
+                                &mut unit_diagnostics,
+                                resolve,
+                            ),
+                            mutable: f.mutable,
+                        })
+                        .collect();
+                    // Public API closure (design/0010 §4): a pub struct's
+                    // fields are its surface, so no private type may hide in
+                    // one.
+                    if st.is_pub {
+                        for (field, lowered) in st.fields.iter().zip(&fields) {
+                            if let Some(private) = private_mention(&table, &lowered.ty) {
+                                unit_diagnostics.push(Diagnostic::error(
+                                    DiagCode::PubApiPrivateType,
+                                    field.span,
+                                    format!(
+                                        "`pub struct {}` exposes the private type `{private}`",
+                                        st.name.name
+                                    ),
+                                ));
+                            }
+                        }
+                    }
+                    table.defs[id.0 as usize].kind = DefKind::Struct { fields };
+                }
+                ast::ItemKind::Enum(en) => {
+                    let Some(id) = table.lookup(&qualified(unit.prefix, &en.name.name)) else {
+                        continue;
+                    };
+                    let generic_names: Vec<String> =
+                        en.generics.iter().map(|g| g.name.name.clone()).collect();
+                    let variants: Vec<VariantInfo> = en
+                        .variants
+                        .iter()
+                        .map(|v| VariantInfo {
+                            name: v.name.name.clone(),
+                            payload: v
+                                .payload
+                                .iter()
+                                .map(|t| {
+                                    lower_type(
+                                        t,
+                                        &table,
+                                        &generic_names,
+                                        &mut unit_diagnostics,
+                                        resolve,
+                                    )
+                                })
+                                .collect(),
+                        })
+                        .collect();
+                    if en.is_pub {
+                        for (variant, lowered) in en.variants.iter().zip(&variants) {
+                            for payload in &lowered.payload {
+                                if let Some(private) = private_mention(&table, payload) {
+                                    unit_diagnostics.push(Diagnostic::error(
+                                        DiagCode::PubApiPrivateType,
+                                        variant.span,
+                                        format!(
+                                            "`pub enum {}` exposes the private type `{private}`",
+                                            en.name.name
+                                        ),
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                    table.defs[id.0 as usize].kind = DefKind::Enum { variants };
+                }
+                _ => {}
             }
-            ast::ItemKind::Enum(e) => {
-                let Some(id) = table.lookup(&e.name.name) else {
-                    continue;
-                };
-                let generic_names: Vec<String> =
-                    e.generics.iter().map(|g| g.name.name.clone()).collect();
-                let variants = e
-                    .variants
-                    .iter()
-                    .map(|v| VariantInfo {
-                        name: v.name.name.clone(),
-                        payload: v
-                            .payload
-                            .iter()
-                            .map(|t| lower_type(t, &table, &generic_names, &mut diagnostics))
-                            .collect(),
-                    })
-                    .collect();
-                table.defs[id.0 as usize].kind = DefKind::Enum { variants };
-            }
-            _ => {}
         }
+        diagnostics.extend(unit_diagnostics.into_iter().map(|d| (index, d)));
     }
 
     // ----- pass B: function signatures -----
-    for item in &module.items {
-        let ast::ItemKind::Fn(f) = &item.kind else {
-            continue;
+    for (index, unit) in units.iter().enumerate() {
+        let resolver = ResolveCtx {
+            prefix: unit.prefix,
+            uses: unit.uses,
+            used: unit.used,
         };
-        if f.name.name.is_empty() {
-            continue;
-        }
-        if table.fn_by_name.contains_key(&f.name.name) {
-            diagnostics.push(Diagnostic::error(
-                DiagCode::DuplicateDefinition,
-                f.name.span,
-                format!("`{}` is declared more than once", f.name.name),
-            ));
-            continue;
-        }
+        let resolve = (!unit.prefix.is_empty()).then_some(&resolver);
+        let mut unit_diagnostics = Vec::new();
+        for item in &unit.module.items {
+            let ast::ItemKind::Fn(f) = &item.kind else {
+                continue;
+            };
+            if f.name.name.is_empty() {
+                continue;
+            }
+            // The entry point is a property of the project: `fn main` lives in
+            // `src/main.xn` and nowhere else (design/0010 §2).
+            if f.name.name == "main" && !unit.prefix.is_empty() && unit.prefix != "main" {
+                unit_diagnostics.push(Diagnostic::error(
+                    DiagCode::MisplacedMain,
+                    f.name.span,
+                    "`fn main` lives in `src/main.xn`; this module cannot declare it",
+                ));
+            }
+            let key = qualified(unit.prefix, &f.name.name);
+            if table.fn_by_name.contains_key(&key) || table.fn_by_name.contains_key(&f.name.name) {
+                unit_diagnostics.push(Diagnostic::error(
+                    DiagCode::DuplicateDefinition,
+                    f.name.span,
+                    format!("`{}` is declared more than once", f.name.name),
+                ));
+                continue;
+            }
 
-        let generic_names: Vec<String> = f.generics.iter().map(|g| g.name.name.clone()).collect();
+            let generic_names: Vec<String> =
+                f.generics.iter().map(|g| g.name.name.clone()).collect();
 
-        let generics = f
+            let generics = f
             .generics
             .iter()
             .map(|g| GenericInfo {
@@ -814,7 +1007,7 @@ pub fn collect(module: &ast::Module) -> (DefTable, Vec<Diagnostic>) {
                     .filter_map(|b| {
                         let property = Property::from_name(&b.name);
                         if property.is_none() {
-                            diagnostics.push(Diagnostic::error(
+                            unit_diagnostics.push(Diagnostic::error(
                                 DiagCode::UnknownProperty,
                                 b.span,
                                 format!(
@@ -829,61 +1022,118 @@ pub fn collect(module: &ast::Module) -> (DefTable, Vec<Diagnostic>) {
             })
             .collect();
 
-        let params = f
-            .params
-            .iter()
-            .map(|p| {
-                (
-                    p.name.name.clone(),
-                    lower_type(&p.ty, &table, &generic_names, &mut diagnostics),
-                )
-            })
-            .collect();
+            let params: Vec<(String, Type)> = f
+                .params
+                .iter()
+                .map(|p| {
+                    (
+                        p.name.name.clone(),
+                        lower_type(
+                            &p.ty,
+                            &table,
+                            &generic_names,
+                            &mut unit_diagnostics,
+                            resolve,
+                        ),
+                    )
+                })
+                .collect();
 
-        let ret = match &f.return_type {
-            Some(ty) => lower_type(ty, &table, &generic_names, &mut diagnostics),
-            None => Type::Unit,
-        };
+            let ret = match &f.return_type {
+                Some(ty) => lower_type(ty, &table, &generic_names, &mut unit_diagnostics, resolve),
+                None => Type::Unit,
+            };
 
-        let effects = EffectSet::new(f.effects.iter().flat_map(|set| {
-            set.effects.iter().map(|path| {
-                path.segments
+            // Public API closure (design/0010 §4): a pub signature may not name
+            // a type its callers cannot spell.
+            if f.is_pub {
+                let mentioned = params
                     .iter()
-                    .map(|s| s.name.as_str())
-                    .collect::<Vec<_>>()
-                    .join(".")
-            })
-        }));
+                    .map(|(_, t)| t)
+                    .chain(std::iter::once(&ret))
+                    .find_map(|t| private_mention(&table, t));
+                if let Some(private) = mentioned {
+                    unit_diagnostics.push(Diagnostic::error(
+                        DiagCode::PubApiPrivateType,
+                        f.name.span,
+                        format!(
+                            "`pub fn {}` exposes the private type `{private}`",
+                            f.name.name
+                        ),
+                    ));
+                }
+            }
 
-        let uses_insertion = match (&f.effects, &f.body) {
-            (Some(set), _) if set.effects.is_empty() => UsesInsertion::Fill {
-                before_close: set.span.end.saturating_sub(1),
-            },
-            (Some(set), _) => UsesInsertion::Extend {
-                before_close: set.span.end.saturating_sub(1),
-            },
-            (None, Some(body)) => UsesInsertion::Create {
-                before_body: body.span.start,
-            },
-            (None, None) => UsesInsertion::Nowhere,
-        };
+            let effects = EffectSet::new(f.effects.iter().flat_map(|set| {
+                set.effects.iter().map(|path| {
+                    path.segments
+                        .iter()
+                        .map(|s| s.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(".")
+                })
+            }));
 
-        table
-            .fn_by_name
-            .insert(f.name.name.clone(), table.fns.len());
-        table.fns.push(FnSig {
-            name: f.name.name.clone(),
-            generics,
-            params,
-            ret,
-            effects,
-            is_async: f.is_async,
-            name_span: f.name.span,
-            uses_insertion,
-        });
+            let uses_insertion = match (&f.effects, &f.body) {
+                (Some(set), _) if set.effects.is_empty() => UsesInsertion::Fill {
+                    before_close: set.span.end.saturating_sub(1),
+                },
+                (Some(set), _) => UsesInsertion::Extend {
+                    before_close: set.span.end.saturating_sub(1),
+                },
+                (None, Some(body)) => UsesInsertion::Create {
+                    before_body: body.span.start,
+                },
+                (None, None) => UsesInsertion::Nowhere,
+            };
+
+            table.fn_by_name.insert(key.clone(), table.fns.len());
+            table.fns.push(FnSig {
+                name: key,
+                is_pub: f.is_pub,
+                generics,
+                params,
+                ret,
+                effects,
+                is_async: f.is_async,
+                name_span: f.name.span,
+                uses_insertion,
+            });
+        }
+        diagnostics.extend(unit_diagnostics.into_iter().map(|d| (index, d)));
     }
 
     (table, diagnostics)
+}
+
+/// The qualified name of a private user type mentioned in `ty`, if any —
+/// the witness for the public-API closure check (design/0010 §4). Prelude
+/// types are bare-named and always public.
+fn private_mention(table: &DefTable, ty: &Type) -> Option<String> {
+    match ty {
+        Type::Named { def, args } => {
+            let info = table.def(*def);
+            if info.name.contains('.') && !info.is_pub {
+                return Some(info.name.clone());
+            }
+            args.iter().find_map(|a| private_mention(table, a))
+        }
+        Type::Fn { params, ret, .. } => params
+            .iter()
+            .find_map(|p| private_mention(table, p))
+            .or_else(|| private_mention(table, ret)),
+        _ => None,
+    }
+}
+
+/// Module-aware name resolution for [`lower_type`] (design/0010 §1): which
+/// module is being lowered, and which modules its qualified references may
+/// name. Absent in single-file mode, where dotted type names stay unknown.
+pub struct ResolveCtx<'a> {
+    pub prefix: &'a str,
+    pub uses: &'a [String],
+    /// Marks a `use` consumed by a signature; bodies mark their own share.
+    pub used: Option<&'a std::cell::RefCell<std::collections::HashSet<String>>>,
 }
 
 /// Lower a syntactic type to a semantic one. `generics` are the type
@@ -895,6 +1145,7 @@ pub fn lower_type(
     table: &DefTable,
     generics: &[String],
     diagnostics: &mut Vec<Diagnostic>,
+    resolve: Option<&ResolveCtx>,
 ) -> Type {
     match &ty.kind {
         ast::TypeKind::Unit => Type::Unit,
@@ -918,7 +1169,7 @@ pub fn lower_type(
         ast::TypeKind::Named { path, args } => {
             let lowered: Vec<Type> = args
                 .iter()
-                .map(|a| lower_type(a, table, generics, diagnostics))
+                .map(|a| lower_type(a, table, generics, diagnostics, resolve))
                 .collect();
 
             // Single-segment names: builtins, generic parameters, then defs.
@@ -953,7 +1204,10 @@ pub fn lower_type(
                     }
                     return Type::Param(name.to_string());
                 }
-                if let Some(def) = table.lookup(name) {
+                let own = resolve
+                    .filter(|r| !r.prefix.is_empty())
+                    .and_then(|r| table.lookup(&qualified(r.prefix, name)));
+                if let Some(def) = own.or_else(|| table.lookup(name)) {
                     let expected = table.def(def).generics.len();
                     if lowered.len() != expected {
                         diagnostics.push(Diagnostic::error(
@@ -967,6 +1221,64 @@ pub fn lower_type(
                         return Type::Error;
                     }
                     return Type::Named { def, args: lowered };
+                }
+            }
+
+            // `game.player.Player` — items are single segments, so a dotted
+            // type name is always module-prefix + item (design/0010 §2).
+            if path.segments.len() >= 2 {
+                if let Some(resolve) = resolve {
+                    let item = &path.segments[path.segments.len() - 1].name;
+                    let module = path.segments[..path.segments.len() - 1]
+                        .iter()
+                        .map(|s| s.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(".");
+                    if resolve.uses.contains(&module) {
+                        if let Some(used) = &resolve.used {
+                            used.borrow_mut().insert(module.clone());
+                        }
+                        let dotted = format!("{module}.{item}");
+                        if let Some(def) = table.lookup(&dotted) {
+                            if !table.def(def).is_pub {
+                                diagnostics.push(Diagnostic::error(
+                                    DiagCode::PrivateItemAccess,
+                                    ty.span,
+                                    format!("`{dotted}` is private to `{module}`"),
+                                ));
+                                return Type::Error;
+                            }
+                            let expected = table.def(def).generics.len();
+                            if lowered.len() != expected {
+                                diagnostics.push(Diagnostic::error(
+                                    DiagCode::WrongArgumentCount,
+                                    ty.span,
+                                    format!(
+                                        "`{dotted}` takes {expected} type argument(s), {} given",
+                                        lowered.len()
+                                    ),
+                                ));
+                                return Type::Error;
+                            }
+                            return Type::Named { def, args: lowered };
+                        }
+                        diagnostics.push(Diagnostic::error(
+                            DiagCode::UnknownType,
+                            ty.span,
+                            format!("`{module}` has no type named `{item}`"),
+                        ));
+                        return Type::Error;
+                    }
+                    if table.module_exists(&module) {
+                        diagnostics.push(Diagnostic::error(
+                            DiagCode::UnknownModule,
+                            ty.span,
+                            format!(
+                                "module `{module}` is not `use`d in this file; add `use {module};`"
+                            ),
+                        ));
+                        return Type::Error;
+                    }
                 }
             }
 

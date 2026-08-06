@@ -228,7 +228,7 @@ fn parse_type(type_text: &str, table: &DefTable) -> Result<Type, String> {
     };
 
     let mut diagnostics = Vec::new();
-    let lowered = def::lower_type(&param.ty, table, &[], &mut diagnostics);
+    let lowered = def::lower_type(&param.ty, table, &[], &mut diagnostics, None);
     if !diagnostics.is_empty() || lowered == Type::Error {
         return Err(format!(
             "`{type_text}` names something this module does not declare"

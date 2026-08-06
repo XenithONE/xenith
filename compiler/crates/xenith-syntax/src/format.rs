@@ -269,8 +269,9 @@ impl<'a> Writer<'a> {
                 self.line(&format!("use {path};"));
             }
             ItemKind::Const(c) => {
+                let prefix = if c.is_pub { "pub " } else { "" };
                 let head = format!(
-                    "const {}: {} = {};",
+                    "{prefix}const {}: {} = {};",
                     c.name.name,
                     render_type(&c.ty),
                     render_expr(&c.value, PREC_LOWEST)
@@ -286,6 +287,9 @@ impl<'a> Writer<'a> {
 
     fn fn_item(&mut self, f: &FnItem) {
         let mut head = String::new();
+        if f.is_pub {
+            head.push_str("pub ");
+        }
         if f.is_async {
             head.push_str("async ");
         }
@@ -331,16 +335,17 @@ impl<'a> Writer<'a> {
     }
 
     fn struct_item(&mut self, s: &StructItem) {
+        let prefix = if s.is_pub { "pub " } else { "" };
         if s.fields.is_empty() {
             self.line(&format!(
-                "struct {}{} {{}}",
+                "{prefix}struct {}{} {{}}",
                 s.name.name,
                 render_generics(&s.generics)
             ));
             return;
         }
         self.line(&format!(
-            "struct {}{} {{",
+            "{prefix}struct {}{} {{",
             s.name.name,
             render_generics(&s.generics)
         ));
@@ -359,16 +364,17 @@ impl<'a> Writer<'a> {
     }
 
     fn enum_item(&mut self, e: &EnumItem) {
+        let prefix = if e.is_pub { "pub " } else { "" };
         if e.variants.is_empty() {
             self.line(&format!(
-                "enum {}{} {{}}",
+                "{prefix}enum {}{} {{}}",
                 e.name.name,
                 render_generics(&e.generics)
             ));
             return;
         }
         self.line(&format!(
-            "enum {}{} {{",
+            "{prefix}enum {}{} {{",
             e.name.name,
             render_generics(&e.generics)
         ));

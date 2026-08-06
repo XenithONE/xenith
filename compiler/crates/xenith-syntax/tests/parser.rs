@@ -386,6 +386,84 @@ fn holes_parse_in_type_position() {
     assert_eq!(name.as_deref(), Some("ret"));
 }
 
+// ------------------------------------------------------------ pub and modules
+
+#[test]
+fn pub_marks_all_four_item_kinds() {
+    let module = expect_clean(
+        "pub fn f() {}
+pub struct S {}
+pub enum E { A }
+pub const L: Int = 1;",
+    );
+    let ItemKind::Fn(f) = &module.items[0].kind else {
+        panic!("expected a function");
+    };
+    assert!(f.is_pub);
+    let ItemKind::Struct(s) = &module.items[1].kind else {
+        panic!("expected a struct");
+    };
+    assert!(s.is_pub);
+    let ItemKind::Enum(e) = &module.items[2].kind else {
+        panic!("expected an enum");
+    };
+    assert!(e.is_pub);
+    let ItemKind::Const(c) = &module.items[3].kind else {
+        panic!("expected a const");
+    };
+    assert!(c.is_pub);
+}
+
+#[test]
+fn items_default_to_private() {
+    let module = expect_clean("fn f() {}");
+    let ItemKind::Fn(f) = &module.items[0].kind else {
+        panic!("expected a function");
+    };
+    assert!(!f.is_pub);
+}
+
+#[test]
+fn pub_async_fn_parses_in_that_order() {
+    let module = expect_clean("pub async fn f() {}");
+    let ItemKind::Fn(f) = &module.items[0].kind else {
+        panic!("expected a function");
+    };
+    assert!(f.is_pub && f.is_async);
+}
+
+#[test]
+fn pub_on_a_use_is_reported_but_the_use_survives() {
+    let parsed = parse(
+        "pub use game.player;
+fn f() {}",
+    );
+    assert_eq!(parsed.diagnostics[0].code.id(), "XN1007");
+    assert!(matches!(parsed.module.items[0].kind, ItemKind::Use(_)));
+}
+
+#[test]
+fn a_qualified_struct_literal_parses_with_its_full_path() {
+    let ExprKind::StructLit { path, fields } =
+        expr_of("game.player.Player { name: \"ada\", score: 0 }").kind
+    else {
+        panic!("expected a struct literal");
+    };
+    assert_eq!(path.segments.len(), 3);
+    assert_eq!(fields.len(), 2);
+}
+
+#[test]
+fn a_dotted_condition_is_still_not_a_struct_literal() {
+    // The same suppression that protects `if ready { }` protects the
+    // qualified form.
+    assert!(
+        parse("fn f(p: Player) { if p.alive { } }")
+            .diagnostics
+            .is_empty()
+    );
+}
+
 // ------------------------------------------------------------- list literals
 
 #[test]

@@ -88,11 +88,15 @@ pub struct ConstItem {
     pub name: Ident,
     pub ty: Type,
     pub value: Expr,
+    /// `pub const` — visible across module boundaries (design/0010 §4).
+    pub is_pub: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FnItem {
     pub name: Ident,
+    /// `pub fn` — callable across module boundaries (design/0010 §4).
+    pub is_pub: bool,
     pub is_async: bool,
     pub generics: Vec<GenericParam>,
     pub params: Vec<Param>,
@@ -123,6 +127,9 @@ pub struct EffectSet {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StructItem {
     pub name: Ident,
+    /// `pub struct` — constructible and readable across module boundaries;
+    /// field assignment still stops at the boundary (design/0010 §4).
+    pub is_pub: bool,
     pub generics: Vec<GenericParam>,
     pub fields: Vec<FieldDef>,
 }
@@ -140,6 +147,9 @@ pub struct FieldDef {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EnumItem {
     pub name: Ident,
+    /// `pub enum` — every variant constructible and matchable across module
+    /// boundaries (design/0010 §4).
+    pub is_pub: bool,
     pub generics: Vec<GenericParam>,
     pub variants: Vec<VariantDef>,
 }

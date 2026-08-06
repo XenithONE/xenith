@@ -31,21 +31,28 @@ struct Scored {
     head: String,
 }
 
+/// Where a hole sits: the enclosing function (never suggested back), the
+/// hole's own name, and — in project mode — the module whose `use` set
+/// bounds what may be offered (design/0010 §6).
+pub struct CandidateView<'a> {
+    pub enclosing: &'a str,
+    pub hole_name: Option<&'a str>,
+    /// (own module prefix, `use`d module paths). `None` is single-file mode.
+    pub module: Option<(&'a str, &'a [String])>,
+}
+
 /// Rank candidates for a hole expecting `expected`.
 ///
 /// `scope` carries real types (innermost shadowing already resolved);
 /// `generics` are the enclosing function's parameters, so property bounds
-/// resolve for `T`-typed bindings; `enclosing` is excluded from suggestions —
-/// a checker that answers "what goes in this unfinished body?" with "call the
-/// function you are writing" has answered nothing.
+/// resolve for `T`-typed bindings.
 pub fn candidates_for(
     defs: &DefTable,
     expected: &Type,
     scope: &[(String, Type, bool)],
     budget: &EffectSet,
     generics: &[GenericInfo],
-    enclosing: &str,
-    hole_name: Option<&str>,
+    view: &CandidateView,
 ) -> (Vec<Candidate>, Vec<String>) {
     // A hole expecting poison has no meaningful candidates.
     if expected.is_unknown() {
@@ -59,7 +66,7 @@ pub fn candidates_for(
     for (name, ty, _) in scope {
         if ty == expected {
             pool.push(Scored {
-                score: 100 + 40 + 15 + name_affinity(hole_name, name),
+                score: 100 + 40 + 15 + name_affinity(view.hole_name, name),
                 head: name.clone(),
                 candidate: Candidate {
                     expression: name.clone(),
@@ -89,7 +96,7 @@ pub fn candidates_for(
             if field.ty.substitute(&bindings) == *expected {
                 let expression = format!("{name}.{}", field.name);
                 pool.push(Scored {
-                    score: 100 + 40 + 15 - 6 + name_affinity(hole_name, &field.name),
+                    score: 100 + 40 + 15 - 6 + name_affinity(view.hole_name, &field.name),
                     head: name.clone(),
                     candidate: Candidate {
                         expression,
@@ -173,11 +180,29 @@ pub fn candidates_for(
 
     // ----- 4. module functions whose return type fits -----
     for sig in &defs.fns {
-        if sig.name == enclosing {
+        if sig.name == view.enclosing {
             // "Call the function you are writing" answers nothing; genuine
             // recursion is a decision, not a completion.
             continue;
         }
+        // Project mode: a foreign function is reachable only through its
+        // `use` (design/0010 §6 — candidates never enumerate the project);
+        // the current module's own functions keep their bare spelling.
+        let shown_name = if let Some((owner, bare)) = sig.name.rsplit_once('.') {
+            match &view.module {
+                Some((prefix, _)) if owner == *prefix => bare.to_string(),
+                Some((_, used)) if sig.is_pub && used.iter().any(|u| u == owner) => {
+                    sig.name.clone()
+                }
+                _ => continue,
+            }
+        } else {
+            sig.name.clone()
+        };
+        let bare_name = shown_name
+            .rsplit_once('.')
+            .map(|(_, bare)| bare)
+            .unwrap_or(shown_name.as_str());
         let ret = if sig.is_async {
             Type::Named {
                 def: defs.task,
@@ -220,9 +245,9 @@ pub fn candidates_for(
                 }
             })
             .collect();
-        let expression = format!("{}({})", sig.name, rendered_args.join(", "));
+        let expression = format!("{}({})", shown_name, rendered_args.join(", "));
 
-        let convention = convention_bonus(&sig.name, expected, defs);
+        let convention = convention_bonus(bare_name, expected, defs);
         let effect_bonus = if sig.effects.is_empty() { 15 } else { 0 };
         pool.push(Scored {
             score: 100
@@ -230,9 +255,9 @@ pub fn candidates_for(
                 + filled * 10
                 + convention
                 + effect_bonus
-                + name_affinity(hole_name, &sig.name)
+                + name_affinity(view.hole_name, bare_name)
                 - 6 * (1 + sig.params.len() as i32),
-            head: sig.name.clone(),
+            head: shown_name.clone(),
             candidate: Candidate {
                 expression,
                 complete: nested == 0,
@@ -331,7 +356,7 @@ pub fn candidates_for(
                     + filled * 10
                     + convention
                     + effect_bonus
-                    + name_affinity(hole_name, method.name)
+                    + name_affinity(view.hole_name, method.name)
                     - 6 * (1 + method.params.len() as i32),
                 head: name.clone(),
                 candidate: Candidate {

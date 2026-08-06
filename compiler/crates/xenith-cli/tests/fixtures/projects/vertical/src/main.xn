@@ -1,0 +1,9 @@
+use game.player;
+use game.scores;
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    let fresh = game.player.Player { name: "ada", score: 90 };
+    let awarded = game.player.award(player: fresh, points: 20);
+    io.write(text: game.scores.describe(player: awarded))?;
+    return Ok(unit);
+}

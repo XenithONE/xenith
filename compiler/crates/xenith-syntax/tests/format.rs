@@ -37,6 +37,14 @@ const SAMPLES: &[&str] = &[
     "fn f() -> List<Int> { [] }",
     "fn f() -> List<List<Int>> { [[1], [], [2, 3]] }",
     "fn f() -> Int { var xs = [1]; xs.push(item: 2); xs.len() }",
+    "pub fn f() {}",
+    "pub struct P { name: String }",
+    "pub enum E { A, B(Int) }",
+    "pub const LIMIT: Int = 10;",
+    "use game.player;
+
+fn f() -> Int { game.player.best(player: 1) }",
+    "fn f() -> Int { let p = game.player.Player { name: \"a\", score: 0 }; p.score }",
 ];
 
 fn formatted(source: &str) -> String {
@@ -263,6 +271,22 @@ fn else_if_chains_stay_on_the_closing_brace() {
     let output = formatted("fn f(c: Bool) -> Int { if c { 1 } else if c { 2 } else { 3 } }");
     assert!(output.contains("} else if c {"), "{output}");
     assert!(output.contains("} else {"), "{output}");
+}
+
+#[test]
+fn pub_renders_before_the_declaration_keyword() {
+    assert_eq!(
+        formatted("pub  fn f(){}"),
+        "pub fn f() {}
+"
+    );
+    assert_eq!(
+        formatted("pub struct P{name:String}"),
+        "pub struct P {
+    name: String,
+}
+"
+    );
 }
 
 #[test]

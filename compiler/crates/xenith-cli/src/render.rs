@@ -163,6 +163,15 @@ fn teach(teach: &Teach) -> String {
                 out.push_str(&format!("      {}\n", item.signature));
             }
         }
+        TeachKind::UseCandidates => {
+            out.push_str(&format!(
+                "  `{}` is pub in more than one module:\n",
+                teach.type_name
+            ));
+            for item in &teach.items {
+                out.push_str(&format!("      {}\n", item.signature));
+            }
+        }
     }
     out
 }

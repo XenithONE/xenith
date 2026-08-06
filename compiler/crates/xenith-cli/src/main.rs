@@ -154,6 +154,14 @@ fn main() -> ExitCode {
 }
 
 fn run(path: &Path, teaching: Teaching) -> ExitCode {
+    // A file inside a project runs as the project (design/0010 §2): the
+    // entry is `src/main.xn`, whichever file was named.
+    if let Some(root) = xenith_driver::project::discover(path) {
+        if xenith_driver::project::in_sources(&root, path) {
+            return run_project(&root, teaching);
+        }
+    }
+
     let mut failed = false;
     let Some(source) = read(path, &mut failed) else {
         return ExitCode::from(2);
@@ -196,8 +204,28 @@ fn run(path: &Path, teaching: Teaching) -> ExitCode {
 fn check(paths: &[PathBuf], json: bool, teaching: Teaching) -> ExitCode {
     let mut findings: Vec<(PathBuf, String, Vec<Diagnostic>)> = Vec::new();
     let mut failed = false;
+    let mut roots_done: Vec<PathBuf> = Vec::new();
 
     for path in paths {
+        // A path inside a project checks the whole project, once.
+        if let Some(root) = xenith_driver::project::discover(path) {
+            if xenith_driver::project::in_sources(&root, path) {
+                if roots_done.contains(&root) {
+                    continue;
+                }
+                roots_done.push(root.clone());
+                match xenith_driver::project::load(&root) {
+                    Ok(project) => {
+                        findings.extend(project_findings(&project, teaching));
+                    }
+                    Err(error) => {
+                        eprintln!("{error}");
+                        failed = true;
+                    }
+                }
+                continue;
+            }
+        }
         let Some(source) = read(path, &mut failed) else {
             continue;
         };
@@ -441,6 +469,74 @@ fn producers(path: &Path, type_text: &str, json: bool) -> ExitCode {
         }
     }
     ExitCode::SUCCESS
+}
+
+/// One report entry per project file, layout problems included — a layout
+/// diagnostic renders like any other, just without a source excerpt.
+fn project_findings(
+    project: &xenith_driver::project::Project,
+    teaching: Teaching,
+) -> Vec<(PathBuf, String, Vec<Diagnostic>)> {
+    let (mut per_file, _) = xenith_driver::project::analyze(project);
+    let mut findings = Vec::new();
+    for (rel, diagnostic) in &project.layout {
+        findings.push((
+            project.root.join(rel),
+            String::new(),
+            vec![diagnostic.clone()],
+        ));
+    }
+    for (file, mut diagnostics) in project.files.iter().zip(per_file.drain(..)) {
+        strip_teaches(&mut diagnostics, teaching);
+        let mut shown = project.root.join("src");
+        for part in file.rel.split('/') {
+            shown.push(part);
+        }
+        findings.push((shown, file.source.clone(), diagnostics));
+    }
+    findings
+}
+
+/// Check, then execute a whole project. Refusal mirrors the single-file
+/// rule: any diagnostic anywhere means nothing runs.
+fn run_project(root: &Path, teaching: Teaching) -> ExitCode {
+    let project = match xenith_driver::project::load(root) {
+        Ok(project) => project,
+        Err(error) => {
+            eprintln!("{error}");
+            return ExitCode::from(2);
+        }
+    };
+    let findings = project_findings(&project, teaching);
+    let mut any = false;
+    for (path, source, diagnostics) in &findings {
+        let index = LineIndex::new(source);
+        for diagnostic in diagnostics {
+            any = true;
+            print!("{}", render::diagnostic(path, source, &index, diagnostic));
+        }
+    }
+    if any {
+        eprintln!("{}: not run — fix the diagnostics first", root.display());
+        return ExitCode::from(2);
+    }
+
+    let (_, table) = xenith_driver::project::analyze(&project);
+    let modules: Vec<(String, &xenith_syntax::ast::Module)> = project
+        .files
+        .iter()
+        .map(|file| (file.module.clone(), &file.parsed.module))
+        .collect();
+    let outcome = xenith_vm::run_project(&modules, &table);
+
+    use std::io::Write;
+    let _ = std::io::stdout().write_all(&outcome.stdout);
+    let _ = std::io::stdout().flush();
+
+    if let Some((message, _)) = outcome.error {
+        eprintln!("{}: runtime error: {message}", root.display());
+    }
+    ExitCode::from(u8::try_from(outcome.exit).unwrap_or(101))
 }
 
 /// `--diagnostic-teaching=off` strips exactly the teaches and nothing else,

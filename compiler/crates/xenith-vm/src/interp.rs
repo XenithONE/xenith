@@ -50,6 +50,8 @@ pub enum Value<'a> {
         body: Body<'a>,
         captured: Vec<(String, Value<'a>)>,
         is_async: bool,
+        /// Index of the module whose bare names the body resolves against.
+        home: usize,
     },
     /// A variant constructor used as a value: `ScoreError.NotFound`.
     VariantCtor {
@@ -101,13 +103,40 @@ pub struct Outcome {
 /// refused a module with diagnostics; holes type-check clean and are allowed
 /// through — reaching one is a precise trap, which is the workflow.
 pub fn run(module: &ast::Module, table: &DefTable) -> Outcome {
+    let units = [(String::new(), module)];
+    run_units(&units, table, 0)
+}
+
+/// Run a project: the entry is the `main` module (design/0010 §2). A
+/// project without one is a library — it checks, and running it is this
+/// precise refusal rather than a hunt for a stray `fn main`.
+pub fn run_project<'a>(modules: &'a [(String, &'a ast::Module)], table: &'a DefTable) -> Outcome {
+    match modules.iter().position(|(path, _)| path == "main") {
+        Some(entry) => run_units(modules, table, entry),
+        None => Outcome {
+            exit: 101,
+            stdout: Vec::new(),
+            error: Some((
+                "no `src/main.xn` — a library project checks but does not run".to_string(),
+                Span::EMPTY,
+            )),
+        },
+    }
+}
+
+fn run_units<'a>(
+    modules: &'a [(String, &'a ast::Module)],
+    table: &'a DefTable,
+    entry: usize,
+) -> Outcome {
     let mut interp = Interp {
         table,
-        module,
+        modules,
+        current: entry,
         stdout: Vec::new(),
     };
 
-    let Some(main) = find_fn(module, "main") else {
+    let Some(main) = find_fn(modules[entry].1, "main") else {
         return Outcome {
             exit: 101,
             stdout: Vec::new(),
@@ -175,6 +204,19 @@ pub fn run(module: &ast::Module, table: &DefTable) -> Outcome {
                 Span::EMPTY,
             )),
         },
+    }
+}
+
+/// The dotted names of a pure field chain, for module-path resolution.
+fn expr_segments(expr: &ast::Expr) -> Option<Vec<String>> {
+    match &expr.kind {
+        ast::ExprKind::Path(path) => Some(path.segments.iter().map(|s| s.name.clone()).collect()),
+        ast::ExprKind::Field { receiver, name } => {
+            let mut segments = expr_segments(receiver)?;
+            segments.push(name.name.clone());
+            Some(segments)
+        }
+        _ => None,
     }
 }
 
@@ -275,11 +317,78 @@ impl<'a> Env<'a> {
 
 struct Interp<'a> {
     table: &'a DefTable,
-    module: &'a ast::Module,
+    /// (module path, ast) — one entry, path "", in single-file mode.
+    modules: &'a [(String, &'a ast::Module)],
+    /// The module whose bare names are currently in effect; `apply` swaps
+    /// it to the callee's home for the duration of the call.
+    current: usize,
     stdout: Vec<u8>,
 }
 
+/// What a dotted chain resolved to at runtime. No `use` gate here: the
+/// checker enforced it, and `run` refuses files with diagnostics.
+enum RuntimeRef {
+    Fn(usize, String),
+    Variant(DefId, String),
+}
+
 impl<'a> Interp<'a> {
+    fn current_module(&self) -> &'a ast::Module {
+        self.modules[self.current].1
+    }
+
+    /// Bare type names resolve to the current module first, then the
+    /// prelude — the runtime twin of the checker's rule.
+    fn lookup_type(&self, name: &str) -> Option<DefId> {
+        let prefix = self.modules[self.current].0.as_str();
+        if !prefix.is_empty() {
+            if let Some(def) = self.table.lookup(&format!("{prefix}.{name}")) {
+                return Some(def);
+            }
+        }
+        self.table.lookup(name)
+    }
+
+    /// Longest-module-prefix resolution of a dotted chain: a foreign
+    /// function or a qualified enum variant.
+    fn runtime_ref(&self, segments: &[String]) -> Option<RuntimeRef> {
+        for split in (1..segments.len()).rev() {
+            let module = segments[..split].join(".");
+            if let Some(index) = self.modules.iter().position(|(path, _)| *path == module) {
+                let rest = &segments[split..];
+                return match rest {
+                    [item] => find_fn(self.modules[index].1, item)
+                        .map(|_| RuntimeRef::Fn(index, item.clone())),
+                    [enum_name, variant] => {
+                        let def = self.table.lookup(&format!("{module}.{enum_name}"))?;
+                        self.table
+                            .variant_named(def, variant)
+                            .map(|_| RuntimeRef::Variant(def, variant.clone()))
+                    }
+                    _ => None,
+                };
+            }
+        }
+        None
+    }
+
+    /// A named function of `home` as a value, ready for `apply`.
+    fn fn_value(&mut self, home: usize, name: &str, span: Span) -> Eval<'a, Value<'a>> {
+        let Some(f) = find_fn(self.modules[home].1, name) else {
+            return trap(span, format!("no function `{name}` at runtime"));
+        };
+        let Some(body) = &f.body else {
+            return trap(span, format!("`{name}` has no body"));
+        };
+        Ok(Value::Fn {
+            params: f.params.iter().map(|p| p.name.name.clone()).collect(),
+            body: Body::Block(body),
+            captured: Vec::new(),
+            is_async: f.is_async,
+            home,
+        })
+    }
+
     // ----- blocks and statements -----
 
     fn block(&mut self, block: &'a ast::Block, env: &mut Env<'a>) -> Eval<'a, Value<'a>> {
@@ -428,9 +537,24 @@ impl<'a> Interp<'a> {
                 if let ast::ExprKind::Path(path) = &receiver.kind {
                     if let [single] = path.segments.as_slice() {
                         if env.get(&single.name).is_none() {
-                            if let Some(def) = self.table.lookup(&single.name) {
+                            if let Some(def) = self.lookup_type(&single.name) {
                                 return self.variant_ref(def, &name.name, expr.span);
                             }
+                        }
+                    }
+                }
+                // `game.player.Rank.Gold`, or a foreign function as a value.
+                if let Some(mut segments) = expr_segments(receiver) {
+                    if env.get(&segments[0]).is_none() {
+                        segments.push(name.name.clone());
+                        match self.runtime_ref(&segments) {
+                            Some(RuntimeRef::Fn(home, bare)) => {
+                                return self.fn_value(home, &bare, expr.span);
+                            }
+                            Some(RuntimeRef::Variant(def, variant)) => {
+                                return self.variant_ref(def, &variant, expr.span);
+                            }
+                            None => {}
                         }
                     }
                 }
@@ -539,15 +663,27 @@ impl<'a> Interp<'a> {
             }
 
             ast::ExprKind::StructLit { path, fields } => {
-                let name = &path.segments[0].name;
-                let Some(def) = self.table.lookup(name) else {
-                    return trap(expr.span, format!("`{name}` is not a struct"));
+                let shown = path
+                    .segments
+                    .iter()
+                    .map(|s| s.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(".");
+                // Items are single segments, so a dotted spelling is exactly
+                // the table key; a bare one resolves like every bare name.
+                let def = if path.segments.len() == 1 {
+                    self.lookup_type(&shown)
+                } else {
+                    self.table.lookup(&shown)
+                };
+                let Some(def) = def else {
+                    return trap(expr.span, format!("`{shown}` is not a struct"));
                 };
                 let DefKind::Struct {
                     fields: declared, ..
                 } = &self.table.def(def).kind
                 else {
-                    return trap(expr.span, format!("`{name}` is not a struct"));
+                    return trap(expr.span, format!("`{shown}` is not a struct"));
                 };
                 // Evaluate in source order (kernel: strict left-to-right),
                 // store in declaration order.
@@ -584,6 +720,7 @@ impl<'a> Interp<'a> {
                 body: Body::Expr(body),
                 captured: env.snapshot(),
                 is_async: *is_async,
+                home: self.current,
             }),
 
             ast::ExprKind::Error => trap(expr.span, "cannot run code the parser could not read"),
@@ -602,7 +739,7 @@ impl<'a> Interp<'a> {
         if let Some(value) = env.get(name) {
             return Ok(value.clone());
         }
-        if let Some(f) = find_fn(self.module, name) {
+        if let Some(f) = find_fn(self.current_module(), name) {
             return Ok(Value::Fn {
                 params: f.params.iter().map(|p| p.name.name.clone()).collect(),
                 body: match &f.body {
@@ -611,6 +748,7 @@ impl<'a> Interp<'a> {
                 },
                 captured: Vec::new(),
                 is_async: f.is_async,
+                home: self.current,
             });
         }
         if let Some((def, variant)) = self.table.unqualified_variant(name) {
@@ -698,7 +836,7 @@ impl<'a> Interp<'a> {
                 let name = &path.segments[0].name;
                 if name == "empty_map"
                     && env.get(name).is_none()
-                    && find_fn(self.module, name).is_none()
+                    && find_fn(self.current_module(), name).is_none()
                 {
                     for arg in args {
                         self.eval(&arg.value, env)?;
@@ -711,7 +849,7 @@ impl<'a> Interp<'a> {
                 if let ast::ExprKind::Path(path) = &receiver.kind {
                     if let [single] = path.segments.as_slice() {
                         if env.get(&single.name).is_none() {
-                            if let Some(def) = self.table.lookup(&single.name) {
+                            if let Some(def) = self.lookup_type(&single.name) {
                                 self.variant_ref(def, &name.name, callee.span)?
                             } else {
                                 self.eval(callee, env)?
@@ -749,6 +887,7 @@ impl<'a> Interp<'a> {
                 body,
                 captured,
                 is_async,
+                home,
             } => {
                 if params.len() != args.len() {
                     return trap(span, "wrong number of arguments");
@@ -761,10 +900,14 @@ impl<'a> Interp<'a> {
                 for (param, value) in params.iter().zip(args) {
                     env.bind(param, value);
                 }
+                // The callee's bare names live in its own module.
+                let caller = self.current;
+                self.current = home;
                 let result = match body {
                     Body::Block(block) => self.block_inner(block, &mut env),
                     Body::Expr(expr) => self.eval(expr, &mut env),
                 };
+                self.current = caller;
                 let value = match result {
                     Ok(value) | Err(Control::Return(value)) => value,
                     Err(other) => return Err(other),
@@ -808,7 +951,7 @@ impl<'a> Interp<'a> {
         if let ast::ExprKind::Path(path) = &receiver.kind {
             if let [single] = path.segments.as_slice() {
                 if env.get(&single.name).is_none() {
-                    if let Some(def) = self.table.lookup(&single.name) {
+                    if let Some(def) = self.lookup_type(&single.name) {
                         if self.table.variant_named(def, &method.name).is_some() {
                             let ctor = self.variant_ref(def, &method.name, span)?;
                             let mut evaluated = Vec::with_capacity(args.len());
@@ -818,6 +961,31 @@ impl<'a> Interp<'a> {
                             return self.apply(ctor, evaluated, span);
                         }
                     }
+                }
+            }
+        }
+
+        // `game.scores.best(..)` / `game.player.Rank.Gold(..)` — resolved
+        // against the module set before anything else is evaluated.
+        if let Some(receiver_segments) = expr_segments(receiver) {
+            if env.get(&receiver_segments[0]).is_none() {
+                let mut segments = receiver_segments;
+                segments.push(method.name.clone());
+                if let Some(reference) = self.runtime_ref(&segments) {
+                    let mut evaluated = Vec::with_capacity(args.len());
+                    for arg in args {
+                        evaluated.push(self.eval(&arg.value, env)?);
+                    }
+                    return match reference {
+                        RuntimeRef::Fn(home, bare) => {
+                            let callee = self.fn_value(home, &bare, span)?;
+                            self.apply(callee, evaluated, span)
+                        }
+                        RuntimeRef::Variant(def, variant) => {
+                            let ctor = self.variant_ref(def, &variant, span)?;
+                            self.apply(ctor, evaluated, span)
+                        }
+                    };
                 }
             }
         }
@@ -1258,13 +1426,22 @@ impl<'a> Interp<'a> {
             }
 
             ast::PatternKind::Path(path) => {
-                // Enum.Variant
-                let (Some(enum_ident), Some(variant_ident)) =
-                    (path.segments.first(), path.segments.get(1))
-                else {
+                // Enum.Variant, possibly module-qualified.
+                if path.segments.len() < 2 {
                     return Ok(false);
+                }
+                let variant_ident = path.segments.last().expect("two or more segments");
+                let type_name = path.segments[..path.segments.len() - 1]
+                    .iter()
+                    .map(|s| s.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(".");
+                let def = if path.segments.len() == 2 {
+                    self.lookup_type(&type_name)
+                } else {
+                    self.table.lookup(&type_name)
                 };
-                let Some(def) = self.table.lookup(&enum_ident.name) else {
+                let Some(def) = def else {
                     return Ok(false);
                 };
                 let index = self.variant_index(def, &variant_ident.name);
@@ -1283,11 +1460,10 @@ impl<'a> Interp<'a> {
                 else {
                     return Ok(false);
                 };
-                let variant_name = match path.segments.as_slice() {
-                    [single] => &single.name,
-                    [_, second] => &second.name,
-                    _ => return Ok(false),
+                let Some(last) = path.segments.last() else {
+                    return Ok(false);
                 };
+                let variant_name = &last.name;
                 let index = self.variant_index(*def, variant_name);
                 if index != *variant || elements.len() != payload.len() {
                     return Ok(false);

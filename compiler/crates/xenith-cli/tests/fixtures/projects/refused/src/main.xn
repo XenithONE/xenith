@@ -1,0 +1,8 @@
+use game.player;
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    var sneaky = game.player.Player { name: "mallory", score: 0 };
+    sneaky.score = 999;
+    io.write(text: sneaky.name)?;
+    return Ok(unit);
+}

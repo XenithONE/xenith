@@ -1,0 +1,31 @@
+pub struct Player {
+    name: String,
+    var score: Int,
+}
+
+pub enum Rank {
+    Bronze,
+    Gold,
+}
+
+pub fn award(player: Player, points: Int) -> Player {
+    var updated = player;
+    updated.score = clamp(total: updated.score + points);
+    updated
+}
+
+pub fn rank_of(player: Player) -> Rank {
+    if player.score >= 100 {
+        Rank.Gold
+    } else {
+        Rank.Bronze
+    }
+}
+
+fn clamp(total: Int) -> Int {
+    if total > 999 {
+        999
+    } else {
+        total
+    }
+}

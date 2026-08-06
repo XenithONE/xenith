@@ -41,6 +41,8 @@ pub enum TokenKind {
     Use,
     /// `uses` — introduces a function's closed effect set. Distinct from `use`.
     Uses,
+    /// `pub` — exposes a top-level item across module boundaries.
+    Pub,
     Async,
     Await,
     Move,
@@ -209,6 +211,7 @@ impl TokenKind {
             TokenKind::Continue => "`continue`",
             TokenKind::Use => "`use`",
             TokenKind::Uses => "`uses`",
+            TokenKind::Pub => "`pub`",
             TokenKind::Async => "`async`",
             TokenKind::Await => "`await`",
             TokenKind::Move => "`move`",
@@ -288,6 +291,7 @@ pub fn keyword_kind(text: &str) -> Option<TokenKind> {
         "continue" => TokenKind::Continue,
         "use" => TokenKind::Use,
         "uses" => TokenKind::Uses,
+        "pub" => TokenKind::Pub,
         "async" => TokenKind::Async,
         "await" => TokenKind::Await,
         "move" => TokenKind::Move,
@@ -313,7 +317,6 @@ pub const RESERVED_WORDS: &[&str] = &[
     "trait",
     "impl",
     "where",
-    "pub",
     "mod",
     "loop",
     "defer",

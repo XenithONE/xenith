@@ -259,12 +259,30 @@ impl<'a> Parser<'a> {
         let docs = self.take_docs();
         let start = self.span();
 
+        let is_pub = self.eat(TokenKind::Pub);
+        if is_pub
+            && !matches!(
+                self.peek(),
+                TokenKind::Fn
+                    | TokenKind::Async
+                    | TokenKind::Struct
+                    | TokenKind::Enum
+                    | TokenKind::Const
+            )
+        {
+            self.error(
+                DiagCode::ExpectedItem,
+                self.span(),
+                "`pub` applies to `fn`, `struct`, `enum` and `const`",
+            );
+        }
+
         let kind = match self.peek() {
             TokenKind::Use => ItemKind::Use(self.use_item()),
-            TokenKind::Const => ItemKind::Const(self.const_item()),
-            TokenKind::Fn | TokenKind::Async => ItemKind::Fn(self.fn_item()),
-            TokenKind::Struct => ItemKind::Struct(self.struct_item()),
-            TokenKind::Enum => ItemKind::Enum(self.enum_item()),
+            TokenKind::Const => ItemKind::Const(self.const_item(is_pub)),
+            TokenKind::Fn | TokenKind::Async => ItemKind::Fn(self.fn_item(is_pub)),
+            TokenKind::Struct => ItemKind::Struct(self.struct_item(is_pub)),
+            TokenKind::Enum => ItemKind::Enum(self.enum_item(is_pub)),
             other => {
                 self.error(
                     DiagCode::ExpectedItem,
@@ -291,7 +309,7 @@ impl<'a> Parser<'a> {
         UseItem { path }
     }
 
-    fn const_item(&mut self) -> ConstItem {
+    fn const_item(&mut self, is_pub: bool) -> ConstItem {
         self.bump(); // `const`
         let name = self.expect_ident();
         self.expect(TokenKind::Colon);
@@ -299,10 +317,15 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::Assign);
         let value = self.expr();
         self.expect(TokenKind::Semi);
-        ConstItem { name, ty, value }
+        ConstItem {
+            name,
+            ty,
+            value,
+            is_pub,
+        }
     }
 
-    fn fn_item(&mut self) -> FnItem {
+    fn fn_item(&mut self, is_pub: bool) -> FnItem {
         let is_async = self.eat(TokenKind::Async);
         self.expect(TokenKind::Fn);
         let name = self.expect_ident();
@@ -344,6 +367,7 @@ impl<'a> Parser<'a> {
 
         FnItem {
             name,
+            is_pub,
             is_async,
             generics,
             params,
@@ -406,7 +430,7 @@ impl<'a> Parser<'a> {
         generics
     }
 
-    fn struct_item(&mut self) -> StructItem {
+    fn struct_item(&mut self, is_pub: bool) -> StructItem {
         self.bump(); // `struct`
         let name = self.expect_ident();
         let generics = self.generic_params();
@@ -436,12 +460,13 @@ impl<'a> Parser<'a> {
 
         StructItem {
             name,
+            is_pub,
             generics,
             fields,
         }
     }
 
-    fn enum_item(&mut self) -> EnumItem {
+    fn enum_item(&mut self, is_pub: bool) -> EnumItem {
         self.bump(); // `enum`
         let name = self.expect_ident();
         let generics = self.generic_params();
@@ -477,6 +502,7 @@ impl<'a> Parser<'a> {
 
         EnumItem {
             name,
+            is_pub,
             generics,
             variants,
         }
@@ -946,6 +972,16 @@ impl<'a> Parser<'a> {
                         kind: ExprKind::Try(Box::new(expr)),
                         span,
                     };
+                }
+                // `game.player.Player { .. }` — a dotted chain of bare names
+                // before `{` is a struct literal with a qualified path
+                // (design/0010 §1). Anything not path-shaped keeps its old
+                // reading.
+                TokenKind::LBrace if !self.no_struct_literal => {
+                    let Some(path) = field_chain_path(&expr) else {
+                        break;
+                    };
+                    expr = self.struct_literal(path);
                 }
                 _ => break,
             }
@@ -1438,6 +1474,7 @@ fn starts_item(kind: TokenKind) -> bool {
             | TokenKind::Async
             | TokenKind::Struct
             | TokenKind::Enum
+            | TokenKind::Pub
     )
 }
 
@@ -1463,6 +1500,36 @@ fn punctuation_text(kind: TokenKind) -> Option<&'static str> {
         _ => return None,
     };
     Some(text)
+}
+
+/// The dotted-name path of a pure field chain (`a.b.C`), or `None` when any
+/// link is something other than a plain name.
+fn field_chain_path(expr: &Expr) -> Option<Path> {
+    fn collect(expr: &Expr, segments: &mut Vec<Ident>) -> bool {
+        match &expr.kind {
+            ExprKind::Path(path) => {
+                segments.extend(path.segments.iter().cloned());
+                true
+            }
+            ExprKind::Field { receiver, name } => {
+                collect(receiver, segments) && {
+                    segments.push(name.clone());
+                    true
+                }
+            }
+            _ => false,
+        }
+    }
+    let mut segments = Vec::new();
+    if !collect(expr, &mut segments) || segments.len() < 2 {
+        return None;
+    }
+    let span = segments
+        .first()
+        .expect("two segments")
+        .span
+        .to(segments.last().expect("two segments").span);
+    Some(Path { segments, span })
 }
 
 /// `??` yields `None`; `??name` yields `Some("name")`.

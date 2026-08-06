@@ -11,11 +11,13 @@ pub mod candidates;
 pub mod check;
 pub mod def;
 mod exhaustive;
+pub mod project;
 pub mod query;
 pub mod ty;
 
 pub use candidates::Candidate;
 pub use check::{Analysis, Goal, Probe, analyze, analyze_at};
 pub use def::{DefTable, Property};
+pub use project::{ModuleUnit, ProjectAnalysis, analyze_project};
 pub use query::{Producer, producers, type_at};
 pub use ty::{DefId, EffectSet, HoleId, Type, TypeName};

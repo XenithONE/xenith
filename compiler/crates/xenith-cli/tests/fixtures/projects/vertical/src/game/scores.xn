@@ -1,0 +1,9 @@
+use game.player;
+
+pub fn describe(player: game.player.Player) -> String {
+    let rank = match game.player.rank_of(player: player) {
+        game.player.Rank.Gold => "gold",
+        game.player.Rank.Bronze => "bronze",
+    };
+    player.name.concat(other: ": ").concat(other: rank)
+}

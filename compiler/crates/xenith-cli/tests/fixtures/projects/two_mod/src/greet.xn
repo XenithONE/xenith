@@ -1,0 +1,3 @@
+pub fn message(name: String) -> String {
+    "Hello, ".concat(other: name)
+}

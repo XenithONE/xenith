@@ -107,6 +107,7 @@ pub enum Severity {
 /// | `XN4xxx` | capabilities and effects    |
 /// | `XN5xxx` | exhaustiveness              |
 /// | `XN6xxx` | concurrency (`Transfer` / `ShareSafe`) |
+/// | `XN7xxx` | modules and project layout  |
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum DiagCode {
@@ -153,6 +154,14 @@ pub enum DiagCode {
     DuplicateDefinition,
     /// XN2006 — the enum has no variant of this name.
     UnknownVariant,
+    /// XN2007 — a `use` names a module the project does not contain.
+    UnknownModule,
+    /// XN2008 — a cross-module reference to an item that is not `pub`.
+    PrivateItemAccess,
+    /// XN2009 — a `use` declares a dependency nothing in the file consumes.
+    UnusedUse,
+    /// XN2010 — the same module is `use`d more than once.
+    DuplicateUse,
 
     /// XN3001 — one type was required and a different one was found.
     TypeMismatch,
@@ -180,6 +189,23 @@ pub enum DiagCode {
 
     /// XN5001 — a `match` does not cover every possible value.
     NonExhaustiveMatch,
+
+    /// XN7001 — a source file cannot name a module (bad segment, symlink).
+    InvalidModulePath,
+    /// XN7002 — two module paths differ only by letter case.
+    ModuleCaseCollision,
+    /// XN7003 — a module path collides with a top-level item of its parent.
+    ModuleItemClash,
+    /// XN7004 — `fn main` outside `src/main.xn`.
+    MisplacedMain,
+    /// XN7005 — a local module claims the reserved root `std`.
+    ReservedModuleRoot,
+    /// XN7006 — a manifest nested inside another project's sources.
+    NestedManifest,
+    /// XN7007 — a `pub` signature mentions a private type.
+    PubApiPrivateType,
+    /// XN7008 — a field assignment crosses a module boundary.
+    CrossModuleAssignment,
 }
 
 impl DiagCode {
@@ -206,6 +232,10 @@ impl DiagCode {
         DiagCode::UnknownField,
         DiagCode::DuplicateDefinition,
         DiagCode::UnknownVariant,
+        DiagCode::UnknownModule,
+        DiagCode::PrivateItemAccess,
+        DiagCode::UnusedUse,
+        DiagCode::DuplicateUse,
         DiagCode::TypeMismatch,
         DiagCode::WrongArgumentCount,
         DiagCode::ArgumentNameMismatch,
@@ -218,6 +248,14 @@ impl DiagCode {
         DiagCode::PropertyNotSatisfied,
         DiagCode::EffectNotPermitted,
         DiagCode::NonExhaustiveMatch,
+        DiagCode::InvalidModulePath,
+        DiagCode::ModuleCaseCollision,
+        DiagCode::ModuleItemClash,
+        DiagCode::MisplacedMain,
+        DiagCode::ReservedModuleRoot,
+        DiagCode::NestedManifest,
+        DiagCode::PubApiPrivateType,
+        DiagCode::CrossModuleAssignment,
     ];
 
     /// The stable textual identifier, for example `"XN0002"`.
@@ -243,6 +281,10 @@ impl DiagCode {
             DiagCode::UnknownField => "XN2004",
             DiagCode::DuplicateDefinition => "XN2005",
             DiagCode::UnknownVariant => "XN2006",
+            DiagCode::UnknownModule => "XN2007",
+            DiagCode::PrivateItemAccess => "XN2008",
+            DiagCode::UnusedUse => "XN2009",
+            DiagCode::DuplicateUse => "XN2010",
             DiagCode::TypeMismatch => "XN3001",
             DiagCode::WrongArgumentCount => "XN3002",
             DiagCode::ArgumentNameMismatch => "XN3003",
@@ -255,6 +297,14 @@ impl DiagCode {
             DiagCode::PropertyNotSatisfied => "XN3010",
             DiagCode::EffectNotPermitted => "XN4001",
             DiagCode::NonExhaustiveMatch => "XN5001",
+            DiagCode::InvalidModulePath => "XN7001",
+            DiagCode::ModuleCaseCollision => "XN7002",
+            DiagCode::ModuleItemClash => "XN7003",
+            DiagCode::MisplacedMain => "XN7004",
+            DiagCode::ReservedModuleRoot => "XN7005",
+            DiagCode::NestedManifest => "XN7006",
+            DiagCode::PubApiPrivateType => "XN7007",
+            DiagCode::CrossModuleAssignment => "XN7008",
         }
     }
 
@@ -317,7 +367,7 @@ impl DiagCode {
                  Reserving them now means adding the feature later will not break \
                  existing code. Rename the binding — appending a descriptive word is \
                  usually clearest.\n\n\
-                 Reserved words: `trait`, `impl`, `where`, `pub`, `mod`, `loop`, \
+                 Reserved words: `trait`, `impl`, `where`, `mod`, `loop`, \
                  `defer`, `yield`, `capability`, `effect`, `extern`, `static`, `macro`."
             }
             DiagCode::ExpectedToken => {
@@ -447,6 +497,38 @@ impl DiagCode {
                  would otherwise silently change what the arm does. That is why \
                  variant names are checked against the scrutinee's enum."
             }
+            DiagCode::UnknownModule => {
+                "This `use` names a module the project does not contain.\n\n\
+                 A module is a file under `src/`: `src/game/player.xn` is the \
+                 module `game.player`, and `use game.player;` declares a \
+                 dependency on it. `use` takes module paths only — there is no \
+                 item `use`, no glob, and no alias; items are referenced fully \
+                 qualified (`game.player.Player`) once the module is `use`d.\n\n\
+                 Check the path against the files under `src/`."
+            }
+            DiagCode::PrivateItemAccess => {
+                "This reference crosses a module boundary to an item that is \
+                 not `pub`.\n\n\
+                 Top-level items are private to their module unless declared \
+                 `pub`. There is no parent or child privilege: a module's \
+                 private items are its own from every other module equally.\n\n\
+                 No fix is attached on purpose — making an item `pub` is an API \
+                 decision for the owning module, not a local syntax repair. \
+                 Either use the module's public surface, or widen it there."
+            }
+            DiagCode::UnusedUse => {
+                "This `use` declares a dependency nothing in the file consumes.\n\n\
+                 The `use` list is the file's exact dependency list — that is \
+                 what makes it worth reading. An unused entry is a hard error \
+                 rather than a lint so the list cannot silently rot, and so \
+                 \"use everything, then guess\" never becomes a strategy.\n\n\
+                 Delete the line, or reference the module."
+            }
+            DiagCode::DuplicateUse => {
+                "The same module is `use`d more than once.\n\n\
+                 One dependency, one line: the canonical form keeps `use`s at \
+                 the top in dictionary order with no repeats. Delete the extra."
+            }
             DiagCode::TypeMismatch => {
                 "One type was required at this position and a different one was \
                  found.\n\n\
@@ -570,6 +652,78 @@ impl DiagCode {
                  The message names a value no arm covers; add an arm for it, or a \
                  `_` arm to catch what is left."
             }
+            DiagCode::InvalidModulePath => {
+                "This file cannot name a module.\n\n\
+                 Module path segments are `lower_snake` identifiers: a file or \
+                 directory under `src/` must be named like `player.xn` or \
+                 `game/`, so that its module path is spellable in source. \
+                 Hyphens, spaces, uppercase letters and non-identifier \
+                 characters are rejected, and so are symbolic links — a module \
+                 has exactly one path.\n\n\
+                 Rename the file to a `lower_snake` identifier."
+            }
+            DiagCode::ModuleCaseCollision => {
+                "Two module paths differ only by letter case.\n\n\
+                 Some file systems distinguish `Game.xn` from `game.xn` and \
+                 some do not, so a project holding both means different \
+                 machines would build different programs. The collision is \
+                 rejected on every host for the same reason diagnostics are \
+                 deterministic everywhere.\n\n\
+                 Rename one of the files; module names are `lower_snake` \
+                 anyway."
+            }
+            DiagCode::ModuleItemClash => {
+                "A module path collides with a top-level item of its parent \
+                 module.\n\n\
+                 `game.xn` declaring an item `player` while `game/player.xn` \
+                 exists would make `game.player` mean two things. Module paths \
+                 and item names are exclusive under the same parent so that \
+                 every dotted reference has exactly one reading.\n\n\
+                 Rename the item or the file."
+            }
+            DiagCode::MisplacedMain => {
+                "`fn main` lives in `src/main.xn` and nowhere else.\n\n\
+                 The entry point is a property of the project, not of an \
+                 arbitrary module — two files claiming `main` would make `run` \
+                 ambiguous. A project without `src/main.xn` is a library: it \
+                 checks, and `run` says there is nothing to run.\n\n\
+                 Move the function, or rename it if it was never the entry \
+                 point."
+            }
+            DiagCode::ReservedModuleRoot => {
+                "`std` is a reserved module root.\n\n\
+                 The prelude (Option, Result, List, Map, String, Io) needs no \
+                 `use`, and the root name `std` is sealed for the language's \
+                 own future modules. A local `src/std.xn` or `src/std/` would \
+                 shadow that namespace differently on every compiler version.\n\n\
+                 Pick another name for the directory or file."
+            }
+            DiagCode::NestedManifest => {
+                "A manifest is nested inside another project's sources.\n\n\
+                 `xenith.toml` marks a project root, and a root inside \
+                 `src/` would make module paths depend on which root a build \
+                 started from. One project, one manifest.\n\n\
+                 Remove the inner manifest, or move the inner project out of \
+                 `src/`."
+            }
+            DiagCode::PubApiPrivateType => {
+                "A `pub` signature mentions a private type.\n\n\
+                 A `pub fn`'s parameters and return, a `pub struct`'s fields \
+                 and a `pub enum`'s payloads are the module's public surface; \
+                 naming a private type there promises callers a value they can \
+                 hold but never spell.\n\n\
+                 Either mark the mentioned type `pub`, or keep the whole item \
+                 private."
+            }
+            DiagCode::CrossModuleAssignment => {
+                "This assignment writes a field across a module boundary.\n\n\
+                 A `pub struct` shows its representation — construction, \
+                 reads and pattern matching all work from outside — but writes \
+                 do not cross the boundary, `var` field or not. Invariants \
+                 live with the owning module, so mutation goes through a `pub` \
+                 function it exports.\n\n\
+                 Call the owning module's API, or move this code into it."
+            }
         }
     }
 }
@@ -645,6 +799,9 @@ pub enum TeachKind {
     /// The method catalogue of the receiver type an unknown-method
     /// diagnostic is about.
     AvailableMethods,
+    /// The modules that export the exact name an unknown reference used —
+    /// listed in canonical order, never auto-picked (design/0010 §6).
+    UseCandidates,
 }
 
 /// One taught entry: a name and its signature, rendered the way source
@@ -715,6 +872,22 @@ impl Teach {
         Teach {
             kind: TeachKind::AvailableMethods,
             type_name: type_name.into(),
+            items,
+            total_items,
+            truncated,
+        }
+    }
+
+    /// The modules exporting an exact-match name, in canonical path order.
+    /// `type_name` carries the name that failed to resolve.
+    pub fn use_candidates(name: impl Into<String>, items: Vec<TeachItem>) -> Teach {
+        let total_items = items.len();
+        let truncated = total_items > MAX_TEACH_ITEMS;
+        let mut items = items;
+        items.truncate(MAX_TEACH_ITEMS);
+        Teach {
+            kind: TeachKind::UseCandidates,
+            type_name: name.into(),
             items,
             total_items,
             truncated,
@@ -891,6 +1064,10 @@ mod tests {
                 | DiagCode::UnknownField
                 | DiagCode::DuplicateDefinition
                 | DiagCode::UnknownVariant
+                | DiagCode::UnknownModule
+                | DiagCode::PrivateItemAccess
+                | DiagCode::UnusedUse
+                | DiagCode::DuplicateUse
                 | DiagCode::TypeMismatch
                 | DiagCode::WrongArgumentCount
                 | DiagCode::ArgumentNameMismatch
@@ -902,11 +1079,19 @@ mod tests {
                 | DiagCode::AssignmentToImmutable
                 | DiagCode::PropertyNotSatisfied
                 | DiagCode::EffectNotPermitted
-                | DiagCode::NonExhaustiveMatch => seen += 1,
+                | DiagCode::NonExhaustiveMatch
+                | DiagCode::InvalidModulePath
+                | DiagCode::ModuleCaseCollision
+                | DiagCode::ModuleItemClash
+                | DiagCode::MisplacedMain
+                | DiagCode::ReservedModuleRoot
+                | DiagCode::NestedManifest
+                | DiagCode::PubApiPrivateType
+                | DiagCode::CrossModuleAssignment => seen += 1,
             }
         }
-        assert_eq!(seen, 32, "update DiagCode::ALL when adding a variant");
-        assert_eq!(DiagCode::ALL.len(), 32);
+        assert_eq!(seen, 44, "update DiagCode::ALL when adding a variant");
+        assert_eq!(DiagCode::ALL.len(), 44);
     }
 
     #[test]

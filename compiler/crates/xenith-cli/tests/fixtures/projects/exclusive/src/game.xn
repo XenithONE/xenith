@@ -1,0 +1,3 @@
+pub fn player() -> Int {
+    1
+}

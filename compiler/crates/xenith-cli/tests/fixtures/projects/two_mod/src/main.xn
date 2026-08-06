@@ -1,0 +1,6 @@
+use greet;
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    io.write(text: greet.message(name: "modules"))?;
+    return Ok(unit);
+}

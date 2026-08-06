@@ -90,12 +90,51 @@ pub fn analyze_at(module: &ast::Module, offset: Option<u32>) -> (Analysis, Optio
             probe_offset: offset,
             probe: &mut probe,
             teach_budget: &mut teach_budget,
+            ctx: None,
         };
         checker.check_fn();
     }
 
     goals.sort_by_key(|g| g.span.start);
     (Analysis { diagnostics, goals }, probe)
+}
+
+/// Body checking for one project module: the walk `analyze` does, with the
+/// module context wired in and goals discarded — project-mode goals are a
+/// later slice (design/0010 §7).
+pub(crate) fn check_module_bodies(
+    table: &DefTable,
+    module: &ast::Module,
+    ctx: &ModuleCtx,
+    teach_budget: &mut TeachBudget,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let mut goals = Vec::new();
+    let mut next_hole = 0u32;
+    let mut probe = None;
+    for item in &module.items {
+        let ast::ItemKind::Fn(f) = &item.kind else {
+            continue;
+        };
+        let key = def::qualified(&ctx.prefix, &f.name.name);
+        let Some(sig) = table.fn_named(&key) else {
+            continue;
+        };
+        let mut checker = Checker {
+            defs: table,
+            sig,
+            fn_ast: f,
+            scopes: vec![Vec::new()],
+            diagnostics,
+            goals: &mut goals,
+            next_hole: &mut next_hole,
+            probe_offset: None,
+            probe: &mut probe,
+            teach_budget,
+            ctx: Some(ctx),
+        };
+        checker.check_fn();
+    }
 }
 
 /// The most teaching blocks one check run may attach, first come first
@@ -105,7 +144,7 @@ const MAX_TEACHES_PER_CHECK: usize = 5;
 
 /// Teaching state shared across every function in the run — the budget
 /// belongs to the check, not to one body.
-struct TeachBudget {
+pub(crate) struct TeachBudget {
     blocks_left: usize,
     /// Receiver types whose method catalogue has already been taught; one
     /// catalogue per type per run.
@@ -113,12 +152,75 @@ struct TeachBudget {
 }
 
 impl TeachBudget {
-    fn new() -> TeachBudget {
+    pub(crate) fn new() -> TeachBudget {
         TeachBudget {
             blocks_left: MAX_TEACHES_PER_CHECK,
             catalogued: Vec::new(),
         }
     }
+}
+
+/// Everything body checking needs to know about the module it is inside
+/// (design/0010): its own path, its declared dependencies, and the project's
+/// public surface for the XN2002 use-fix. Absent in single-file mode.
+pub struct ModuleCtx {
+    /// Dotted path of this module ("main", "game.player").
+    pub prefix: String,
+    /// Declared `use`s, sorted by path — also the canonical insertion order
+    /// for the use-fix (design/0010 §3). The span covers the whole item.
+    pub uses: Vec<(String, Span)>,
+    /// Modules consumed so far; signatures marked theirs during collection.
+    pub used: std::cell::RefCell<std::collections::HashSet<String>>,
+    /// Bare pub item name -> owning modules (sorted). Exact-match lookups
+    /// only — candidates never enumerate the project (design/0010 §6).
+    pub pub_index: std::collections::HashMap<String, Vec<String>>,
+    /// Where a first `use` would go when the file has none yet.
+    pub first_item_offset: u32,
+}
+
+impl ModuleCtx {
+    pub fn is_used_module(&self, path: &str) -> bool {
+        self.uses.iter().any(|(p, _)| p == path)
+    }
+
+    fn mark_used(&self, path: &str) {
+        self.used.borrow_mut().insert(path.to_string());
+    }
+
+    /// The machine-applicable fix inserting `use path;` at the canonical
+    /// position: among existing uses in dictionary order, or at the top.
+    pub fn use_fix(&self, path: &str) -> Fix {
+        let description = format!("insert `use {path};`");
+        for (existing, span) in &self.uses {
+            if existing.as_str() > path {
+                return Fix::single(
+                    description,
+                    Edit::insert(span.start, format!("use {path};\n")),
+                );
+            }
+        }
+        match self.uses.last() {
+            Some((_, span)) => Fix::single(
+                description,
+                Edit::insert(span.end, format!("\nuse {path};")),
+            ),
+            None => Fix::single(
+                description,
+                Edit::insert(self.first_item_offset, format!("use {path};\n\n")),
+            ),
+        }
+    }
+}
+
+/// What a dotted chain of names turned out to be, once the module set had
+/// its say. `NotModule` sends the caller back to its pre-module reading.
+enum QualifiedLookup {
+    NotModule,
+    Fn(String),
+    Variant(crate::ty::DefId, String),
+    Type(crate::ty::DefId),
+    /// A module reference that failed; the diagnostic is already out.
+    Reported,
 }
 
 /// One callee at one call site: the name diagnostics use, its declared
@@ -149,6 +251,9 @@ struct Checker<'a> {
     probe_offset: Option<u32>,
     probe: &'a mut Option<Probe>,
     teach_budget: &'a mut TeachBudget,
+    /// The module being checked, in project mode. `None` is single-file
+    /// mode, where nothing below changes behaviour.
+    ctx: Option<&'a ModuleCtx>,
 }
 
 impl<'a> Checker<'a> {
@@ -256,14 +361,24 @@ impl<'a> Checker<'a> {
 
     fn push_goal(&mut self, name: Option<String>, span: Span, kind: &'static str, expected: &Type) {
         let rendered = self.render(expected);
+        let used_paths: Vec<String> = self
+            .ctx
+            .map(|ctx| ctx.uses.iter().map(|(path, _)| path.clone()).collect())
+            .unwrap_or_default();
+        let view = crate::candidates::CandidateView {
+            enclosing: &self.sig.name,
+            hole_name: name.as_deref(),
+            module: self
+                .ctx
+                .map(|ctx| (ctx.prefix.as_str(), used_paths.as_slice())),
+        };
         let (candidates, blocked) = crate::candidates::candidates_for(
             self.defs,
             expected,
             &self.scope_types(),
             &self.sig.effects,
             &self.sig.generics,
-            &self.sig.name,
-            name.as_deref(),
+            &view,
         );
         let goal = Goal {
             name,
@@ -331,7 +446,21 @@ impl<'a> Checker<'a> {
 
     fn lower(&mut self, ty: &ast::Type) -> Type {
         let generics = self.generic_names();
-        let lowered = def::lower_type(ty, self.defs, &generics, self.diagnostics);
+        let uses_paths: Vec<String>;
+        let resolver;
+        let resolve = match self.ctx {
+            Some(ctx) => {
+                uses_paths = ctx.uses.iter().map(|(path, _)| path.clone()).collect();
+                resolver = def::ResolveCtx {
+                    prefix: &ctx.prefix,
+                    uses: &uses_paths,
+                    used: Some(&ctx.used),
+                };
+                Some(&resolver)
+            }
+            None => None,
+        };
+        let lowered = def::lower_type(ty, self.defs, &generics, self.diagnostics, resolve);
         if let Type::Hole(_) = lowered {
             // Type-position holes get a real id and a type goal here, where
             // the enclosing function is known.
@@ -425,6 +554,192 @@ impl<'a> Checker<'a> {
             })
             .collect();
         Some(Teach::available_methods(self.render(receiver), items))
+    }
+
+    /// Bare type names resolve to the current module first, then the
+    /// prelude — identical to plain lookup in single-file mode.
+    fn lookup_type_name(&self, name: &str) -> Option<crate::ty::DefId> {
+        if let Some(ctx) = self.ctx {
+            if !ctx.prefix.is_empty() {
+                if let Some(def) = self.defs.lookup(&def::qualified(&ctx.prefix, name)) {
+                    return Some(def);
+                }
+            }
+        }
+        self.defs.lookup(name)
+    }
+
+    /// The table key for a bare function name: the current module's own
+    /// function shadows nothing — prelude functions stay reachable because
+    /// modules cannot redeclare them.
+    fn fn_key(&self, bare: &str) -> Option<String> {
+        if let Some(ctx) = self.ctx {
+            if !ctx.prefix.is_empty() {
+                let key = def::qualified(&ctx.prefix, bare);
+                if self.defs.fn_named(&key).is_some() {
+                    return Some(key);
+                }
+            }
+        }
+        self.defs.fn_named(bare).map(|_| bare.to_string())
+    }
+
+    /// The dotted names of a pure field chain (`game.player.Player`), for
+    /// module-path resolution. Anything not name-shaped answers `None`.
+    fn expr_segments(expr: &ast::Expr) -> Option<Vec<String>> {
+        match &expr.kind {
+            ast::ExprKind::Path(path) => {
+                Some(path.segments.iter().map(|s| s.name.clone()).collect())
+            }
+            ast::ExprKind::Field { receiver, name } => {
+                let mut segments = Self::expr_segments(receiver)?;
+                segments.push(name.name.clone());
+                Some(segments)
+            }
+            _ => None,
+        }
+    }
+
+    /// Resolve a dotted chain against the module set: longest module prefix
+    /// wins, the `use` gate applies, and privacy is checked here so every
+    /// caller reports the same way (design/0010 §1, §4).
+    fn qualified_ref(&mut self, segments: &[String], span: Span) -> QualifiedLookup {
+        let Some(ctx) = self.ctx else {
+            return QualifiedLookup::NotModule;
+        };
+        for split in (1..segments.len()).rev() {
+            let module = segments[..split].join(".");
+            if ctx.is_used_module(&module) {
+                ctx.mark_used(&module);
+                let rest = &segments[split..];
+                match rest {
+                    [item] => {
+                        let dotted = format!("{module}.{item}");
+                        if let Some(sig) = self.defs.fn_named(&dotted) {
+                            if !sig.is_pub {
+                                self.error(
+                                    DiagCode::PrivateItemAccess,
+                                    span,
+                                    format!("`{dotted}` is private to `{module}`"),
+                                );
+                                return QualifiedLookup::Reported;
+                            }
+                            return QualifiedLookup::Fn(dotted);
+                        }
+                        if let Some(def) = self.defs.lookup(&dotted) {
+                            if !self.defs.def(def).is_pub {
+                                self.error(
+                                    DiagCode::PrivateItemAccess,
+                                    span,
+                                    format!("`{dotted}` is private to `{module}`"),
+                                );
+                                return QualifiedLookup::Reported;
+                            }
+                            return QualifiedLookup::Type(def);
+                        }
+                        self.error(
+                            DiagCode::UnknownName,
+                            span,
+                            format!("`{module}` has no item named `{item}`"),
+                        );
+                        return QualifiedLookup::Reported;
+                    }
+                    [enum_name, variant] => {
+                        let dotted = format!("{module}.{enum_name}");
+                        let Some(def) = self.defs.lookup(&dotted) else {
+                            self.error(
+                                DiagCode::UnknownName,
+                                span,
+                                format!("`{module}` has no item named `{enum_name}`"),
+                            );
+                            return QualifiedLookup::Reported;
+                        };
+                        if !self.defs.def(def).is_pub {
+                            self.error(
+                                DiagCode::PrivateItemAccess,
+                                span,
+                                format!("`{dotted}` is private to `{module}`"),
+                            );
+                            return QualifiedLookup::Reported;
+                        }
+                        if self.defs.variant_named(def, variant).is_none() {
+                            self.error(
+                                DiagCode::UnknownVariant,
+                                span,
+                                format!("`{dotted}` has no variant named `{variant}`"),
+                            );
+                            return QualifiedLookup::Reported;
+                        }
+                        return QualifiedLookup::Variant(def, variant.clone());
+                    }
+                    _ => {
+                        self.error(
+                            DiagCode::UnknownName,
+                            span,
+                            format!(
+                                "items are single names; `{}` nests too deep",
+                                segments.join(".")
+                            ),
+                        );
+                        return QualifiedLookup::Reported;
+                    }
+                }
+            }
+            if self.defs.module_exists(&module) {
+                self.error(
+                    DiagCode::UnknownModule,
+                    span,
+                    format!("module `{module}` is not `use`d in this file; add `use {module};`"),
+                );
+                return QualifiedLookup::Reported;
+            }
+        }
+        QualifiedLookup::NotModule
+    }
+
+    /// A dotted call target (`game.scores.best(..)` or a qualified variant
+    /// constructor), resolved before the receiver is synthesised so the
+    /// module name never reports as an unknown value. `None` falls back.
+    fn try_qualified_call(
+        &mut self,
+        receiver: &ast::Expr,
+        method: &ast::Ident,
+        args: &[ast::Arg],
+        expected: Option<&Type>,
+        span: Span,
+    ) -> Option<Type> {
+        self.ctx?;
+        let mut segments = Self::expr_segments(receiver)?;
+        if self.lookup(&segments[0]).is_some() {
+            // A local binding shadows any module spelling, mirroring how
+            // variant construction already defers to locals.
+            return None;
+        }
+        segments.push(method.name.clone());
+        match self.qualified_ref(&segments, span) {
+            QualifiedLookup::NotModule => None,
+            QualifiedLookup::Fn(key) => Some(self.call_named_fn(&key, args, expected, span)),
+            QualifiedLookup::Variant(def, variant) => {
+                Some(self.call_variant(def, &variant, args, expected, span))
+            }
+            QualifiedLookup::Type(def) => {
+                let message = format!(
+                    "`{}` is a type; construct it with `{{ .. }}`",
+                    self.defs.name_of(def)
+                );
+                self.error(DiagCode::NotCallable, span, message);
+                for arg in args {
+                    let _ = self.synth(&arg.value);
+                }
+                Some(Type::Error)
+            }
+            QualifiedLookup::Reported => {
+                for arg in args {
+                    let _ = self.synth(&arg.value);
+                }
+                Some(Type::Error)
+            }
+        }
     }
 
     /// XN5001: every value the scrutinee can hold must land on some arm.
@@ -733,11 +1048,17 @@ impl<'a> Checker<'a> {
                 method,
                 args,
             } => {
-                let ty = match self.qualified_variant_target(receiver, &method.name) {
-                    Some(def) => {
-                        self.call_variant(def, &method.name, args, Some(expected), expr.span)
+                let ty = if let Some(found) =
+                    self.try_qualified_call(receiver, method, args, Some(expected), expr.span)
+                {
+                    found
+                } else {
+                    match self.qualified_variant_target(receiver, &method.name) {
+                        Some(def) => {
+                            self.call_variant(def, &method.name, args, Some(expected), expr.span)
+                        }
+                        None => self.method_call(receiver, method, args, expr.span),
                     }
-                    None => self.method_call(receiver, method, args, expr.span),
                 };
                 self.require_compatible(&ty, expected, expr.span);
             }
@@ -959,7 +1280,8 @@ impl<'a> Checker<'a> {
         }
 
         // A module function used as a value.
-        if let Some(sig) = self.defs.fn_named(name) {
+        if let Some(key) = self.fn_key(name) {
+            let sig = self.defs.fn_named(&key).expect("key just resolved");
             if !sig.generics.is_empty() {
                 self.error(
                     DiagCode::AnnotationRequired,
@@ -1010,17 +1332,65 @@ impl<'a> Checker<'a> {
         }
 
         let mut message = format!("nothing named `{name}` is in scope");
-        // Bindings and functions are the names a typo could have meant;
-        // prelude functions ride along because they live in `defs.fns` too.
-        let candidates = self
-            .scopes
-            .iter()
-            .flat_map(|scope| scope.iter().map(|binding| binding.name.clone()))
-            .chain(self.defs.fns.iter().map(|f| f.name.clone()));
-        if let Some(meant) = did_you_mean(name, candidates) {
-            message.push_str(&format!("; did you mean `{meant}`?"));
+        let mut use_fix: Option<Fix> = None;
+        let mut use_teach: Option<Teach> = None;
+        let exact: Vec<String> = self
+            .ctx
+            .and_then(|ctx| ctx.pub_index.get(name).cloned())
+            .unwrap_or_default();
+        match exact.as_slice() {
+            // A unique exact pub match earns the machine fix; anything less
+            // certain does not (design/0010 §6).
+            [owner] => {
+                message.push_str(&format!("; `use {owner};` would provide it"));
+                use_fix = Some(
+                    self.ctx
+                        .expect("an exact match implies a project")
+                        .use_fix(owner),
+                );
+            }
+            [] => {
+                // Bindings and reachable functions are the names a typo
+                // could have meant; foreign modules are not in scope, so
+                // they do not compete here.
+                let own_prefix = self.ctx.map(|c| c.prefix.as_str()).unwrap_or("");
+                let candidates =
+                    self.scopes
+                        .iter()
+                        .flat_map(|scope| scope.iter().map(|binding| binding.name.clone()))
+                        .chain(self.defs.fns.iter().filter_map(
+                            |f| match f.name.rsplit_once('.') {
+                                None => Some(f.name.clone()),
+                                Some((owner, bare)) if owner == own_prefix => {
+                                    Some(bare.to_string())
+                                }
+                                Some(_) => None,
+                            },
+                        ));
+                if let Some(meant) = did_you_mean(name, candidates) {
+                    message.push_str(&format!("; did you mean `{meant}`?"));
+                }
+            }
+            owners => {
+                // Several modules export the name: list them in canonical
+                // order, fix nothing.
+                if self.claim_teach(None) {
+                    let items = owners
+                        .iter()
+                        .map(|owner| TeachItem::new(owner.clone(), format!("use {owner};")))
+                        .collect();
+                    use_teach = Some(Teach::use_candidates(name, items));
+                }
+            }
         }
-        self.error(DiagCode::UnknownName, span, message);
+        let mut diagnostic = Diagnostic::error(DiagCode::UnknownName, span, message);
+        if let Some(fix) = use_fix {
+            diagnostic = diagnostic.with_fix(fix);
+        }
+        if let Some(teach) = use_teach {
+            diagnostic = diagnostic.with_teach(teach);
+        }
+        self.diagnostics.push(diagnostic);
         Type::Error
     }
 
@@ -1030,8 +1400,60 @@ impl<'a> Checker<'a> {
         if let ast::ExprKind::Path(path) = &receiver.kind {
             if let [single] = path.segments.as_slice() {
                 if self.lookup(&single.name).is_none() {
-                    if let Some(def) = self.defs.lookup(&single.name) {
+                    if let Some(def) = self.lookup_type_name(&single.name) {
                         return self.variant_ref(def, name, span);
+                    }
+                }
+            }
+        }
+
+        // Module-qualified value references: `game.player.Rank.Gold`, or a
+        // foreign function held without calling it.
+        if self.ctx.is_some() {
+            if let Some(mut segments) = Self::expr_segments(receiver) {
+                if self.lookup(&segments[0]).is_none() {
+                    segments.push(name.name.clone());
+                    match self.qualified_ref(&segments, span) {
+                        QualifiedLookup::NotModule => {}
+                        QualifiedLookup::Fn(key) => {
+                            let sig = self.defs.fn_named(&key).expect("resolved");
+                            if !sig.generics.is_empty() {
+                                self.error(
+                                    DiagCode::AnnotationRequired,
+                                    span,
+                                    format!(
+                                        "generic function `{key}` can only be called directly; \
+                                         wrap it in a lambda to pass it as a value"
+                                    ),
+                                );
+                                return Type::Error;
+                            }
+                            return Type::Fn {
+                                params: sig.params.iter().map(|(_, t)| t.clone()).collect(),
+                                ret: Box::new(if sig.is_async {
+                                    Type::Named {
+                                        def: self.defs.task,
+                                        args: vec![sig.ret.clone()],
+                                    }
+                                } else {
+                                    sig.ret.clone()
+                                }),
+                                effects: sig.effects.clone(),
+                            };
+                        }
+                        QualifiedLookup::Variant(def, variant) => {
+                            let ident = ast::Ident::new(variant, name.span);
+                            return self.variant_ref(def, &ident, span);
+                        }
+                        QualifiedLookup::Type(_) => {
+                            self.error(
+                                DiagCode::UnknownName,
+                                span,
+                                format!("`{}` is a type, not a value", segments.join(".")),
+                            );
+                            return Type::Error;
+                        }
+                        QualifiedLookup::Reported => return Type::Error,
                     }
                 }
             }
@@ -1233,7 +1655,17 @@ impl<'a> Checker<'a> {
             }
             ast::ExprKind::Field { receiver, name } => {
                 if let Type::Named { def, .. } = self.synth(receiver) {
-                    if let DefKind::Struct { fields } = &self.defs.def(def).kind {
+                    if let Some(owner) = self.foreign_owner(def) {
+                        // Writes stop at the module boundary, `var` field or
+                        // not (design/0010 §4); mutation goes through the
+                        // owner's pub API.
+                        let message = format!(
+                            "field `{}` of `{}` cannot be assigned from outside `{owner}`",
+                            name.name,
+                            self.defs.name_of(def)
+                        );
+                        self.error(DiagCode::CrossModuleAssignment, name.span, message);
+                    } else if let DefKind::Struct { fields } = &self.defs.def(def).kind {
                         if let Some(field) = fields.iter().find(|f| f.name == name.name) {
                             if !field.mutable {
                                 let message = format!(
@@ -1491,8 +1923,8 @@ impl<'a> Checker<'a> {
         if let ast::ExprKind::Path(path) = &callee.kind {
             if let [single] = path.segments.as_slice() {
                 if self.lookup(&single.name).is_none() {
-                    if self.defs.fn_named(&single.name).is_some() {
-                        return self.call_named_fn(&single.name, args, expected, span);
+                    if let Some(key) = self.fn_key(&single.name) {
+                        return self.call_named_fn(&key, args, expected, span);
                     }
                     if let Some((def, _)) = self.defs.unqualified_variant(&single.name) {
                         return self.call_variant(def, &single.name, args, expected, span);
@@ -1505,7 +1937,7 @@ impl<'a> Checker<'a> {
             if let ast::ExprKind::Path(path) = &receiver.kind {
                 if let [single] = path.segments.as_slice() {
                     if self.lookup(&single.name).is_none() {
-                        if let Some(def) = self.defs.lookup(&single.name) {
+                        if let Some(def) = self.lookup_type_name(&single.name) {
                             if self.defs.variant_named(def, &name.name).is_some() {
                                 return self.call_variant(def, &name.name, args, expected, span);
                             }
@@ -1735,7 +2167,7 @@ impl<'a> Checker<'a> {
         if self.lookup(&single.name).is_some() {
             return None;
         }
-        let def = self.defs.lookup(&single.name)?;
+        let def = self.lookup_type_name(&single.name)?;
         self.defs.variant_named(def, method).map(|_| def)
     }
 
@@ -1748,6 +2180,9 @@ impl<'a> Checker<'a> {
     ) -> Type {
         if let Some(def) = self.qualified_variant_target(receiver, &method.name) {
             return self.call_variant(def, &method.name, args, None, span);
+        }
+        if let Some(found) = self.try_qualified_call(receiver, method, args, None, span) {
+            return found;
         }
 
         let receiver_ty = self.synth(receiver);
@@ -1874,6 +2309,15 @@ impl<'a> Checker<'a> {
         ret.substitute(&bindings)
     }
 
+    /// The owning module of a user type when it is not the current one —
+    /// the wall that field writes stop at (design/0010 §4).
+    fn foreign_owner(&self, def: crate::ty::DefId) -> Option<String> {
+        let ctx = self.ctx?;
+        let name = self.defs.name_of(def);
+        let (owner, _) = name.rsplit_once('.')?;
+        (owner != ctx.prefix).then(|| owner.to_string())
+    }
+
     /// A mutating method writes through its receiver, so the receiver must be
     /// a mutable place — the same rule `=` enforces, phrased for the call.
     fn require_mutable_receiver(&mut self, receiver: &ast::Expr, method_name: &str) {
@@ -1896,7 +2340,14 @@ impl<'a> Checker<'a> {
                 name,
             } => {
                 if let Type::Named { def, .. } = self.synth(base) {
-                    if let DefKind::Struct { fields } = &self.defs.def(def).kind {
+                    if let Some(owner) = self.foreign_owner(def) {
+                        let message = format!(
+                            "`{method_name}` writes through field `{}` of `{}`, which cannot be mutated from outside `{owner}`",
+                            name.name,
+                            self.defs.name_of(def)
+                        );
+                        self.error(DiagCode::CrossModuleAssignment, name.span, message);
+                    } else if let DefKind::Struct { fields } = &self.defs.def(def).kind {
                         if let Some(field) = fields.iter().find(|f| f.name == name.name) {
                             if !field.mutable {
                                 let message = format!(
@@ -1940,21 +2391,48 @@ impl<'a> Checker<'a> {
         span: Span,
         expected: Option<&Type>,
     ) -> Type {
-        let name = match path.segments.as_slice() {
-            [single] => single.name.as_str(),
-            _ => return Type::Error,
-        };
-        let Some(def) = self.defs.lookup(name) else {
-            self.error(
-                DiagCode::UnknownType,
-                path.span,
-                format!("`{name}` does not name a struct"),
-            );
-            for init in field_inits {
-                let _ = self.synth(&init.value);
+        let (def, shown) = match path.segments.as_slice() {
+            [single] => match self.lookup_type_name(&single.name) {
+                Some(def) => (def, single.name.clone()),
+                None => {
+                    self.error(
+                        DiagCode::UnknownType,
+                        path.span,
+                        format!("`{}` does not name a struct", single.name),
+                    );
+                    for init in field_inits {
+                        let _ = self.synth(&init.value);
+                    }
+                    return Type::Error;
+                }
+            },
+            segments => {
+                // `game.player.Player { .. }` — module path plus item.
+                let names: Vec<String> = segments.iter().map(|s| s.name.clone()).collect();
+                let dotted = names.join(".");
+                match self.qualified_ref(&names, path.span) {
+                    QualifiedLookup::Type(def) => (def, dotted),
+                    QualifiedLookup::Reported => {
+                        for init in field_inits {
+                            let _ = self.synth(&init.value);
+                        }
+                        return Type::Error;
+                    }
+                    _ => {
+                        self.error(
+                            DiagCode::UnknownType,
+                            path.span,
+                            format!("`{dotted}` does not name a struct"),
+                        );
+                        for init in field_inits {
+                            let _ = self.synth(&init.value);
+                        }
+                        return Type::Error;
+                    }
+                }
             }
-            return Type::Error;
         };
+        let name = shown.as_str();
         let info = self.defs.def(def);
         let generics = info.generics.clone();
         let DefKind::Struct { fields } = &info.kind else {
@@ -2067,13 +2545,33 @@ impl<'a> Checker<'a> {
             }
 
             ast::PatternKind::Path(path) => {
+                // `game.player.Rank.Gold` — the module prefix resolves
+                // first, the enum and variant follow as before.
+                if path.segments.len() >= 3 && self.ctx.is_some() {
+                    let names: Vec<String> = path.segments.iter().map(|s| s.name.clone()).collect();
+                    match self.qualified_ref(&names, pattern.span) {
+                        QualifiedLookup::Variant(def, _) => {
+                            let pattern_ty = Type::Named {
+                                def,
+                                args: match scrutinee {
+                                    Type::Named { def: s, args } if *s == def => args.clone(),
+                                    _ => vec![],
+                                },
+                            };
+                            self.require_compatible(&pattern_ty, scrutinee, pattern.span);
+                            return;
+                        }
+                        QualifiedLookup::Reported => return,
+                        _ => {}
+                    }
+                }
                 // `Rank.Gold` — enum and variant named explicitly.
                 let (Some(enum_ident), Some(variant_ident)) =
                     (path.segments.first(), path.segments.get(1))
                 else {
                     return;
                 };
-                let Some(def) = self.defs.lookup(&enum_ident.name) else {
+                let Some(def) = self.lookup_type_name(&enum_ident.name) else {
                     self.error(
                         DiagCode::UnknownType,
                         enum_ident.span,
@@ -2126,7 +2624,7 @@ impl<'a> Checker<'a> {
                         }
                     },
                     [enum_ident, variant_ident] => {
-                        let Some(def) = self.defs.lookup(&enum_ident.name) else {
+                        let Some(def) = self.lookup_type_name(&enum_ident.name) else {
                             self.error(
                                 DiagCode::UnknownType,
                                 enum_ident.span,
@@ -2136,7 +2634,20 @@ impl<'a> Checker<'a> {
                         };
                         (def, variant_ident.name.clone())
                     }
-                    _ => return,
+                    segments => {
+                        // `game.player.Rank.Gold(payload)`.
+                        let names: Vec<String> = segments.iter().map(|s| s.name.clone()).collect();
+                        match self.qualified_ref(&names, pattern.span) {
+                            QualifiedLookup::Variant(def, variant) => (def, variant),
+                            QualifiedLookup::Reported => {
+                                for element in elements {
+                                    self.bind_pattern(element, &Type::Error, mutable);
+                                }
+                                return;
+                            }
+                            _ => return,
+                        }
+                    }
                 };
 
                 let Some(variant) = self.defs.variant_named(def, &variant_name) else {
@@ -2186,7 +2697,24 @@ impl<'a> Checker<'a> {
                 let Some(first) = path.segments.first() else {
                     return;
                 };
-                let Some(def) = self.defs.lookup(&first.name) else {
+                let def = if path.segments.len() >= 2 && self.ctx.is_some() {
+                    // `game.player.Player { .. }` in pattern position.
+                    let names: Vec<String> = path.segments.iter().map(|s| s.name.clone()).collect();
+                    match self.qualified_ref(&names, pattern.span) {
+                        QualifiedLookup::Type(def) => def,
+                        QualifiedLookup::Reported => return,
+                        _ => {
+                            self.error(
+                                DiagCode::UnknownType,
+                                pattern.span,
+                                format!("`{}` does not name a type", names.join(".")),
+                            );
+                            return;
+                        }
+                    }
+                } else if let Some(def) = self.lookup_type_name(&first.name) {
+                    def
+                } else {
                     self.error(
                         DiagCode::UnknownType,
                         first.span,
