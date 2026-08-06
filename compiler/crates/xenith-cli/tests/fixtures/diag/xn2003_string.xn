@@ -1,0 +1,3 @@
+fn f(s: String) -> Int {
+    s.length()
+}

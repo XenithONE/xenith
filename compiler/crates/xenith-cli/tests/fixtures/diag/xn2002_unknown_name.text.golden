@@ -1,0 +1,4 @@
+tests/fixtures/diag/xn2002_unknown_name.xn:2:5: error[XN2002]: nothing named `missing` is in scope
+2 |     missing + 1
+  |     ^^^^^^^
+  run `xenith explain XN2002` for the rule

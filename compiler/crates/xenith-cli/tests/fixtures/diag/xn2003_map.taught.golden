@@ -1,0 +1,11 @@
+tests/fixtures/diag/xn2003_map.xn:2:7: error[XN2003]: `Map<String, Int>` has no method named `set`
+  methods of Map<String, Int> (6 of 7):
+      len() -> Int
+      is_empty() -> Bool
+      insert(key: String, value: Int) -> Option<Int>
+      get(key: String) -> Option<Int>
+      remove(key: String) -> Option<Int>
+      has_key(key: String) -> Bool
+2 |     m.set(key: "a", value: 1);
+  |       ^^^
+  run `xenith explain XN2003` for the rule

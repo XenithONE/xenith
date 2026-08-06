@@ -10,6 +10,14 @@
 //! entry — the entries are the objects a consumer holds onto, and the CLI
 //! already flattens arrays across files, so a version on the array itself
 //! would not survive.
+//!
+//! **Tolerant-reader contract**: a consumer must ignore fields it does not
+//! recognise. New optional fields — `teaches` on a diagnostic, `features` on
+//! a response — arrive under the same `schema_version`, because adding a
+//! field a reader may skip is not an incompatible change. `features` names
+//! the additive capabilities present, so a consumer can tell "an old
+//! compiler without teaching" apart from "teaching supported, nothing to
+//! teach here".
 
 use serde_json::{Value, json};
 use xenith_diag::{Diagnostic, LineIndex};
@@ -19,8 +27,22 @@ use xenith_sema::{Goal, Probe, Producer};
 /// incompatibly, which should be as rare as renumbering a diagnostic code.
 pub const SCHEMA_VERSION: u32 = 1;
 
+/// Additive capabilities this compiler's wire output carries, named so a
+/// consumer can distinguish absence of support from absence of content.
+pub const FEATURES: &[&str] = &["diagnostic_teaching_v1"];
+
 /// One file's diagnostics: `{ file, diagnostics: [ { …, line, column } ] }`.
-pub fn file_diagnostics(file: &str, source: &str, diagnostics: &[Diagnostic]) -> Value {
+///
+/// `teaching` declares whether diagnostic teaching was enabled for this run:
+/// when it was, the response carries `features` even if nothing taught —
+/// "supported but empty" and "not supported" must read differently. With
+/// teaching off the response reproduces the pre-teaching shape exactly.
+pub fn file_diagnostics(
+    file: &str,
+    source: &str,
+    diagnostics: &[Diagnostic],
+    teaching: bool,
+) -> Value {
     let index = LineIndex::new(source);
     let entries: Vec<Value> = diagnostics
         .iter()
@@ -34,7 +56,18 @@ pub fn file_diagnostics(file: &str, source: &str, diagnostics: &[Diagnostic]) ->
             value
         })
         .collect();
-    json!({ "schema_version": SCHEMA_VERSION, "file": file, "diagnostics": entries })
+    let mut report = json!({
+        "schema_version": SCHEMA_VERSION,
+        "file": file,
+        "diagnostics": entries,
+    });
+    if teaching {
+        report
+            .as_object_mut()
+            .expect("a report is an object")
+            .insert("features".into(), json!(FEATURES));
+    }
+    report
 }
 
 /// One file's goals, as an array in source order.
@@ -143,10 +176,54 @@ mod tests {
         let source = "fn main() -> Int {\n    true\n}\n";
         let analysis = crate::analyze_source(source);
         assert!(!analysis.diagnostics.is_empty(), "the fixture must mistype");
-        let value = file_diagnostics("bad.xn", source, &analysis.diagnostics);
+        let value = file_diagnostics("bad.xn", source, &analysis.diagnostics, true);
         assert_eq!(value["schema_version"], SCHEMA_VERSION);
         assert_eq!(value["file"], "bad.xn");
         assert!(value["diagnostics"][0]["line"].is_u64(), "{value}");
+    }
+
+    #[test]
+    fn teaching_runs_declare_the_feature_and_off_runs_reproduce_the_old_shape() {
+        let source = "fn main() -> Int {\n    true\n}\n";
+        let analysis = crate::analyze_source(source);
+        // On, with nothing taught: the feature is still declared, so a
+        // consumer can tell "supported but empty" from "old compiler".
+        let on = file_diagnostics("t.xn", source, &analysis.diagnostics, true);
+        assert_eq!(on["features"][0], "diagnostic_teaching_v1");
+        let off = file_diagnostics("t.xn", source, &analysis.diagnostics, false);
+        assert!(off.get("features").is_none());
+    }
+
+    #[test]
+    fn an_old_shape_consumer_parses_taught_output() {
+        // The tolerant-reader contract, exercised: a consumer whose shape
+        // predates `teaches` must read new output by ignoring it.
+        #[derive(serde::Deserialize)]
+        struct OldSpan {
+            start: u32,
+            end: u32,
+        }
+        #[derive(serde::Deserialize)]
+        #[allow(dead_code)]
+        struct OldDiagnostic {
+            code: String,
+            severity: String,
+            span: OldSpan,
+            message: String,
+        }
+
+        let source = "fn f(xs: List<Int>) -> Int {\n    xs.size()\n}\n";
+        let analysis = crate::analyze_source(source);
+        let value = file_diagnostics("t.xn", source, &analysis.diagnostics, true);
+        assert!(
+            value["diagnostics"][0]["teaches"].is_array(),
+            "the new field must be present for the test to prove anything: {value}"
+        );
+        let old: OldDiagnostic = serde_json::from_value(value["diagnostics"][0].clone())
+            .expect("an old-shape consumer still parses");
+        assert_eq!(old.code, "XN2003");
+        assert_eq!(old.span.start, 36);
+        assert_eq!(old.span.end, 40);
     }
 
     #[test]

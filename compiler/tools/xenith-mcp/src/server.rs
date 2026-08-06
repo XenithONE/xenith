@@ -319,8 +319,10 @@ fn call_tool(name: &str, arguments: &Value, workspace_root: &Path) -> Result<Str
             let (path, resolved) = path_of(arguments)?;
             let source = read(&path, &resolved)?;
             let analysis = xenith_driver::analyze_source(&source);
+            // The MCP surface has no teaching flag: a tool consumer always
+            // gets the taught shape and may ignore what it does not read.
             let value =
-                xenith_driver::wire::file_diagnostics(&path, &source, &analysis.diagnostics);
+                xenith_driver::wire::file_diagnostics(&path, &source, &analysis.diagnostics, true);
             serde_json::to_string_pretty(&value).map_err(|e| e.to_string())
         }
 

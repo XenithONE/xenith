@@ -1,0 +1,10 @@
+tests/fixtures/diag/xn3008_user_fn.xn:6:9: error[XN3008]: calls with two or more arguments name each one: `a: ..`
+6 |     add(1, 2)
+  |         ^
+  fix: insert `a:`
+  run `xenith explain XN3008` for the rule
+tests/fixtures/diag/xn3008_user_fn.xn:6:12: error[XN3008]: calls with two or more arguments name each one: `b: ..`
+6 |     add(1, 2)
+  |            ^
+  fix: insert `b:`
+  run `xenith explain XN3008` for the rule

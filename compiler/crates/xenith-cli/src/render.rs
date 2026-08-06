@@ -7,18 +7,23 @@
 
 use std::path::{Path, PathBuf};
 
-use xenith_diag::{Diagnostic, LineIndex, Severity, Span};
+use xenith_diag::{Diagnostic, LineIndex, Severity, Span, Teach, TeachKind};
 use xenith_sema::Goal;
 
 // The JSON shapes live in xenith-driver's `wire` module, shared with the MCP
 // server — one wire format, two frontends. This module only renders for
 // humans and stitches per-file wire values into whole responses.
 
-pub fn diagnostics_json(findings: &[(PathBuf, String, Vec<Diagnostic>)]) -> String {
+pub fn diagnostics_json(findings: &[(PathBuf, String, Vec<Diagnostic>)], teaching: bool) -> String {
     let reports: Vec<serde_json::Value> = findings
         .iter()
         .map(|(path, source, diagnostics)| {
-            xenith_driver::wire::file_diagnostics(&path.display().to_string(), source, diagnostics)
+            xenith_driver::wire::file_diagnostics(
+                &path.display().to_string(),
+                source,
+                diagnostics,
+                teaching,
+            )
         })
         .collect();
     serde_json::to_string_pretty(&reports).unwrap_or_else(|_| "[]".to_string())
@@ -39,6 +44,12 @@ pub fn diagnostic(path: &Path, source: &str, index: &LineIndex, diagnostic: &Dia
         diagnostic.code.id(),
         diagnostic.message
     );
+
+    // Teaches sit directly under the primary message, not as a tail note —
+    // a tail is the ignored position (design/0009 §3).
+    for entry in &diagnostic.teaches {
+        out.push_str(&teach(entry));
+    }
 
     if let Some(line_text) = index.line_text(source, at.line) {
         let number = at.line.to_string();
@@ -123,6 +134,35 @@ pub fn goal(path: &Path, source: &str, index: &LineIndex, goal: &Goal) -> String
     }
     for blocked in &goal.blocked {
         out.push_str(&format!("  blocked:  {blocked}\n"));
+    }
+    out
+}
+
+/// One teaching block: knowledge, no directions — a pointer at a command is
+/// an invitation to a channel the measurements say is dead (design/0009 §3).
+fn teach(teach: &Teach) -> String {
+    let mut out = String::new();
+    match teach.kind {
+        TeachKind::CallSignature => {
+            for item in &teach.items {
+                out.push_str(&format!("  call shape: {}\n", item.signature));
+            }
+        }
+        TeachKind::AvailableMethods => {
+            if teach.truncated {
+                out.push_str(&format!(
+                    "  methods of {} ({} of {}):\n",
+                    teach.type_name,
+                    teach.items.len(),
+                    teach.total_items
+                ));
+            } else {
+                out.push_str(&format!("  methods of {}:\n", teach.type_name));
+            }
+            for item in &teach.items {
+                out.push_str(&format!("      {}\n", item.signature));
+            }
+        }
     }
     out
 }

@@ -816,6 +816,139 @@ fn exhaustiveness_still_runs_when_an_arm_body_is_rejected() {
     assert_eq!(codes_of(source), ["XN1008", "XN5001"]);
 }
 
+// ------------------------------------------------------------------- teaches
+
+/// The diagnostics with their teaches, for asserting attachment structure.
+fn taught_of(source: &str) -> Vec<xenith_diag::Diagnostic> {
+    let parsed = parse(source);
+    assert!(
+        parsed.diagnostics.is_empty(),
+        "test source must parse cleanly first: {:?}",
+        parsed.diagnostics
+    );
+    analyze(&parsed.module).diagnostics
+}
+
+#[test]
+fn xn2003_teaches_the_receivers_method_catalogue() {
+    use xenith_diag::TeachKind;
+    let found = taught_of("fn f(xs: List<Int>) -> Int { xs.size() }");
+    assert_eq!(found[0].code.id(), "XN2003");
+    let teach = &found[0].teaches[0];
+    assert_eq!(teach.kind, TeachKind::AvailableMethods);
+    assert_eq!(teach.type_name, "List<Int>");
+    assert_eq!(teach.items.len(), 6, "the finite contract caps at six");
+    assert_eq!(teach.total_items, 10);
+    assert!(teach.truncated);
+    assert_eq!(teach.items[0].signature, "len() -> Int");
+    // Declaration order, not alphabetical.
+    assert_eq!(teach.items[2].name, "push");
+}
+
+#[test]
+fn a_taught_catalogue_shows_receiver_generics_bound() {
+    let found = taught_of("fn f(m: Map<String, Int>) -> Int { m.set(key: \"a\", value: 1) }");
+    let teach = &found[0].teaches[0];
+    assert_eq!(teach.type_name, "Map<String, Int>");
+    assert!(
+        teach
+            .items
+            .iter()
+            .any(|i| i.signature == "insert(key: String, value: Int) -> Option<Int>"),
+        "{:?}",
+        teach.items
+    );
+}
+
+#[test]
+fn xn3008_teaches_the_callees_signature_once_per_call_site() {
+    use xenith_diag::TeachKind;
+    let found = taught_of(
+        "fn add(a: Int, b: Int) -> Int { a + b }\n\
+         fn g() -> Int { add(1, 2) }",
+    );
+    assert_eq!(found.len(), 2, "one XN3008 per unnamed argument");
+    let teach = &found[0].teaches[0];
+    assert_eq!(teach.kind, TeachKind::CallSignature);
+    assert_eq!(teach.items[0].signature, "add(a: Int, b: Int) -> Int");
+    assert!(
+        found[1].teaches.is_empty(),
+        "the signature is not repeated within one call site"
+    );
+}
+
+#[test]
+fn a_method_call_signature_is_taught_concretely() {
+    let found = taught_of("fn f() -> Option<Int> { var xs = [1]; xs.replace(0, 9) }");
+    let teach = &found[0].teaches[0];
+    assert_eq!(teach.type_name, "List<Int>");
+    assert_eq!(
+        teach.items[0].signature,
+        "replace(index: Int, value: Int) -> Option<Int>"
+    );
+}
+
+#[test]
+fn a_taught_signature_carries_the_callees_effects() {
+    let found = taught_of("fn f(io: Io) -> Result<Unit, Error> uses {Io.write} { io.write() }");
+    assert_eq!(found[0].code.id(), "XN3002");
+    assert_eq!(
+        found[0].teaches[0].items[0].signature,
+        "write(text: String) -> Result<Unit, Error> uses {Io.write}"
+    );
+}
+
+#[test]
+fn a_catalogue_appears_once_per_type_per_check() {
+    let found = taught_of(
+        "fn f(xs: List<Int>) -> Int { xs.first(); xs.last(); 1 }\n\
+         fn g(ys: List<Int>) -> Int { ys.head(); 1 }",
+    );
+    let taught: Vec<bool> = found.iter().map(|d| !d.teaches.is_empty()).collect();
+    // Three XN2003 on the same receiver type, across two functions: the
+    // catalogue rides the first and only the first.
+    assert_eq!(taught, [true, false, false], "{found:#?}");
+}
+
+#[test]
+fn the_teaching_budget_caps_blocks_per_check() {
+    // Six distinct receiver types, six catalogues asked for, five granted.
+    let source = "fn f(a: List<Int>, b: List<String>, c: Map<String, Int>, s: String, n: Int, \
+                  o: Option<Int>) -> Int {\n\
+                  a.nope(); b.nope(); c.nope(); s.nope(); n.nope(); o.nope(); 1 }";
+    let found = taught_of(source);
+    assert_eq!(found.len(), 6);
+    let taught = found.iter().filter(|d| !d.teaches.is_empty()).count();
+    assert_eq!(taught, 5, "first come, first served, five per run");
+    assert!(found[5].teaches.is_empty(), "the sixth arrives too late");
+}
+
+#[test]
+fn an_overlong_taught_signature_is_cut_at_the_byte_budget() {
+    let long = "a_parameter_name_that_goes_on_and_on_and_on_for_a_very_long_time";
+    let source = format!(
+        "fn f({long}_one: Int, {long}_two: Int, {long}_three: Int) -> Int {{ 1 }}\n\
+         fn g() -> Int {{ f(1, 2, 3) }}"
+    );
+    let found = taught_of(&source);
+    let signature = &found[0].teaches[0].items[0].signature;
+    assert!(signature.ends_with('…'), "{signature}");
+    assert!(signature.len() <= xenith_diag::MAX_SIGNATURE_BYTES + '…'.len_utf8());
+}
+
+#[test]
+fn a_receiver_with_no_methods_teaches_nothing() {
+    let found = taught_of(
+        "struct Empty {}\n\
+         fn f(e: Empty) -> Int { e.nope() }",
+    );
+    assert_eq!(found[0].code.id(), "XN2003");
+    assert!(
+        found[0].teaches.is_empty(),
+        "an empty catalogue is silence, not an empty block"
+    );
+}
+
 // --------------------------------------------------------------------- holes
 
 #[test]

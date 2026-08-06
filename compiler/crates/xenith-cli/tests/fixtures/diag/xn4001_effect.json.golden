@@ -1,0 +1,31 @@
+[
+  {
+    "diagnostics": [
+      {
+        "code": "XN4001",
+        "column": 5,
+        "fix": {
+          "description": "declare `uses {Io.write}`",
+          "edits": [
+            {
+              "replacement": "uses {Io.write} ",
+              "span": {
+                "end": 52,
+                "start": 52
+              }
+            }
+          ]
+        },
+        "line": 2,
+        "message": "this call uses {Io.write}, which `log` does not declare",
+        "severity": "error",
+        "span": {
+          "end": 78,
+          "start": 58
+        }
+      }
+    ],
+    "file": "tests/fixtures/diag/xn4001_effect.xn",
+    "schema_version": 1
+  }
+]

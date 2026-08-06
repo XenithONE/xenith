@@ -1,0 +1,11 @@
+tests/fixtures/diag/xn3008_method.xn:3:16: error[XN3008]: calls with two or more arguments name each one: `index: ..`
+  call shape: replace(index: Int, value: Int) -> Option<Int>
+3 |     xs.replace(0, 9)
+  |                ^
+  fix: insert `index:`
+  run `xenith explain XN3008` for the rule
+tests/fixtures/diag/xn3008_method.xn:3:19: error[XN3008]: calls with two or more arguments name each one: `value: ..`
+3 |     xs.replace(0, 9)
+  |                   ^
+  fix: insert `value:`
+  run `xenith explain XN3008` for the rule

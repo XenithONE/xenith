@@ -1,0 +1,5 @@
+tests/fixtures/diag/xn4001_effect.xn:2:5: error[XN4001]: this call uses {Io.write}, which `log` does not declare
+2 |     io.write(text: text)
+  |     ^^^^^^^^^^^^^^^^^^^^
+  fix: declare `uses {Io.write}`
+  run `xenith explain XN4001` for the rule

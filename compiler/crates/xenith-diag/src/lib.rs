@@ -620,6 +620,102 @@ impl Edit {
     }
 }
 
+/// The most items one teaching block may carry (design/0009 §3): a finite
+/// contract, not a terminal-height guess.
+pub const MAX_TEACH_ITEMS: usize = 6;
+
+/// The most bytes one taught signature may occupy before it is cut with `…`.
+pub const MAX_SIGNATURE_BYTES: usize = 200;
+
+/// What kind of knowledge a [`Teach`] carries. The set is deliberately small:
+/// each kind is a measured failure family (design/0009 §6 step 0), not a
+/// place to be helpful in general.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TeachKind {
+    /// The full signature of the callee an argument-shape diagnostic is
+    /// about.
+    CallSignature,
+    /// The method catalogue of the receiver type an unknown-method
+    /// diagnostic is about.
+    AvailableMethods,
+}
+
+/// One taught entry: a name and its signature, rendered the way source
+/// writes it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TeachItem {
+    pub name: String,
+    pub signature: String,
+}
+
+impl TeachItem {
+    /// Build an item, cutting the signature at [`MAX_SIGNATURE_BYTES`] on a
+    /// character boundary with a trailing `…`.
+    pub fn new(name: impl Into<String>, signature: impl Into<String>) -> TeachItem {
+        let mut signature: String = signature.into();
+        if signature.len() > MAX_SIGNATURE_BYTES {
+            let mut cut = MAX_SIGNATURE_BYTES;
+            while !signature.is_char_boundary(cut) {
+                cut -= 1;
+            }
+            signature.truncate(cut);
+            signature.push('…');
+        }
+        TeachItem {
+            name: name.into(),
+            signature,
+        }
+    }
+}
+
+/// One block of knowledge attached to a diagnostic (design/0009 §3).
+///
+/// Structured, never pre-rendered: the wire carries data and the renderer
+/// formats it, so tools and models read the same facts the terminal shows.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Teach {
+    pub kind: TeachKind,
+    /// The receiver type for [`TeachKind::AvailableMethods`] and for method
+    /// call signatures; empty for a free function, which has no receiver to
+    /// name.
+    #[serde(rename = "type")]
+    pub type_name: String,
+    pub items: Vec<TeachItem>,
+    /// How many items exist, whether or not they all fit.
+    pub total_items: usize,
+    pub truncated: bool,
+}
+
+impl Teach {
+    /// A single resolved callee signature.
+    pub fn call_signature(type_name: impl Into<String>, item: TeachItem) -> Teach {
+        Teach {
+            kind: TeachKind::CallSignature,
+            type_name: type_name.into(),
+            items: vec![item],
+            total_items: 1,
+            truncated: false,
+        }
+    }
+
+    /// A method catalogue in declaration order, cut to [`MAX_TEACH_ITEMS`]
+    /// with the real count and the cut made explicit.
+    pub fn available_methods(type_name: impl Into<String>, items: Vec<TeachItem>) -> Teach {
+        let total_items = items.len();
+        let truncated = total_items > MAX_TEACH_ITEMS;
+        let mut items = items;
+        items.truncate(MAX_TEACH_ITEMS);
+        Teach {
+            kind: TeachKind::AvailableMethods,
+            type_name: type_name.into(),
+            items,
+            total_items,
+            truncated,
+        }
+    }
+}
+
 /// A fix that can be applied without human judgement.
 ///
 /// Only attach one when it is *unambiguously* correct. A fix that is merely
@@ -653,6 +749,11 @@ pub struct Diagnostic {
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fix: Option<Fix>,
+    /// Knowledge attached at the point of failure (design/0009). Absent from
+    /// the wire when empty, so a diagnostic without teaching keeps its
+    /// pre-teaching shape byte for byte.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub teaches: Vec<Teach>,
 }
 
 impl Diagnostic {
@@ -663,6 +764,7 @@ impl Diagnostic {
             span,
             message: message.into(),
             fix: None,
+            teaches: Vec::new(),
         }
     }
 
@@ -673,11 +775,17 @@ impl Diagnostic {
             span,
             message: message.into(),
             fix: None,
+            teaches: Vec::new(),
         }
     }
 
     pub fn with_fix(mut self, fix: Fix) -> Diagnostic {
         self.fix = Some(fix);
+        self
+    }
+
+    pub fn with_teach(mut self, teach: Teach) -> Diagnostic {
+        self.teaches.push(teach);
         self
     }
 
@@ -822,5 +930,52 @@ mod tests {
             json.get("fix").is_none(),
             "a missing fix should not appear as null"
         );
+    }
+
+    #[test]
+    fn empty_teaches_are_absent_from_json_so_untaught_shapes_do_not_move() {
+        let diag = Diagnostic::error(DiagCode::TypeMismatch, Span::new(0, 2), "mismatch");
+        let json = serde_json::to_value(&diag).unwrap();
+        assert!(json.get("teaches").is_none());
+    }
+
+    #[test]
+    fn teaches_round_trip_and_spell_their_kind_the_way_0009_does() {
+        let diag = Diagnostic::error(DiagCode::UnknownMethod, Span::new(0, 2), "no such method")
+            .with_teach(Teach::available_methods(
+                "List<Int>",
+                vec![TeachItem::new("len", "len() -> Int")],
+            ));
+        let json = serde_json::to_value(&diag).unwrap();
+        assert_eq!(json["teaches"][0]["kind"], "available_methods");
+        assert_eq!(json["teaches"][0]["type"], "List<Int>");
+        assert_eq!(json["teaches"][0]["items"][0]["signature"], "len() -> Int");
+        assert_eq!(json["teaches"][0]["total_items"], 1);
+        assert_eq!(json["teaches"][0]["truncated"], false);
+        let back: Diagnostic = serde_json::from_value(json).unwrap();
+        assert_eq!(back, diag);
+    }
+
+    #[test]
+    fn a_signature_is_cut_at_the_byte_budget_on_a_character_boundary() {
+        let item = TeachItem::new("f", "x".repeat(300));
+        assert!(item.signature.ends_with('…'));
+        assert!(item.signature.len() <= MAX_SIGNATURE_BYTES + '…'.len_utf8());
+
+        // A multi-byte character straddling the cut moves the cut back
+        // rather than splitting the character.
+        let item = TeachItem::new("f", format!("{}ああ", "x".repeat(199)));
+        assert!(item.signature.ends_with('…'), "{}", item.signature);
+    }
+
+    #[test]
+    fn a_method_catalogue_is_cut_at_six_with_the_real_count_kept() {
+        let items = (0..10)
+            .map(|i| TeachItem::new(format!("m{i}"), format!("m{i}()")))
+            .collect();
+        let teach = Teach::available_methods("T", items);
+        assert_eq!(teach.items.len(), MAX_TEACH_ITEMS);
+        assert_eq!(teach.total_items, 10);
+        assert!(teach.truncated);
     }
 }

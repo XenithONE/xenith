@@ -1,0 +1,4 @@
+tests/fixtures/diag/xn5001_match.xn:2:5: error[XN5001]: this `match` is not exhaustive: `false` is not covered
+2 |     match b {
+  |     ^^^^^^^^^
+  run `xenith explain XN5001` for the rule

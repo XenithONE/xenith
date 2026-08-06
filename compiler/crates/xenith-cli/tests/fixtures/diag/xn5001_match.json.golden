@@ -1,0 +1,19 @@
+[
+  {
+    "diagnostics": [
+      {
+        "code": "XN5001",
+        "column": 5,
+        "line": 2,
+        "message": "this `match` is not exhaustive: `false` is not covered",
+        "severity": "error",
+        "span": {
+          "end": 61,
+          "start": 27
+        }
+      }
+    ],
+    "file": "tests/fixtures/diag/xn5001_match.xn",
+    "schema_version": 1
+  }
+]

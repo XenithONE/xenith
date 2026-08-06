@@ -351,6 +351,7 @@ dependencies = [
 name = "xenith-driver"
 version = "0.0.0"
 dependencies = [
+ "serde",
  "serde_json",
  "xenith-diag",
  "xenith-sema",

@@ -1,0 +1,4 @@
+fn f() -> Option<Int> {
+    var xs = [1];
+    xs.replace(0, 9)
+}

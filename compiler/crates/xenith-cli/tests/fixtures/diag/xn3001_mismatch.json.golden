@@ -1,0 +1,19 @@
+[
+  {
+    "diagnostics": [
+      {
+        "code": "XN3001",
+        "column": 5,
+        "line": 2,
+        "message": "expected `Int`, found `Bool`",
+        "severity": "error",
+        "span": {
+          "end": 24,
+          "start": 20
+        }
+      }
+    ],
+    "file": "tests/fixtures/diag/xn3001_mismatch.xn",
+    "schema_version": 1
+  }
+]

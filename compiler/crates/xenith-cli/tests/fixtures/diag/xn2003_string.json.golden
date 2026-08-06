@@ -1,0 +1,19 @@
+[
+  {
+    "diagnostics": [
+      {
+        "code": "XN2003",
+        "column": 7,
+        "line": 2,
+        "message": "`String` has no method named `length`",
+        "severity": "error",
+        "span": {
+          "end": 37,
+          "start": 31
+        }
+      }
+    ],
+    "file": "tests/fixtures/diag/xn2003_string.xn",
+    "schema_version": 1
+  }
+]

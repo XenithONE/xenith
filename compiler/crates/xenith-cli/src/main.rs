@@ -31,6 +31,11 @@ enum Command {
         /// Emit machine-readable diagnostics.
         #[arg(long)]
         json: bool,
+        /// Attach knowledge to diagnostics that carry it: the callee's
+        /// signature, the receiver's method catalogue. `off` reproduces the
+        /// pre-teaching output byte for byte.
+        #[arg(long = "diagnostic-teaching", value_enum, default_value_t = Teaching::On)]
+        diagnostic_teaching: Teaching,
     },
     /// Rewrite source into canonical form.
     ///
@@ -81,7 +86,19 @@ enum Command {
     ///
     /// Exit codes: 0 = main succeeded; 1 = main returned `Err`;
     /// 2 = refused (diagnostics); 101 = a runtime trap fired.
-    Run { path: PathBuf },
+    Run {
+        path: PathBuf,
+        /// As on `check`: the refusal path renders the same diagnostics.
+        #[arg(long = "diagnostic-teaching", value_enum, default_value_t = Teaching::On)]
+        diagnostic_teaching: Teaching,
+    },
+}
+
+/// Whether diagnostics carry their teaching blocks (design/0009 §3).
+#[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+enum Teaching {
+    On,
+    Off,
 }
 
 #[derive(Subcommand)]
@@ -113,7 +130,11 @@ enum QueryCommand {
 
 fn main() -> ExitCode {
     match Cli::parse().command {
-        Command::Check { paths, json } => check(&paths, json),
+        Command::Check {
+            paths,
+            json,
+            diagnostic_teaching,
+        } => check(&paths, json, diagnostic_teaching),
         Command::Fmt { paths, check } => fmt(&paths, check),
         Command::Explain { code } => explain(code.as_deref()),
         Command::Goals { paths, json } => goals(&paths, json),
@@ -125,19 +146,23 @@ fn main() -> ExitCode {
                 json,
             } => producers(&path, &type_text, json),
         },
-        Command::Run { path } => run(&path),
+        Command::Run {
+            path,
+            diagnostic_teaching,
+        } => run(&path, diagnostic_teaching),
     }
 }
 
-fn run(path: &Path) -> ExitCode {
+fn run(path: &Path, teaching: Teaching) -> ExitCode {
     let mut failed = false;
     let Some(source) = read(path, &mut failed) else {
         return ExitCode::from(2);
     };
 
     // Running a program with diagnostics would be executing guesses.
-    let analysis = xenith_driver::analyze_source(&source);
+    let mut analysis = xenith_driver::analyze_source(&source);
     if !analysis.diagnostics.is_empty() {
+        strip_teaches(&mut analysis.diagnostics, teaching);
         let index = LineIndex::new(&source);
         for diagnostic in &analysis.diagnostics {
             print!("{}", render::diagnostic(path, &source, &index, diagnostic));
@@ -168,7 +193,7 @@ fn run(path: &Path) -> ExitCode {
     ExitCode::from(u8::try_from(outcome.exit).unwrap_or(101))
 }
 
-fn check(paths: &[PathBuf], json: bool) -> ExitCode {
+fn check(paths: &[PathBuf], json: bool, teaching: Teaching) -> ExitCode {
     let mut findings: Vec<(PathBuf, String, Vec<Diagnostic>)> = Vec::new();
     let mut failed = false;
 
@@ -176,7 +201,8 @@ fn check(paths: &[PathBuf], json: bool) -> ExitCode {
         let Some(source) = read(path, &mut failed) else {
             continue;
         };
-        let analysis = xenith_driver::analyze_source(&source);
+        let mut analysis = xenith_driver::analyze_source(&source);
+        strip_teaches(&mut analysis.diagnostics, teaching);
         findings.push((path.clone(), source, analysis.diagnostics));
     }
 
@@ -185,7 +211,10 @@ fn check(paths: &[PathBuf], json: bool) -> ExitCode {
         .any(|(_, _, diagnostics)| diagnostics.iter().any(Diagnostic::is_error));
 
     if json {
-        println!("{}", render::diagnostics_json(&findings));
+        println!(
+            "{}",
+            render::diagnostics_json(&findings, teaching == Teaching::On)
+        );
     } else {
         for (path, source, diagnostics) in &findings {
             let index = LineIndex::new(source);
@@ -412,6 +441,16 @@ fn producers(path: &Path, type_text: &str, json: bool) -> ExitCode {
         }
     }
     ExitCode::SUCCESS
+}
+
+/// `--diagnostic-teaching=off` strips exactly the teaches and nothing else,
+/// which is what makes the byte-identity guarantee testable.
+fn strip_teaches(diagnostics: &mut [Diagnostic], teaching: Teaching) {
+    if teaching == Teaching::Off {
+        for diagnostic in diagnostics {
+            diagnostic.teaches.clear();
+        }
+    }
 }
 
 /// `"59:5"` → `(59, 5)`.

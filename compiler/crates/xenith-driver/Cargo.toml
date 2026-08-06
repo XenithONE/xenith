@@ -12,3 +12,7 @@ xenith-diag = { workspace = true }
 xenith-syntax = { workspace = true }
 xenith-sema = { workspace = true }
 serde_json = { workspace = true }
+
+[dev-dependencies]
+# The tolerant-reader compat test deserializes into an old consumer's shape.
+serde = { workspace = true }

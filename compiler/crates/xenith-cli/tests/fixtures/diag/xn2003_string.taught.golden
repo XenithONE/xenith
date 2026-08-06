@@ -1,0 +1,11 @@
+tests/fixtures/diag/xn2003_string.xn:2:7: error[XN2003]: `String` has no method named `length`
+  methods of String (6 of 7):
+      concat(other: String) -> String
+      len() -> Int
+      split(sep: String) -> List<String>
+      trim() -> String
+      try_to_int() -> Result<Int, Error>
+      starts_with(prefix: String) -> Bool
+2 |     s.length()
+  |       ^^^^^^
+  run `xenith explain XN2003` for the rule

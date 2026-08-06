@@ -1,0 +1,54 @@
+[
+  {
+    "diagnostics": [
+      {
+        "code": "XN3008",
+        "column": 9,
+        "fix": {
+          "description": "insert `a:`",
+          "edits": [
+            {
+              "replacement": "a: ",
+              "span": {
+                "end": 69,
+                "start": 69
+              }
+            }
+          ]
+        },
+        "line": 6,
+        "message": "calls with two or more arguments name each one: `a: ..`",
+        "severity": "error",
+        "span": {
+          "end": 70,
+          "start": 69
+        }
+      },
+      {
+        "code": "XN3008",
+        "column": 12,
+        "fix": {
+          "description": "insert `b:`",
+          "edits": [
+            {
+              "replacement": "b: ",
+              "span": {
+                "end": 72,
+                "start": 72
+              }
+            }
+          ]
+        },
+        "line": 6,
+        "message": "calls with two or more arguments name each one: `b: ..`",
+        "severity": "error",
+        "span": {
+          "end": 73,
+          "start": 72
+        }
+      }
+    ],
+    "file": "tests/fixtures/diag/xn3008_user_fn.xn",
+    "schema_version": 1
+  }
+]

@@ -1,0 +1,4 @@
+tests/fixtures/diag/xn3001_mismatch.xn:2:5: error[XN3001]: expected `Int`, found `Bool`
+2 |     true
+  |     ^^^^
+  run `xenith explain XN3001` for the rule

@@ -1,0 +1,19 @@
+[
+  {
+    "diagnostics": [
+      {
+        "code": "XN2003",
+        "column": 8,
+        "line": 2,
+        "message": "`List<Int>` has no method named `size`",
+        "severity": "error",
+        "span": {
+          "end": 40,
+          "start": 36
+        }
+      }
+    ],
+    "file": "tests/fixtures/diag/xn2003_list.xn",
+    "schema_version": 1
+  }
+]

@@ -1,0 +1,4 @@
+tests/fixtures/diag/xn2003_string.xn:2:7: error[XN2003]: `String` has no method named `length`
+2 |     s.length()
+  |       ^^^^^^
+  run `xenith explain XN2003` for the rule

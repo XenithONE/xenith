@@ -1,0 +1,4 @@
+fn f(m: Map<String, Int>) -> Int {
+    m.set(key: "a", value: 1);
+    m.len()
+}

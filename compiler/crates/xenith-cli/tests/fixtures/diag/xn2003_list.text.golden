@@ -1,0 +1,4 @@
+tests/fixtures/diag/xn2003_list.xn:2:8: error[XN2003]: `List<Int>` has no method named `size`
+2 |     xs.size()
+  |        ^^^^
+  run `xenith explain XN2003` for the rule

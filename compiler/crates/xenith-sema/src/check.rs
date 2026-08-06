@@ -12,10 +12,10 @@
 //! goes mute — they are the same for *compatibility* and different for
 //! *goal emission*.
 
-use xenith_diag::{DiagCode, Diagnostic, Edit, Fix, Span};
+use xenith_diag::{DiagCode, Diagnostic, Edit, Fix, Span, Teach, TeachItem};
 use xenith_syntax::ast;
 
-use crate::def::{self, DefKind, DefTable, FnSig, GenericInfo, Property, UsesInsertion};
+use crate::def::{self, DefKind, DefTable, FnSig, GenericInfo, MethodSig, Property, UsesInsertion};
 use crate::ty::{EffectSet, HoleId, Type, TypeName};
 
 /// Everything `xenith goals` needs about one hole, captured at the moment the
@@ -70,6 +70,7 @@ pub fn analyze_at(module: &ast::Module, offset: Option<u32>) -> (Analysis, Optio
     let mut goals = Vec::new();
     let mut next_hole = 0u32;
     let mut probe = None;
+    let mut teach_budget = TeachBudget::new();
 
     for item in &module.items {
         let ast::ItemKind::Fn(f) = &item.kind else {
@@ -88,12 +89,46 @@ pub fn analyze_at(module: &ast::Module, offset: Option<u32>) -> (Analysis, Optio
             next_hole: &mut next_hole,
             probe_offset: offset,
             probe: &mut probe,
+            teach_budget: &mut teach_budget,
         };
         checker.check_fn();
     }
 
     goals.sort_by_key(|g| g.span.start);
     (Analysis { diagnostics, goals }, probe)
+}
+
+/// The most teaching blocks one check run may attach, first come first
+/// served in diagnostic order (design/0009 §3: a total budget, so chained
+/// failures cannot snowball into a wall of catalogues).
+const MAX_TEACHES_PER_CHECK: usize = 5;
+
+/// Teaching state shared across every function in the run — the budget
+/// belongs to the check, not to one body.
+struct TeachBudget {
+    blocks_left: usize,
+    /// Receiver types whose method catalogue has already been taught; one
+    /// catalogue per type per run.
+    catalogued: Vec<String>,
+}
+
+impl TeachBudget {
+    fn new() -> TeachBudget {
+        TeachBudget {
+            blocks_left: MAX_TEACHES_PER_CHECK,
+            catalogued: Vec::new(),
+        }
+    }
+}
+
+/// One callee at one call site: the name diagnostics use, its declared
+/// parameters, and — when the callee is resolved — the signature teach that
+/// rides the first argument-shape diagnostic (design/0009 §3).
+struct Callee<'c> {
+    name: &'c str,
+    param_names: &'c [String],
+    param_types: &'c [Type],
+    teach: Option<Teach>,
 }
 
 struct Binding {
@@ -113,6 +148,7 @@ struct Checker<'a> {
     /// Byte offset being queried by `type-at`, if any.
     probe_offset: Option<u32>,
     probe: &'a mut Option<Probe>,
+    teach_budget: &'a mut TeachBudget,
 }
 
 impl<'a> Checker<'a> {
@@ -308,6 +344,87 @@ impl<'a> Checker<'a> {
             return Type::Hole(id);
         }
         lowered
+    }
+
+    /// Claim budget for one teaching block. `catalogue_of` names the
+    /// receiver type for a method catalogue, which appears at most once per
+    /// run however many diagnostics ask for it (design/0009 §3).
+    fn claim_teach(&mut self, catalogue_of: Option<&str>) -> bool {
+        if self.teach_budget.blocks_left == 0 {
+            return false;
+        }
+        if let Some(type_name) = catalogue_of {
+            if self.teach_budget.catalogued.iter().any(|t| t == type_name) {
+                return false;
+            }
+            self.teach_budget.catalogued.push(type_name.to_string());
+        }
+        self.teach_budget.blocks_left -= 1;
+        true
+    }
+
+    /// `name(param: Type, ..) -> Ret uses {..}` — the spelling the
+    /// producers query uses, so a taught signature and a queried one agree.
+    fn signature_text(
+        &self,
+        name: &str,
+        param_names: &[String],
+        param_types: &[Type],
+        ret: &Type,
+        effects: &EffectSet,
+    ) -> String {
+        let params: Vec<String> = param_names
+            .iter()
+            .zip(param_types)
+            .map(|(param, ty)| format!("{param}: {}", self.render(ty)))
+            .collect();
+        let mut text = format!("{name}({}) -> {}", params.join(", "), self.render(ret));
+        if !effects.is_empty() {
+            text.push_str(&format!(" uses {effects}"));
+        }
+        text
+    }
+
+    /// The receiver's methods with its generics substituted, in declaration
+    /// order — `insert(key: String, value: Int) -> Option<Int>`, not the
+    /// schematic form. `None` when there is nothing to teach.
+    fn method_catalogue(&self, receiver: &Type, methods: &[MethodSig]) -> Option<Teach> {
+        if methods.is_empty() {
+            return None;
+        }
+        let bindings: Vec<(String, Type)> = match receiver {
+            Type::Named { def, args } => self
+                .defs
+                .def(*def)
+                .generics
+                .iter()
+                .cloned()
+                .zip(args.iter().cloned())
+                .collect(),
+            _ => Vec::new(),
+        };
+        let items = methods
+            .iter()
+            .map(|method| {
+                let names: Vec<String> = method.params.iter().map(|(n, _)| n.to_string()).collect();
+                let types: Vec<Type> = method
+                    .params
+                    .iter()
+                    .map(|(_, t)| t.substitute(&bindings))
+                    .collect();
+                TeachItem::new(
+                    method.name,
+                    self.signature_text(
+                        method.name,
+                        &names,
+                        &types,
+                        &method.ret.substitute(&bindings),
+                        &method.effects,
+                    ),
+                )
+            })
+            .collect();
+        Some(Teach::available_methods(self.render(receiver), items))
     }
 
     /// XN5001: every value the scrutinee can hold must land on some arm.
@@ -1259,23 +1376,34 @@ impl<'a> Checker<'a> {
 
     /// Shared argument discipline for functions, constructors and methods.
     ///
-    /// `param_names` empty means positional (variant payloads, fn values).
+    /// Empty `param_names` means positional (variant payloads, fn values).
+    /// The callee's teach, when present, rides the first argument-shape
+    /// diagnostic; the rest of the call site does not repeat it.
     fn check_args(
         &mut self,
-        callee_name: &str,
-        param_names: &[String],
-        param_types: &[Type],
+        callee: Callee<'_>,
         args: &[ast::Arg],
         bindings: &mut Vec<(String, Type)>,
         span: Span,
     ) {
+        let Callee {
+            name: callee_name,
+            param_names,
+            param_types,
+            mut teach,
+        } = callee;
+
         if args.len() != param_types.len() {
             let message = format!(
                 "`{callee_name}` takes {} argument(s), {} given",
                 param_types.len(),
                 args.len()
             );
-            self.error(DiagCode::WrongArgumentCount, span, message);
+            let mut diagnostic = Diagnostic::error(DiagCode::WrongArgumentCount, span, message);
+            if teach.is_some() && self.claim_teach(None) {
+                diagnostic = diagnostic.with_teach(teach.take().expect("checked above"));
+            }
+            self.diagnostics.push(diagnostic);
         }
 
         let named_required = !param_names.is_empty() && param_types.len() >= 2;
@@ -1288,25 +1416,33 @@ impl<'a> Checker<'a> {
                     Some(given) if given.name != *declared => {
                         let message =
                             format!("this argument is `{declared}`, not `{}`", given.name);
-                        self.diagnostics.push(
+                        let mut diagnostic =
                             Diagnostic::error(DiagCode::ArgumentNameMismatch, given.span, message)
                                 .with_fix(Fix::single(
                                     format!("name it `{declared}`"),
                                     Edit::replace(given.span, declared.clone()),
-                                )),
-                        );
+                                ));
+                        if teach.is_some() && self.claim_teach(None) {
+                            diagnostic =
+                                diagnostic.with_teach(teach.take().expect("checked above"));
+                        }
+                        self.diagnostics.push(diagnostic);
                     }
                     None if named_required => {
                         let message = format!(
                             "calls with two or more arguments name each one: `{declared}: ..`"
                         );
-                        self.diagnostics.push(
+                        let mut diagnostic =
                             Diagnostic::error(DiagCode::NamedArgumentsRequired, arg.span, message)
                                 .with_fix(Fix::single(
                                     format!("insert `{declared}:`"),
                                     Edit::insert(arg.span.start, format!("{declared}: ")),
-                                )),
-                        );
+                                ));
+                        if teach.is_some() && self.claim_teach(None) {
+                            diagnostic =
+                                diagnostic.with_teach(teach.take().expect("checked above"));
+                        }
+                        self.diagnostics.push(diagnostic);
                     }
                     _ => {}
                 }
@@ -1380,7 +1516,17 @@ impl<'a> Checker<'a> {
                 ret,
                 effects,
             } => {
-                self.check_args("this function", &[], &params, args, &mut Vec::new(), span);
+                self.check_args(
+                    Callee {
+                        name: "this function",
+                        param_names: &[],
+                        param_types: &params,
+                        teach: None,
+                    },
+                    args,
+                    &mut Vec::new(),
+                    span,
+                );
                 self.require_effects(&effects, span);
                 *ret
             }
@@ -1427,7 +1573,28 @@ impl<'a> Checker<'a> {
             let _ = Self::match_types(&ret, expected, &mut bindings);
         }
 
-        self.check_args(name, &param_names, &param_types, args, &mut bindings, span);
+        // The declared signature rides the first argument-shape diagnostic
+        // (design/0009 §3): the callee is resolved, so this is the highest
+        // precision teach there is.
+        let teach = Some(Teach::call_signature(
+            String::new(),
+            TeachItem::new(
+                name,
+                self.signature_text(name, &param_names, &param_types, &ret, &effects),
+            ),
+        ));
+
+        self.check_args(
+            Callee {
+                name,
+                param_names: &param_names,
+                param_types: &param_types,
+                teach,
+            },
+            args,
+            &mut bindings,
+            span,
+        );
 
         // Everything still unbound is underdetermined: fail closed.
         for generic in &generics {
@@ -1505,7 +1672,17 @@ impl<'a> Checker<'a> {
 
         // Variant payloads are positional by design: they are unnamed in the
         // declaration, so there is nothing to name them with (0006 review).
-        self.check_args(variant_name, &[], &payload, args, &mut bindings, span);
+        self.check_args(
+            Callee {
+                name: variant_name,
+                param_names: &[],
+                param_types: &payload,
+                teach: None,
+            },
+            args,
+            &mut bindings,
+            span,
+        );
 
         for name in &enum_generics {
             if !bindings.iter().any(|(n, _)| n == name) {
@@ -1581,7 +1758,16 @@ impl<'a> Checker<'a> {
                 self.render(&receiver_ty),
                 method.name
             );
-            self.error(DiagCode::UnknownMethod, method.span, message);
+            let mut diagnostic = Diagnostic::error(DiagCode::UnknownMethod, method.span, message);
+            // The receiver's catalogue is the measured payload (0009 §6
+            // step 0: XN2003 dominates unrepaired failures). An empty
+            // catalogue teaches nothing and claims no budget.
+            if let Some(catalogue) = self.method_catalogue(&receiver_ty, &methods) {
+                if self.claim_teach(Some(&catalogue.type_name)) {
+                    diagnostic = diagnostic.with_teach(catalogue);
+                }
+            }
+            self.diagnostics.push(diagnostic);
             for arg in args {
                 let _ = self.synth(&arg.value);
             }
@@ -1609,10 +1795,33 @@ impl<'a> Checker<'a> {
             self.require_mutable_receiver(receiver, &method.name);
         }
 
+        // The taught signature shows the receiver's generics already bound:
+        // `insert(key: String, value: Int)`, not the schematic form.
+        let taught_types: Vec<Type> = param_types
+            .iter()
+            .map(|t| t.substitute(&bindings))
+            .collect();
+        let teach = Some(Teach::call_signature(
+            self.render(&receiver_ty),
+            TeachItem::new(
+                method.name.clone(),
+                self.signature_text(
+                    &method.name,
+                    &param_names,
+                    &taught_types,
+                    &ret.substitute(&bindings),
+                    &effects,
+                ),
+            ),
+        ));
+
         self.check_args(
-            &method.name,
-            &param_names,
-            &param_types,
+            Callee {
+                name: &method.name,
+                param_names: &param_names,
+                param_types: &param_types,
+                teach,
+            },
             args,
             &mut bindings,
             span,
