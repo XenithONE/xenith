@@ -1,0 +1,15 @@
+# xenith-bench api-dump v1
+# hash: fnv1a64:3d41ed8938a8f18a
+
+module galley.kitchen
+
+pub fn serve(io: Io, dish: galley.menu.Dish) -> Result<Unit, Error> uses {Io.write}
+
+module galley.menu
+
+pub struct Dish {
+    name: String,
+    var heat: Int,
+}
+
+pub fn board() -> List<Dish>

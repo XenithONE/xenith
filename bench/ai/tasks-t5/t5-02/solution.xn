@@ -1,0 +1,21 @@
+use harbor.signal;
+
+pub fn entries() -> String {
+    let signals = harbor.signal.sequence();
+    var out = "";
+    var i = 0;
+    while i < signals.len() {
+        if i > 0 {
+            out = out.concat(other: ";");
+        }
+        let described = match signals.get(index: i) {
+            Some(harbor.signal.Signal.Calm) => "calm",
+            Some(harbor.signal.Signal.Gale(knots)) => "gale:".concat(other: knots.to_text()),
+            Some(harbor.signal.Signal.Fog(density)) => "fog:".concat(other: density),
+            None => "",
+        };
+        out = out.concat(other: described);
+        i = i + 1;
+    }
+    out
+}

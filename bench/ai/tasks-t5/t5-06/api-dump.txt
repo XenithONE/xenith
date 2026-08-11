@@ -1,0 +1,17 @@
+# xenith-bench api-dump v1
+# hash: fnv1a64:ab56cf5dbfa1ff5b
+
+module stable.herd
+
+pub struct Pony {
+    name: String,
+    var oats: Int,
+}
+
+pub fn feed(pony: Pony, scoops: Int) -> Pony
+
+pub fn lineup() -> List<Pony>
+
+module stable.ledger
+
+pub fn entry(pony: stable.herd.Pony) -> String

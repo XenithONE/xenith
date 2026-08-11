@@ -1,0 +1,5 @@
+use stable.herd;
+
+pub fn entry(pony: stable.herd.Pony) -> String {
+    pony.name.concat(other: "+").concat(other: pony.oats.to_text())
+}

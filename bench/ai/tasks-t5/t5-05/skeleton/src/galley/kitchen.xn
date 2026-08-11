@@ -1,0 +1,6 @@
+use galley.menu;
+
+pub fn serve(io: Io, dish: galley.menu.Dish) -> Result<Unit, Error> uses {Io.write} {
+    io.write(text: dish.name.concat(other: ":").concat(other: dish.heat.to_text()))?;
+    return Ok(unit);
+}

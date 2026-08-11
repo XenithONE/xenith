@@ -1,0 +1,15 @@
+# xenith-bench api-dump v1
+# hash: fnv1a64:c1d12ed20a7c09c2
+
+module depot.locker
+
+pub struct Locker {
+    label: String,
+    var weight: Int,
+}
+
+pub fn arrive(label: String) -> Locker
+
+pub fn stow(locker: Locker, load: Int) -> Locker
+
+pub fn tag(locker: Locker) -> String

@@ -1,0 +1,9 @@
+pub enum Signal {
+    Calm,
+    Gale(Int),
+    Fog(String),
+}
+
+pub fn sequence() -> List<Signal> {
+    [Signal.Calm, Signal.Gale(7), Signal.Fog("thick"), Signal.Gale(12), Signal.Calm]
+}

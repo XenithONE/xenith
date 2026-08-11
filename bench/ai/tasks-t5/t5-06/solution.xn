@@ -1,0 +1,22 @@
+use stable.herd;
+
+use stable.ledger;
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    let ponies = stable.herd.lineup();
+    var out = "";
+    var i = 0;
+    while i < ponies.len() {
+        let line = match ponies.get(index: i) {
+            Some(pony) => stable.ledger.entry(pony: stable.herd.feed(pony: pony, scoops: 3)),
+            None => "",
+        };
+        if i > 0 {
+            out = out.concat(other: ",");
+        }
+        out = out.concat(other: line);
+        i = i + 1;
+    }
+    io.write(text: out)?;
+    return Ok(unit);
+}

@@ -1,0 +1,9 @@
+use mill.stock;
+
+pub fn keeps(plank: mill.stock.Plank) -> Bool {
+    plank.length >= 18
+}
+
+pub fn label(plank: mill.stock.Plank) -> String {
+    plank.grain.concat(other: "/").concat(other: plank.length.to_text())
+}

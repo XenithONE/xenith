@@ -1,0 +1,6 @@
+use cutlist;
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    io.write(text: cutlist.lines())?;
+    return Ok(unit);
+}

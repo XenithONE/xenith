@@ -1,0 +1,21 @@
+# Frozen tier-5 task (design/0011 §1). Family t5b: wiring — no main.xn in the
+# skeleton; the model authors the entry file itself: use declarations, fully
+# qualified references, the effect declaration and `fn main` placement.
+# Observation point: the use/wiring pathway (XN2007 / XN2002 use-fix
+# territory), with the output split between a provided effectful serve and
+# separators the entry file writes itself.
+name = "t5-05"
+tier = 5
+family = "t5b"
+target = "src/main.xn"
+prompt = '''
+This project provides two frozen modules, `galley.menu` and `galley.kitchen`, and no entry
+file; their sources are not shown. Write the project's entry file `src/main.xn` yourself.
+
+`galley.menu`'s public API yields the board of dishes; `galley.kitchen`'s public API serves
+one dish, performing the output itself in the kitchen's own format. The board data and the
+serving format live in those modules and are not restated here — obtain both through the
+public APIs; do not reimplement or hardcode them. Serve every dish in board order, writing
+";" between consecutive dishes (nothing before the first or after the last).
+'''
+expected_stdout = "stew:3;loaf:1;tea:2"

@@ -1,0 +1,13 @@
+pub struct Plank {
+    grain: String,
+    var length: Int,
+}
+
+pub fn inventory() -> List<Plank> {
+    [
+        Plank { grain: "oak", length: 30 },
+        Plank { grain: "fir", length: 12 },
+        Plank { grain: "oak", length: 45 },
+        Plank { grain: "elm", length: 20 },
+    ]
+}

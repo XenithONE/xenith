@@ -1,0 +1,20 @@
+use galley.kitchen;
+
+use galley.menu;
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    let dishes = galley.menu.board();
+    var i = 0;
+    while i < dishes.len() {
+        if i > 0 {
+            io.write(text: ";")?;
+        }
+        let served = match dishes.get(index: i) {
+            Some(dish) => galley.kitchen.serve(io: io, dish: dish),
+            None => Ok(unit),
+        };
+        served?;
+        i = i + 1;
+    }
+    return Ok(unit);
+}

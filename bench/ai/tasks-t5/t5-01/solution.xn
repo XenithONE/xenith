@@ -1,0 +1,15 @@
+use depot.locker;
+
+pub fn report() -> String {
+    var ax = depot.locker.arrive(label: "ax");
+    ax = depot.locker.stow(locker: ax, load: 12);
+    ax = depot.locker.stow(locker: ax, load: 9);
+    var bay = depot.locker.arrive(label: "bay");
+    bay = depot.locker.stow(locker: bay, load: 30);
+    bay = depot.locker.stow(locker: bay, load: 25);
+    var cod = depot.locker.arrive(label: "cod");
+    cod = depot.locker.stow(locker: cod, load: 5);
+    let head = depot.locker.tag(locker: ax).concat(other: ",");
+    let mid = depot.locker.tag(locker: bay).concat(other: ",");
+    head.concat(other: mid).concat(other: depot.locker.tag(locker: cod))
+}

@@ -1,0 +1,23 @@
+# Frozen tier-5 task (design/0011 §1). Family t5a: implementation graft.
+# Observation point: Result chain + effect declarations spanning files —
+# `relay.feed.emit` performs `Io.write`, the model's `tally.publish` must
+# declare the effect and thread `io`, and the frozen `main` already declares
+# it; the `?` chain runs emit → publish → main across three files.
+name = "t5-03"
+tier = 5
+family = "t5a"
+target = "src/tally.xn"
+prompt = '''
+This project provides the frozen module `relay.feed`; its source is not shown. Write the file
+`src/tally.xn` containing a function `publish` that the frozen `src/main.xn` calls as
+`tally.publish(io: io)?`, so its signature must accept that call, return a `Result`, and
+declare the effects it performs.
+
+`relay.feed`'s public API yields the received frames, decodes a single frame, and emits a
+total (the emitter performs the actual output itself). The frame data, the decoding rule and
+the emitted format live in that module and are not restated here — obtain all of them through
+the public API; do not reimplement or hardcode them. Sum the values of the frames that decode
+successfully, counting every frame that fails to decode as 0, and emit that sum through
+`relay.feed`'s emitter.
+'''
+expected_stdout = "total=49"

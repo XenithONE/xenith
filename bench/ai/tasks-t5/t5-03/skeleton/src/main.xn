@@ -1,0 +1,6 @@
+use tally;
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    tally.publish(io: io)?;
+    return Ok(unit);
+}

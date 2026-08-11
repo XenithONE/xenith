@@ -1,0 +1,21 @@
+# Frozen tier-5 task (design/0011 §1). Family t5b: wiring — no main.xn in the
+# skeleton; the model authors the entry file itself: use declarations, fully
+# qualified references, the effect declaration and `fn main` placement.
+# Observation point: the use/wiring pathway (XN2007 / XN2002 use-fix
+# territory), with a provided transformer whose result feeds a provided
+# renderer across two modules.
+name = "t5-06"
+tier = 5
+family = "t5b"
+target = "src/main.xn"
+prompt = '''
+This project provides two frozen modules, `stable.herd` and `stable.ledger`, and no entry
+file; their sources are not shown. Write the project's entry file `src/main.xn` yourself.
+
+`stable.herd`'s public API yields the lineup of ponies and feeds one pony a number of scoops;
+`stable.ledger`'s public API renders one pony as a ledger entry. The lineup data and the
+entry format live in those modules and are not restated here — obtain them through the
+public APIs; do not reimplement or hardcode them. Feed every pony in the lineup 3 scoops,
+then print the fed ponies' ledger entries in lineup order, joined with ",".
+'''
+expected_stdout = "juno+5,brisk+3,moth+8"

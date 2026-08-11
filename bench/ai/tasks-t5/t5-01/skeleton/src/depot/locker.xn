@@ -1,0 +1,26 @@
+pub struct Locker {
+    label: String,
+    var weight: Int,
+}
+
+pub fn arrive(label: String) -> Locker {
+    Locker { label: label, weight: 0 }
+}
+
+pub fn stow(locker: Locker, load: Int) -> Locker {
+    var updated = locker;
+    updated.weight = capped(total: updated.weight + load);
+    updated
+}
+
+pub fn tag(locker: Locker) -> String {
+    locker.label.concat(other: "=").concat(other: locker.weight.to_text())
+}
+
+fn capped(total: Int) -> Int {
+    if total > 40 {
+        40
+    } else {
+        total
+    }
+}

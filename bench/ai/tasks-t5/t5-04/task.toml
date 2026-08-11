@@ -1,0 +1,19 @@
+# Frozen tier-5 task (design/0011 §1). Family t5a: implementation graft.
+# No single scripted observation point: general constrained integration
+# across two provided modules that themselves depend on each other.
+name = "t5-04"
+tier = 5
+family = "t5a"
+target = "src/cutlist.xn"
+prompt = '''
+This project provides two frozen modules, `mill.stock` and `mill.rules`; their sources are
+not shown. Write the file `src/cutlist.xn` containing a function `lines` that the frozen
+`src/main.xn` calls as `cutlist.lines()`, returning `String`.
+
+`mill.stock`'s public API yields the plank inventory; `mill.rules`'s public API decides
+whether a plank is kept and renders a kept plank's label. The inventory data, the keep rule
+and the label format live in those modules and are not restated here — obtain all three
+through the public APIs; do not reimplement or hardcode them. Render the labels of the kept
+planks, in inventory order, joined with ",".
+'''
+expected_stdout = "oak/30,oak/45,elm/20"

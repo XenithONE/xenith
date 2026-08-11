@@ -1,0 +1,8 @@
+pub struct Dish {
+    name: String,
+    var heat: Int,
+}
+
+pub fn board() -> List<Dish> {
+    [Dish { name: "stew", heat: 3 }, Dish { name: "loaf", heat: 1 }, Dish { name: "tea", heat: 2 }]
+}

@@ -1,0 +1,12 @@
+pub fn frames() -> List<String> {
+    ["7", "x4", "19", "", "23"]
+}
+
+pub fn decode(frame: String) -> Result<Int, Error> {
+    frame.try_to_int()
+}
+
+pub fn emit(io: Io, total: Int) -> Result<Unit, Error> uses {Io.write} {
+    io.write(text: "total=".concat(other: total.to_text()))?;
+    return Ok(unit);
+}

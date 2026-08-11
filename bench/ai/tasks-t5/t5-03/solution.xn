@@ -1,0 +1,21 @@
+use relay.feed;
+
+pub fn publish(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    let frames = relay.feed.frames();
+    var total = 0;
+    var i = 0;
+    while i < frames.len() {
+        let frame = match frames.get(index: i) {
+            Some(f) => f,
+            None => "",
+        };
+        let decoded = match relay.feed.decode(frame: frame) {
+            Ok(value) => value,
+            Err(_) => 0,
+        };
+        total = total + decoded;
+        i = i + 1;
+    }
+    relay.feed.emit(io: io, total: total)?;
+    return Ok(unit);
+}

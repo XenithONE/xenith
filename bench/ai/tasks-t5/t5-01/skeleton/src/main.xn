@@ -1,0 +1,6 @@
+use manifest;
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    io.write(text: manifest.report())?;
+    return Ok(unit);
+}

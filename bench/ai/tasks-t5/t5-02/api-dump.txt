@@ -1,0 +1,12 @@
+# xenith-bench api-dump v1
+# hash: fnv1a64:339e1f45f3402495
+
+module harbor.signal
+
+pub enum Signal {
+    Calm,
+    Gale(Int),
+    Fog(String),
+}
+
+pub fn sequence() -> List<Signal>

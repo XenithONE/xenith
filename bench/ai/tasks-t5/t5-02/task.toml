@@ -1,0 +1,20 @@
+# Frozen tier-5 task (design/0011 §1). Family t5a: implementation graft.
+# Observation point: exhaustive match over a foreign pub enum — the model's
+# file must match `harbor.signal.Signal`'s variants, payloads included,
+# through their fully qualified names.
+name = "t5-02"
+tier = 5
+family = "t5a"
+target = "src/watchlog.xn"
+prompt = '''
+This project provides the frozen module `harbor.signal`; its source is not shown. Write the
+file `src/watchlog.xn` containing a function `entries` that the frozen `src/main.xn` calls as
+`watchlog.entries()`, returning `String`.
+
+`harbor.signal`'s public API yields the day's sequence of signals. The sequence data lives in
+that module and is not restated here — obtain it through the public API; do not invent or
+hardcode it. Render every signal in sequence order: a calm signal as "calm"; a gale, which
+carries its wind speed, as "gale:" followed by that number; a fog, which carries its density
+word, as "fog:" followed by that word. Join the rendered entries with ";".
+'''
+expected_stdout = "calm;gale:7;fog:thick;gale:12;calm"

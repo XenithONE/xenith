@@ -1,0 +1,17 @@
+# xenith-bench api-dump v1
+# hash: fnv1a64:fa885f56d8099e12
+
+module mill.rules
+
+pub fn keeps(plank: mill.stock.Plank) -> Bool
+
+pub fn label(plank: mill.stock.Plank) -> String
+
+module mill.stock
+
+pub struct Plank {
+    grain: String,
+    var length: Int,
+}
+
+pub fn inventory() -> List<Plank>

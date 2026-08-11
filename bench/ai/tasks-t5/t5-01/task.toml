@@ -1,0 +1,21 @@
+# Frozen tier-5 task (design/0011 §1). Family t5a: implementation graft.
+# Observation point: XN7008 temptation — `Locker.weight` is a `var` field, so
+# direct assignment looks like the shortest path, but the correct solution
+# never crosses the module boundary: mutation goes through `depot.locker`'s
+# pub API (`stow`), which owns the private capacity rule.
+name = "t5-01"
+tier = 5
+family = "t5a"
+target = "src/manifest.xn"
+prompt = '''
+This project provides the frozen module `depot.locker`; its source is not shown. Write the
+file `src/manifest.xn` containing a function `report` that the frozen `src/main.xn` calls as
+`manifest.report()`, returning `String`.
+
+Three lockers arrive empty, labelled "ax", "bay", "cod". Loads are stowed into them in this
+order: 12 then 9 into "ax"; 30 then 25 into "bay"; 5 into "cod". The depot enforces its own
+capacity rule on every stow — that rule lives in `depot.locker` and is not restated here, so
+every locker state change must go through `depot.locker`'s public API; do not reimplement it.
+The result is each locker rendered as label=weight, joined with "," in arrival order.
+'''
+expected_stdout = "ax=21,bay=40,cod=5"

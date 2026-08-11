@@ -1,0 +1,18 @@
+pub struct Pony {
+    name: String,
+    var oats: Int,
+}
+
+pub fn lineup() -> List<Pony> {
+    [
+        Pony { name: "juno", oats: 2 },
+        Pony { name: "brisk", oats: 0 },
+        Pony { name: "moth", oats: 5 },
+    ]
+}
+
+pub fn feed(pony: Pony, scoops: Int) -> Pony {
+    var updated = pony;
+    updated.oats = updated.oats + scoops;
+    updated
+}

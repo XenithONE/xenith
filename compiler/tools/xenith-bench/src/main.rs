@@ -36,6 +36,8 @@ use std::time::Instant;
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::Deserialize;
 
+mod t5;
+
 #[derive(Parser)]
 #[command(name = "xenith-bench", about = "AI benchmark harness for Xenith")]
 struct Cli {
@@ -67,6 +69,21 @@ enum Command {
     /// Regenerate results/summary.md from the canonical result files.
     /// Numbers typed into prose drift; generated numbers cannot.
     Summarize,
+    /// Print the deterministic public-surface dump of a project's provided
+    /// modules (design/0011 §7): pub fn signatures, pub struct/enum
+    /// definitions, effect sets. The frozen per-task dumps under
+    /// bench/ai/tasks-t5/ are this command's output, never hand-edited.
+    ApiDump {
+        /// The project root (the directory holding `xenith.toml`).
+        project: PathBuf,
+        /// Write to a file (LF bytes) instead of stdout.
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+    /// Print the canonical tier-5 run-order table (design/0011 §5). The
+    /// committed bench/ai/tasks-t5/shuffle-order.tsv must match it byte for
+    /// byte; `verify` checks that it does.
+    T5Shuffle,
 }
 
 /// One column of the matrix. Mostly one CLI = one model, with two deliberate
@@ -132,6 +149,21 @@ enum Condition {
     V3Docs,
     #[value(name = "v3-docs-teach")]
     V3DocsTeach,
+    // The 0011 tier-5 arms: docs form (guide / api-dump / none) crossed with
+    // diagnostic teaching. Names pinned for the same digit-boundary reason
+    // as the v3 quartet.
+    #[value(name = "t5-guide-on")]
+    T5GuideOn,
+    #[value(name = "t5-guide-off")]
+    T5GuideOff,
+    #[value(name = "t5-api-on")]
+    T5ApiOn,
+    #[value(name = "t5-api-off")]
+    T5ApiOff,
+    #[value(name = "t5-none-on")]
+    T5NoneOn,
+    #[value(name = "t5-none-off")]
+    T5NoneOff,
 }
 
 impl Condition {
@@ -148,6 +180,17 @@ impl Condition {
         Condition::V3Docs,
         Condition::V3DocsTeach,
     ];
+    /// The 0011 §2 3×2: docs form × teaching. Order is the summary-table
+    /// column order, not the run order — that lives in the frozen shuffle
+    /// table.
+    const T5: [Condition; 6] = [
+        Condition::T5GuideOn,
+        Condition::T5GuideOff,
+        Condition::T5ApiOn,
+        Condition::T5ApiOff,
+        Condition::T5NoneOn,
+        Condition::T5NoneOff,
+    ];
 
     fn name(self) -> &'static str {
         match self {
@@ -162,14 +205,45 @@ impl Condition {
             Condition::V3Teach => "v3-teach",
             Condition::V3Docs => "v3-docs",
             Condition::V3DocsTeach => "v3-docs-teach",
+            Condition::T5GuideOn => "t5-guide-on",
+            Condition::T5GuideOff => "t5-guide-off",
+            Condition::T5ApiOn => "t5-api-on",
+            Condition::T5ApiOff => "t5-api-off",
+            Condition::T5NoneOn => "t5-none-on",
+            Condition::T5NoneOff => "t5-none-off",
         }
     }
 
-    /// The docs factor: these arms carry the std API table in the guide.
+    /// The 0011 docs form, or `None` for every pre-tier-5 condition. Doubles
+    /// as the "is this a tier-5 arm" predicate: tier-5 cells run project
+    /// mode and assemble their prompts in `t5::first_prompt`.
+    fn t5_docs(self) -> Option<t5::T5Docs> {
+        match self {
+            Condition::T5GuideOn | Condition::T5GuideOff => Some(t5::T5Docs::Guide),
+            Condition::T5ApiOn | Condition::T5ApiOff => Some(t5::T5Docs::Api),
+            Condition::T5NoneOn | Condition::T5NoneOff => Some(t5::T5Docs::None),
+            _ => None,
+        }
+    }
+
+    fn is_t5(self) -> bool {
+        self.t5_docs().is_some()
+    }
+
+    /// The docs factor: these arms carry the std API table. For the tier-5
+    /// arms it rides with both docs forms — guide and api-dump — and stays
+    /// out of the none arms ("none = nothing beyond the primer", 0011 §3).
     fn has_api_table(self) -> bool {
         matches!(
             self,
-            Condition::Docs | Condition::DocsQuery | Condition::V3Docs | Condition::V3DocsTeach
+            Condition::Docs
+                | Condition::DocsQuery
+                | Condition::V3Docs
+                | Condition::V3DocsTeach
+                | Condition::T5GuideOn
+                | Condition::T5GuideOff
+                | Condition::T5ApiOn
+                | Condition::T5ApiOff
         )
     }
 
@@ -184,13 +258,20 @@ impl Condition {
         )
     }
 
-    /// The teaching factor (0009 §3): when false, every `check`/`run` this
-    /// arm makes carries `--diagnostic-teaching=off`. Teaching is the
-    /// compiler's default, and every pre-0009 arm ran before the flag
-    /// existed — they keep the default so re-running a legacy cell still
-    /// measures what its result file says it measured.
+    /// The teaching factor (0009 §3, reused by 0011 §2): when false, every
+    /// `check`/`run` this arm makes carries `--diagnostic-teaching=off`.
+    /// Teaching is the compiler's default, and every pre-0009 arm ran before
+    /// the flag existed — they keep the default so re-running a legacy cell
+    /// still measures what its result file says it measured.
     fn teaching(self) -> bool {
-        !matches!(self, Condition::V3Plain | Condition::V3Docs)
+        !matches!(
+            self,
+            Condition::V3Plain
+                | Condition::V3Docs
+                | Condition::T5GuideOff
+                | Condition::T5ApiOff
+                | Condition::T5NoneOff
+        )
     }
 
     /// The 0009 arms store each failed round's feedback verbatim plus its
@@ -225,6 +306,8 @@ fn main() -> ExitCode {
             timeout,
         } => run_models(&paths, model, condition, &task, rounds, timeout),
         Command::Summarize => summarize(&paths),
+        Command::ApiDump { project, out } => t5::api_dump_command(&project, out.as_deref()),
+        Command::T5Shuffle => t5::shuffle_command(&paths),
     }
 }
 
@@ -266,6 +349,20 @@ fn summarize(paths: &Paths) -> ExitCode {
              in the compiler feedback. Same cell format as above.\n\n",
         );
         table.push_str(&teaching_block);
+    }
+
+    // And the 0011 tier-5 campaign, with its extra observations: the
+    // rounds-to-green distributions and the green-without-integration flag.
+    let (t5_block, measured) = matrix_block(paths, &Condition::T5);
+    if measured {
+        table.push_str(
+            "\n## Constrained integration (0011 tier-5)\n\n\
+             The 3×2 of design/0011 §2: docs form (field guide / api-dump / none) ×\n\
+             diagnostic teaching, over the six frozen project tasks. Same cell format\n\
+             as above; pass@1 is the head of each cell.\n\n",
+        );
+        table.push_str(&t5_block);
+        table.push_str(&t5::summary_extras(paths));
     }
 
     let out = paths.results.join("summary.md");
@@ -344,10 +441,12 @@ struct Paths {
     root: PathBuf,
     xenith: PathBuf,
     tasks: PathBuf,
+    tasks_t5: PathBuf,
     scratch: PathBuf,
     results: PathBuf,
     field_guide: PathBuf,
     api_table: PathBuf,
+    primer: PathBuf,
     invoke: PathBuf,
 }
 
@@ -362,10 +461,12 @@ impl Paths {
         Paths {
             xenith: root.join("compiler/target/debug/xenith.exe"),
             tasks: root.join("bench/ai/tasks"),
+            tasks_t5: root.join("bench/ai/tasks-t5"),
             scratch: root.join("bench/ai/scratch"),
             results: root.join("bench/ai/results"),
             field_guide: root.join("bench/ai/field-guide.md"),
             api_table: root.join("bench/ai/api-table.md"),
+            primer: root.join("bench/ai/primer-syntax.md"),
             invoke: root.join("bench/ai/invoke.ps1"),
             root,
         }
@@ -473,11 +574,17 @@ fn verify(paths: &Paths) -> ExitCode {
         }
     }
 
+    // The tier-5 project tasks run through the same gate (design/0011 §1):
+    // reference through the real pipe, frozen dump against a regeneration,
+    // the consumed-surface golden gate, and the frozen shuffle order.
+    let (t5_ok, t5_broken) = t5::verify_all(paths, &xenith);
+    broken += t5_broken;
+
     if broken > 0 {
         eprintln!("{broken} broken task(s) — a benchmark over broken tasks lies");
         ExitCode::FAILURE
     } else {
-        println!("all {} references pass", tasks.len());
+        println!("all {} references pass", tasks.len() + t5_ok);
         ExitCode::SUCCESS
     }
 }
@@ -580,6 +687,14 @@ fn run_models(
             condition.name()
         );
         return ExitCode::FAILURE;
+    }
+    // Tier-5 cells are project-mode: their own tasks, prompts, run order and
+    // per-round records live in the t5 module; the ledger, the round cap,
+    // the CLIs and the result-file shape are shared.
+    if condition.is_t5() {
+        return t5::run_campaign(
+            paths, &xenith, &guide, &api_table, model, condition, only, rounds, timeout,
+        );
     }
     let tasks = match load_tasks(&paths.tasks) {
         Ok(tasks) => tasks,
@@ -685,6 +800,9 @@ fn load_prior_reports(file: &Path) -> Vec<TaskReport> {
                                     .collect()
                             }),
                             feedback_text: r["feedback_text"].as_str().map(str::to_string),
+                            submitted: r["submitted"].as_str().map(str::to_string),
+                            fix_count: r["fix_count"].as_u64(),
+                            teach_count: r["teach_count"].as_u64(),
                         })
                     })
                     .collect(),
@@ -739,6 +857,39 @@ struct RoundRecord {
     /// their exact shape.
     diag_codes: Option<Vec<String>>,
     feedback_text: Option<String>,
+    /// Tier-5 only (0011 §6): the file the model submitted this round,
+    /// verbatim. The post-hoc static observations — qualification rate,
+    /// forbidden patterns, fix adoption, the green-but-never-references
+    /// flag — all read from these texts, so they are recorded even on the
+    /// passing round. `None` everywhere else so earlier result files keep
+    /// their exact shape.
+    submitted: Option<String>,
+    /// Tier-5 only: machine-fix availability this round — the number of
+    /// `fix:` lines in the feedback. Adoption is judged post-hoc from the
+    /// next round's `submitted`.
+    fix_count: Option<u64>,
+    /// Tier-5 only: teach lines in the feedback (zero in every off arm by
+    /// the 0009 byte-identity guarantee).
+    teach_count: Option<u64>,
+}
+
+impl RoundRecord {
+    /// A round carrying none of the per-experiment optional payloads — the
+    /// shape of every round outside the recording arms, and of failure
+    /// bookkeeping (model errors, empty replies) inside them.
+    fn bare(attempt: u32, outcome: String, seconds: f64) -> RoundRecord {
+        RoundRecord {
+            attempt,
+            outcome,
+            seconds,
+            goals: None,
+            diag_codes: None,
+            feedback_text: None,
+            submitted: None,
+            fix_count: None,
+            teach_count: None,
+        }
+    }
 }
 
 struct TaskReport {
@@ -776,6 +927,15 @@ fn round_json(round: &RoundRecord) -> serde_json::Value {
     if let Some(text) = &round.feedback_text {
         json["feedback_text"] = serde_json::json!(text);
     }
+    if let Some(text) = &round.submitted {
+        json["submitted"] = serde_json::json!(text);
+    }
+    if let Some(count) = round.fix_count {
+        json["fix_count"] = serde_json::json!(count);
+    }
+    if let Some(count) = round.teach_count {
+        json["teach_count"] = serde_json::json!(count);
+    }
     json
 }
 
@@ -806,14 +966,11 @@ fn run_one_task(
         let reply = match ask_model(paths, model, &transcript, timeout) {
             Ok(reply) => reply,
             Err(message) => {
-                report.rounds.push(RoundRecord {
+                report.rounds.push(RoundRecord::bare(
                     attempt,
-                    outcome: format!("model error: {message}"),
-                    seconds: started.elapsed().as_secs_f64(),
-                    goals: None,
-                    diag_codes: None,
-                    feedback_text: None,
-                });
+                    format!("model error: {message}"),
+                    started.elapsed().as_secs_f64(),
+                ));
                 return report;
             }
         };
@@ -824,14 +981,11 @@ fn run_one_task(
         // "previous attempt" the model never wrote. agy in headless mode does
         // exactly this when a tool request is auto-denied.
         if reply.trim().is_empty() {
-            report.rounds.push(RoundRecord {
+            report.rounds.push(RoundRecord::bare(
                 attempt,
-                outcome: "empty reply".into(),
-                seconds: started.elapsed().as_secs_f64(),
-                goals: None,
-                diag_codes: None,
-                feedback_text: None,
-            });
+                "empty reply".into(),
+                started.elapsed().as_secs_f64(),
+            ));
             transcript.push_str(
                 "\n\n--- note ---\nYour previous reply came back empty (the CLI produced no \
                  text). Do not use tools; answer directly. Reply with exactly one fenced \
@@ -847,14 +1001,11 @@ fn run_one_task(
             condition.name()
         ));
         if std::fs::write(&file, &code).is_err() {
-            report.rounds.push(RoundRecord {
+            report.rounds.push(RoundRecord::bare(
                 attempt,
-                outcome: "scratch write failed".into(),
-                seconds: started.elapsed().as_secs_f64(),
-                goals: None,
-                diag_codes: None,
-                feedback_text: None,
-            });
+                "scratch write failed".into(),
+                started.elapsed().as_secs_f64(),
+            ));
             return report;
         }
 
@@ -867,6 +1018,9 @@ fn run_one_task(
             goals: judgement.goals,
             diag_codes: judgement.diag_codes,
             feedback_text: judgement.feedback_text,
+            submitted: None,
+            fix_count: None,
+            teach_count: None,
         });
 
         if done {
@@ -1084,6 +1238,18 @@ fn first_prompt(guide: &str, api_table: &str, task: &Task, condition: Condition)
                 task.prompt.trim()
             )
         }
+        // Tier-5 prompts carry project material (the primer, the frozen
+        // main.xn, per-task dumps) that single-file tasks do not have, so
+        // they are assembled in t5::first_prompt; run_models branches before
+        // this function can be reached with one of these.
+        Condition::T5GuideOn
+        | Condition::T5GuideOff
+        | Condition::T5ApiOn
+        | Condition::T5ApiOff
+        | Condition::T5NoneOn
+        | Condition::T5NoneOff => {
+            unreachable!("tier-5 prompts are assembled by t5::first_prompt")
+        }
     }
 }
 
@@ -1287,21 +1453,10 @@ mod tests {
             pass_at_1: false,
             rounds: vec![
                 RoundRecord {
-                    attempt: 1,
-                    outcome: "diagnostics".into(),
-                    seconds: 1.5,
                     goals: Some("?? : Int — candidates: len, get".into()),
-                    diag_codes: None,
-                    feedback_text: None,
+                    ..RoundRecord::bare(1, "diagnostics".into(), 1.5)
                 },
-                RoundRecord {
-                    attempt: 2,
-                    outcome: "pass".into(),
-                    seconds: 2.0,
-                    goals: None,
-                    diag_codes: None,
-                    feedback_text: None,
-                },
+                RoundRecord::bare(2, "pass".into(), 2.0),
             ],
         }];
         write_results(&file, Model::Codex, Condition::Query, 4, &written).unwrap();
@@ -1394,10 +1549,114 @@ mod tests {
             .into_iter()
             .chain(Condition::SEPARATION)
             .chain(Condition::V3)
+            .chain(Condition::T5)
         {
             let value = condition.to_possible_value().expect("hidden variant");
             assert_eq!(value.get_name(), condition.name());
         }
+    }
+
+    #[test]
+    fn t5_condition_names_match_result_files() {
+        let names: Vec<&str> = Condition::T5.iter().map(|c| c.name()).collect();
+        assert_eq!(
+            names,
+            [
+                "t5-guide-on",
+                "t5-guide-off",
+                "t5-api-on",
+                "t5-api-off",
+                "t5-none-on",
+                "t5-none-off"
+            ]
+        );
+    }
+
+    #[test]
+    fn t5_teaching_follows_the_arm_suffix_and_nothing_else_differs() {
+        // 0011 §2: teaching on/off is the whole difference between an arm
+        // pair — the repair loop's compiler flag, and only that.
+        assert!(Condition::T5GuideOn.teaching());
+        assert!(Condition::T5ApiOn.teaching());
+        assert!(Condition::T5NoneOn.teaching());
+        assert!(!Condition::T5GuideOff.teaching());
+        assert!(!Condition::T5ApiOff.teaching());
+        assert!(!Condition::T5NoneOff.teaching());
+        for condition in Condition::T5 {
+            assert!(condition.is_t5(), "{}", condition.name());
+            // No tier-5 arm feeds goals, and none uses the v3 recording
+            // switch — tier-5 rounds carry their own richer record.
+            assert!(!condition.feeds_goals(), "{}", condition.name());
+            assert!(!condition.records_feedback(), "{}", condition.name());
+        }
+        // The docs form pairs up across the teaching factor.
+        use t5::T5Docs;
+        assert!(matches!(
+            Condition::T5GuideOn.t5_docs(),
+            Some(T5Docs::Guide)
+        ));
+        assert!(matches!(
+            Condition::T5GuideOff.t5_docs(),
+            Some(T5Docs::Guide)
+        ));
+        assert!(matches!(Condition::T5ApiOn.t5_docs(), Some(T5Docs::Api)));
+        assert!(matches!(Condition::T5ApiOff.t5_docs(), Some(T5Docs::Api)));
+        assert!(matches!(Condition::T5NoneOn.t5_docs(), Some(T5Docs::None)));
+        assert!(matches!(Condition::T5NoneOff.t5_docs(), Some(T5Docs::None)));
+        // The api table rides with both docs forms and never with none
+        // ("none = nothing beyond the primer", 0011 §3).
+        assert!(Condition::T5GuideOn.has_api_table());
+        assert!(Condition::T5ApiOn.has_api_table());
+        assert!(!Condition::T5NoneOn.has_api_table());
+        assert!(!Condition::T5NoneOff.has_api_table());
+        // And no pre-tier-5 condition claims the tier-5 machinery.
+        for condition in Condition::ALL
+            .into_iter()
+            .chain(Condition::SEPARATION)
+            .chain(Condition::V3)
+        {
+            assert!(!condition.is_t5(), "{}", condition.name());
+        }
+    }
+
+    #[test]
+    fn t5_round_fields_survive_the_results_round_trip() {
+        let dir = std::env::temp_dir().join(format!("xenith-bench-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("codex-t5-api-on.json");
+        let written = vec![TaskReport {
+            task: "t5-01".into(),
+            tier: 5,
+            passed: true,
+            pass_at_1: false,
+            rounds: vec![
+                RoundRecord {
+                    diag_codes: Some(vec!["XN2002".into()]),
+                    feedback_text: Some("error[XN2002]\n  fix: insert `use depot.locker;`".into()),
+                    submitted: Some("pub fn report() -> String {\n    \"\"\n}".into()),
+                    fix_count: Some(1),
+                    teach_count: Some(0),
+                    ..RoundRecord::bare(1, "diagnostics".into(), 1.5)
+                },
+                RoundRecord {
+                    submitted: Some("use depot.locker;\n".into()),
+                    ..RoundRecord::bare(2, "pass".into(), 2.0)
+                },
+            ],
+        }];
+        write_results(&file, Model::Codex, Condition::T5ApiOn, 4, &written).unwrap();
+        let loaded = load_prior_reports(&file);
+        std::fs::remove_file(&file).ok();
+        assert_eq!(loaded.len(), 1);
+        let rounds = &loaded[0].rounds;
+        assert_eq!(rounds[0].fix_count, Some(1));
+        assert_eq!(rounds[0].teach_count, Some(0));
+        assert!(rounds[0].submitted.as_deref().unwrap().contains("report"));
+        // The passing round keeps its submitted text (the 0011 §6 flag reads
+        // it) and nothing else.
+        assert_eq!(rounds[1].submitted.as_deref(), Some("use depot.locker;\n"));
+        assert!(rounds[1].fix_count.is_none());
+        assert!(rounds[1].diag_codes.is_none());
     }
 
     #[test]
@@ -1463,25 +1722,15 @@ mod tests {
             pass_at_1: false,
             rounds: vec![
                 RoundRecord {
-                    attempt: 1,
-                    outcome: "diagnostics".into(),
-                    seconds: 1.5,
-                    goals: None,
                     diag_codes: Some(vec!["XN2003".into(), "XN3008".into()]),
                     feedback_text: Some(
                         "error[XN2003]: unknown method `shove`\n\
                          teaches: push(item: T) -> Unit"
                             .into(),
                     ),
+                    ..RoundRecord::bare(1, "diagnostics".into(), 1.5)
                 },
-                RoundRecord {
-                    attempt: 2,
-                    outcome: "pass".into(),
-                    seconds: 2.0,
-                    goals: None,
-                    diag_codes: None,
-                    feedback_text: None,
-                },
+                RoundRecord::bare(2, "pass".into(), 2.0),
             ],
         }];
         write_results(&file, Model::Codex, Condition::V3Teach, 4, &written).unwrap();

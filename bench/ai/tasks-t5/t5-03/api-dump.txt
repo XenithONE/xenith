@@ -1,0 +1,10 @@
+# xenith-bench api-dump v1
+# hash: fnv1a64:eae4b96d8d33b80e
+
+module relay.feed
+
+pub fn decode(frame: String) -> Result<Int, Error>
+
+pub fn emit(io: Io, total: Int) -> Result<Unit, Error> uses {Io.write}
+
+pub fn frames() -> List<String>

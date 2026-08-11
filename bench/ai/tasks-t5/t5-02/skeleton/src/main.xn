@@ -1,0 +1,6 @@
+use watchlog;
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    io.write(text: watchlog.entries())?;
+    return Ok(unit);
+}

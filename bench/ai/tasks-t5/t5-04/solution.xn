@@ -1,0 +1,31 @@
+use mill.rules;
+
+use mill.stock;
+
+pub fn lines() -> String {
+    let planks = mill.stock.inventory();
+    var out = "";
+    var kept = 0;
+    var i = 0;
+    while i < planks.len() {
+        let line = match planks.get(index: i) {
+            Some(plank) => {
+                if mill.rules.keeps(plank: plank) {
+                    mill.rules.label(plank: plank)
+                } else {
+                    ""
+                }
+            }
+            None => "",
+        };
+        if line != "" {
+            if kept > 0 {
+                out = out.concat(other: ",");
+            }
+            out = out.concat(other: line);
+            kept = kept + 1;
+        }
+        i = i + 1;
+    }
+    out
+}

@@ -337,6 +337,8 @@ dependencies = [
  "serde",
  "serde_json",
  "toml",
+ "xenith-driver",
+ "xenith-syntax",
 ]
 
 [[package]]
