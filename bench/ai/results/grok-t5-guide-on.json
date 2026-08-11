@@ -1,0 +1,54 @@
+{
+  "condition": "t5-guide-on",
+  "model": "grok",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 110.4,
+          "submitted": "use galley.menu;\nuse galley.kitchen;\n\nfn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    let board = galley.menu.board();\n    var i = 0;\n    while i < board.len() {\n        if i > 0 {\n            io.write(text: \";\")?;\n        }\n        match board.get(index: i) {\n            Some(dish) => {\n                galley.kitchen.serve(io: io, dish: dish)?;\n            },\n            None => {\n                return Ok(unit);\n            },\n        }\n        i = i + 1;\n    }\n    return Ok(unit);\n}"
+        }
+      ],
+      "task": "t5-05",
+      "tier": 5
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN1007",
+            "XN0001"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-grok-t5-guide-on-r1\\src\\manifest.xn:1:1: error[XN1007]: expected a declaration, found identifier\n1 | I need the frozen `depot.locker` API to write a correct `report`. Checking the project for its public surface.```xenith\n  | ^\n  run `xenith explain XN1007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-grok-t5-guide-on-r1\\src\\manifest.xn:1:19: error[XN0001]: ``` cannot start a token\n1 | I need the frozen `depot.locker` API to write a correct `report`. Checking the project for its public surface.```xenith\n  |                   ^\n  run `xenith explain XN0001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-grok-t5-guide-on-r1\\src\\manifest.xn:1:32: error[XN0001]: ``` cannot start a token\n1 | I need the frozen `depot.locker` API to write a correct `report`. Checking the project for its public surface.```xenith\n  |                                ^\n  run `xenith explain XN0001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-grok-t5-guide-on-r1\\src\\manifest.xn:1:57: error[XN0001]: ``` cannot start a token\n1 | I need the frozen `depot.locker` API to write a correct `report`. Checking the project for its public surface.```xenith\n  |                                                         ^\n  run `xenith explain XN0001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-grok-t5-guide-on-r1\\src\\manifest.xn:1:64: error[XN0001]: ``` cannot start a token\n1 | I need the frozen `depot.locker` API to write a correct `report`. Checking the project for its public surface.```xenith\n  |                                                                ^\n  run `xenith explain XN0001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-grok-t5-guide-on-r1\\src\\manifest.xn:1:111: error[XN0001]: ``` cannot start a token\n1 | I need the frozen `depot.locker` API to write a correct `report`. Checking the project for its public surface.```xenith\n  |                                                                                                               ^\n  run `xenith explain XN0001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-grok-t5-guide-on-r1\\src\\manifest.xn:1:112: error[XN0001]: ``` cannot start a token\n1 | I need the frozen `depot.locker` API to write a correct `report`. Checking the project for its public surface.```xenith\n  |                                                                                                                ^\n  run `xenith explain XN0001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-grok-t5-guide-on-r1\\src\\manifest.xn:1:113: error[XN0001]: ``` cannot start a token\n1 | I need the frozen `depot.locker` API to write a correct `report`. Checking the project for its public surface.```xenith\n  |                                                                                                                 ^\n  run `xenith explain XN0001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-grok-t5-guide-on-r1\\src\\manifest.xn:17:1: error[XN0001]: ``` cannot start a token\n17 | ```\n   | ^\n  run `xenith explain XN0001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-grok-t5-guide-on-r1\\src\\manifest.xn:17:1: error[XN1007]: expected a declaration, found unrecognised character\n17 | ```\n   | ^\n  run `xenith explain XN1007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-grok-t5-guide-on-r1\\src\\manifest.xn:17:2: error[XN0001]: ``` cannot start a token\n17 | ```\n   |  ^\n  run `xenith explain XN0001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-grok-t5-guide-on-r1\\src\\manifest.xn:17:3: error[XN0001]: ``` cannot start a token\n17 | ```\n   |   ^\n  run `xenith explain XN0001` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 100.3,
+          "submitted": "I need the frozen `depot.locker` API to write a correct `report`. Checking the project for its public surface.```xenith\nuse depot.locker;\n\npub fn report() -> String {\n    var ax = depot.locker.arrive(label: \"ax\");\n    ax = depot.locker.stow(locker: ax, load: 12);\n    ax = depot.locker.stow(locker: ax, load: 9);\n    var bay = depot.locker.arrive(label: \"bay\");\n    bay = depot.locker.stow(locker: bay, load: 30);\n    bay = depot.locker.stow(locker: bay, load: 25);\n    var cod = depot.locker.arrive(label: \"cod\");\n    cod = depot.locker.stow(locker: cod, load: 5);\n    let head = depot.locker.tag(locker: ax).concat(other: \",\");\n    let mid = depot.locker.tag(locker: bay).concat(other: \",\");\n    head.concat(other: mid).concat(other: depot.locker.tag(locker: cod))\n}\n```",
+          "teach_count": 0
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 47.9,
+          "submitted": "use depot.locker;\n\npub fn report() -> String {\n    var ax = depot.locker.arrive(label: \"ax\");\n    ax = depot.locker.stow(locker: ax, load: 12);\n    ax = depot.locker.stow(locker: ax, load: 9);\n    var bay = depot.locker.arrive(label: \"bay\");\n    bay = depot.locker.stow(locker: bay, load: 30);\n    bay = depot.locker.stow(locker: bay, load: 25);\n    var cod = depot.locker.arrive(label: \"cod\");\n    cod = depot.locker.stow(locker: cod, load: 5);\n    let head = depot.locker.tag(locker: ax).concat(other: \",\");\n    let mid = depot.locker.tag(locker: bay).concat(other: \",\");\n    head.concat(other: mid).concat(other: depot.locker.tag(locker: cod))\n}"
+        }
+      ],
+      "task": "t5-01",
+      "tier": 5
+    }
+  ],
+  "totals": {
+    "pass_at_1": 1,
+    "passed": 2,
+    "tasks": 2
+  },
+  "unix_time": 1786442651
+}
