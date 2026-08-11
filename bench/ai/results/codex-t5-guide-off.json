@@ -1,0 +1,107 @@
+{
+  "condition": "t5-guide-off",
+  "model": "codex",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-04-codex-t5-guide-off-r1\\src\\cutlist.xn:12:20: error[XN2002]: `mill.rules` has no item named `is_kept`\n12 |                 if mill.rules.is_kept(plank) {\n   |                    ^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-04-codex-t5-guide-off-r1\\src\\cutlist.xn:13:33: error[XN2002]: `mill.rules` has no item named `to_label`\n13 |                     labels.push(mill.rules.to_label(plank));\n   |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 56.5,
+          "submitted": "use mill.stock;\nuse mill.rules;\n\npub fn lines() -> String {\n    let planks = mill.stock.inventory();\n    var labels: List<String> = [];\n    var index = 0;\n\n    while index < planks.len() {\n        match planks.get(index) {\n            Some(plank) => {\n                if mill.rules.is_kept(plank) {\n                    labels.push(mill.rules.to_label(plank));\n                }\n                unit\n            },\n            None => unit,\n        };\n        index = index + 1;\n    }\n\n    labels.join(\",\")\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 2,
+          "diag_codes": [
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-04-codex-t5-guide-off-r2\\src\\cutlist.xn:12:20: error[XN2002]: `mill.rules` has no item named `keep`\n12 |                 if mill.rules.keep(plank) {\n   |                    ^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 88.8,
+          "submitted": "use mill.stock;\nuse mill.rules;\n\npub fn lines() -> String {\n    let planks = mill.stock.inventory();\n    var labels: List<String> = [];\n    var index = 0;\n\n    while index < planks.len() {\n        match planks.get(index) {\n            Some(plank) => {\n                if mill.rules.keep(plank) {\n                    labels.push(mill.rules.label(plank));\n                }\n                unit\n            },\n            None => unit,\n        };\n        index = index + 1;\n    }\n\n    labels.join(\",\")\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 3,
+          "diag_codes": [
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-04-codex-t5-guide-off-r3\\src\\cutlist.xn:12:20: error[XN2002]: `mill.rules` has no item named `should_keep`\n12 |                 if mill.rules.should_keep(plank) {\n   |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 59.0,
+          "submitted": "use mill.stock;\nuse mill.rules;\n\npub fn lines() -> String {\n    let planks = mill.stock.inventory();\n    var labels: List<String> = [];\n    var index = 0;\n\n    while index < planks.len() {\n        match planks.get(index) {\n            Some(plank) => {\n                if mill.rules.should_keep(plank) {\n                    labels.push(mill.rules.label(plank));\n                }\n                unit\n            },\n            None => unit,\n        };\n        index = index + 1;\n    }\n\n    labels.join(\",\")\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 4,
+          "diag_codes": [
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-04-codex-t5-guide-off-r4\\src\\cutlist.xn:12:20: error[XN2002]: `mill.rules` has no item named `is_usable`\n12 |                 if mill.rules.is_usable(plank) {\n   |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 84.0,
+          "submitted": "use mill.stock;\nuse mill.rules;\n\npub fn lines() -> String {\n    let planks = mill.stock.inventory();\n    var labels: List<String> = [];\n    var index = 0;\n\n    while index < planks.len() {\n        match planks.get(index) {\n            Some(plank) => {\n                if mill.rules.is_usable(plank) {\n                    labels.push(mill.rules.label(plank));\n                }\n                unit\n            },\n            None => unit,\n        };\n        index = index + 1;\n    }\n\n    labels.join(\",\")\n}",
+          "teach_count": 0
+        }
+      ],
+      "task": "t5-04",
+      "tier": 5
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-codex-t5-guide-off-r1\\src\\manifest.xn:4:14: error[XN2002]: `depot.locker` has no item named `empty`\n4 |     var ax = depot.locker.empty(\"ax\");\n  |              ^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-codex-t5-guide-off-r1\\src\\manifest.xn:5:15: error[XN2002]: `depot.locker` has no item named `empty`\n5 |     var bay = depot.locker.empty(\"bay\");\n  |               ^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-codex-t5-guide-off-r1\\src\\manifest.xn:6:15: error[XN2002]: `depot.locker` has no item named `empty`\n6 |     var cod = depot.locker.empty(\"cod\");\n  |               ^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-codex-t5-guide-off-r1\\src\\manifest.xn:15:9: error[XN2002]: `depot.locker` has no item named `render`\n15 |         depot.locker.render(ax),\n   |         ^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-codex-t5-guide-off-r1\\src\\manifest.xn:16:9: error[XN2002]: `depot.locker` has no item named `render`\n16 |         depot.locker.render(bay),\n   |         ^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-codex-t5-guide-off-r1\\src\\manifest.xn:17:9: error[XN2002]: `depot.locker` has no item named `render`\n17 |         depot.locker.render(cod),\n   |         ^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 122.6,
+          "submitted": "use depot.locker;\n\npub fn report() -> String {\n    var ax = depot.locker.empty(\"ax\");\n    var bay = depot.locker.empty(\"bay\");\n    var cod = depot.locker.empty(\"cod\");\n\n    ax = depot.locker.stow(locker: ax, load: 12);\n    ax = depot.locker.stow(locker: ax, load: 9);\n    bay = depot.locker.stow(locker: bay, load: 30);\n    bay = depot.locker.stow(locker: bay, load: 25);\n    cod = depot.locker.stow(locker: cod, load: 5);\n\n    let rendered = [\n        depot.locker.render(ax),\n        depot.locker.render(bay),\n        depot.locker.render(cod),\n    ];\n    rendered.join(\",\")\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 2,
+          "diag_codes": [
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-codex-t5-guide-off-r2\\src\\manifest.xn:4:14: error[XN2002]: `depot.locker` has no item named `from_label`\n4 |     var ax = depot.locker.from_label(\"ax\");\n  |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-codex-t5-guide-off-r2\\src\\manifest.xn:5:15: error[XN2002]: `depot.locker` has no item named `from_label`\n5 |     var bay = depot.locker.from_label(\"bay\");\n  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-codex-t5-guide-off-r2\\src\\manifest.xn:6:15: error[XN2002]: `depot.locker` has no item named `from_label`\n6 |     var cod = depot.locker.from_label(\"cod\");\n  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-codex-t5-guide-off-r2\\src\\manifest.xn:15:9: error[XN2002]: `depot.locker` has no item named `to_text`\n15 |         depot.locker.to_text(ax),\n   |         ^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-codex-t5-guide-off-r2\\src\\manifest.xn:16:9: error[XN2002]: `depot.locker` has no item named `to_text`\n16 |         depot.locker.to_text(bay),\n   |         ^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-codex-t5-guide-off-r2\\src\\manifest.xn:17:9: error[XN2002]: `depot.locker` has no item named `to_text`\n17 |         depot.locker.to_text(cod),\n   |         ^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 61.2,
+          "submitted": "use depot.locker;\n\npub fn report() -> String {\n    var ax = depot.locker.from_label(\"ax\");\n    var bay = depot.locker.from_label(\"bay\");\n    var cod = depot.locker.from_label(\"cod\");\n\n    ax = depot.locker.stow(locker: ax, load: 12);\n    ax = depot.locker.stow(locker: ax, load: 9);\n    bay = depot.locker.stow(locker: bay, load: 30);\n    bay = depot.locker.stow(locker: bay, load: 25);\n    cod = depot.locker.stow(locker: cod, load: 5);\n\n    [\n        depot.locker.to_text(ax),\n        depot.locker.to_text(bay),\n        depot.locker.to_text(cod),\n    ].join(\",\")\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 3,
+          "outcome": "pass",
+          "seconds": 70.1,
+          "submitted": "use depot.locker;\n\npub fn report() -> String {\n    var ax = depot.locker.Locker { label: \"ax\", weight: 0 };\n    var bay = depot.locker.Locker { label: \"bay\", weight: 0 };\n    var cod = depot.locker.Locker { label: \"cod\", weight: 0 };\n\n    ax = depot.locker.stow(locker: ax, load: 12);\n    ax = depot.locker.stow(locker: ax, load: 9);\n    bay = depot.locker.stow(locker: bay, load: 30);\n    bay = depot.locker.stow(locker: bay, load: 25);\n    cod = depot.locker.stow(locker: cod, load: 5);\n\n    [\n        ax.label.concat(other: \"=\").concat(other: ax.weight.to_text()),\n        bay.label.concat(other: \"=\").concat(other: bay.weight.to_text()),\n        cod.label.concat(other: \"=\").concat(other: cod.weight.to_text()),\n    ].join(\",\")\n}"
+        }
+      ],
+      "task": "t5-01",
+      "tier": 5
+    }
+  ],
+  "totals": {
+    "pass_at_1": 0,
+    "passed": 1,
+    "tasks": 2
+  },
+  "unix_time": 1786444890
+}

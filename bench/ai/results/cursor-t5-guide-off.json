@@ -1,0 +1,65 @@
+{
+  "condition": "t5-guide-off",
+  "model": "cursor",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-02-cursor-t5-guide-off-r1\\src\\watchlog.xn:12:19: error[XN2002]: `harbor.signal` has no item named `signals`\n12 |     let signals = harbor.signal.signals();\n   |                   ^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 106.7,
+          "submitted": "use harbor.signal;\n\nfn render(signal: harbor.signal.Signal) -> String {\n    match signal {\n        harbor.signal.Signal.Calm => \"calm\",\n        harbor.signal.Signal.Gale(speed) => \"gale:\".concat(other: speed.to_text()),\n        harbor.signal.Signal.Fog(density) => \"fog:\".concat(other: density),\n    }\n}\n\npub fn entries() -> String {\n    let signals = harbor.signal.signals();\n    var parts: List<String> = [];\n    var i = 0;\n    while i < signals.len() {\n        match signals.get(index: i) {\n            Some(signal) => {\n                parts.push(item: render(signal));\n            },\n            None => {\n                break;\n            },\n        }\n        i = i + 1;\n    }\n    parts.join(sep: \";\")\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 162.2,
+          "submitted": "use harbor.signal;\n\nfn render(signal: harbor.signal.Signal) -> String {\n    match signal {\n        harbor.signal.Signal.Calm => \"calm\",\n        harbor.signal.Signal.Gale(speed) => \"gale:\".concat(other: speed.to_text()),\n        harbor.signal.Signal.Fog(density) => \"fog:\".concat(other: density),\n    }\n}\n\npub fn entries() -> String {\n    let signals = harbor.signal.sequence();\n    var parts: List<String> = [];\n    var i = 0;\n    while i < signals.len() {\n        match signals.get(index: i) {\n            Some(signal) => {\n                parts.push(item: render(signal));\n            },\n            None => {\n                break;\n            },\n        }\n        i = i + 1;\n    }\n    parts.join(sep: \";\")\n}"
+        }
+      ],
+      "task": "t5-02",
+      "tier": 5
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-cursor-t5-guide-off-r1\\src\\manifest.xn:4:14: error[XN2002]: `depot.locker` has no item named `from_label`\n4 |     var ax = depot.locker.from_label(label: \"ax\");\n  |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-cursor-t5-guide-off-r1\\src\\manifest.xn:5:15: error[XN2002]: `depot.locker` has no item named `from_label`\n5 |     var bay = depot.locker.from_label(label: \"bay\");\n  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-cursor-t5-guide-off-r1\\src\\manifest.xn:6:15: error[XN2002]: `depot.locker` has no item named `from_label`\n6 |     var cod = depot.locker.from_label(label: \"cod\");\n  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-cursor-t5-guide-off-r1\\src\\manifest.xn:13:9: error[XN2002]: `depot.locker` has no item named `to_text`\n13 |         depot.locker.to_text(locker: ax),\n   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-cursor-t5-guide-off-r1\\src\\manifest.xn:14:9: error[XN2002]: `depot.locker` has no item named `to_text`\n14 |         depot.locker.to_text(locker: bay),\n   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-cursor-t5-guide-off-r1\\src\\manifest.xn:15:9: error[XN2002]: `depot.locker` has no item named `to_text`\n15 |         depot.locker.to_text(locker: cod),\n   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 118.4,
+          "submitted": "use depot.locker;\n\npub fn report() -> String {\n    var ax = depot.locker.from_label(label: \"ax\");\n    var bay = depot.locker.from_label(label: \"bay\");\n    var cod = depot.locker.from_label(label: \"cod\");\n    ax = depot.locker.stow(locker: ax, load: 12);\n    ax = depot.locker.stow(locker: ax, load: 9);\n    bay = depot.locker.stow(locker: bay, load: 30);\n    bay = depot.locker.stow(locker: bay, load: 25);\n    cod = depot.locker.stow(locker: cod, load: 5);\n    [\n        depot.locker.to_text(locker: ax),\n        depot.locker.to_text(locker: bay),\n        depot.locker.to_text(locker: cod),\n    ].join(sep: \",\")\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 239.4,
+          "submitted": "use depot.locker;\n\npub fn report() -> String {\n    var ax = depot.locker.arrive(label: \"ax\");\n    var bay = depot.locker.arrive(label: \"bay\");\n    var cod = depot.locker.arrive(label: \"cod\");\n    ax = depot.locker.stow(locker: ax, load: 12);\n    ax = depot.locker.stow(locker: ax, load: 9);\n    bay = depot.locker.stow(locker: bay, load: 30);\n    bay = depot.locker.stow(locker: bay, load: 25);\n    cod = depot.locker.stow(locker: cod, load: 5);\n    [\n        depot.locker.tag(locker: ax),\n        depot.locker.tag(locker: bay),\n        depot.locker.tag(locker: cod),\n    ].join(sep: \",\")\n}"
+        }
+      ],
+      "task": "t5-01",
+      "tier": 5
+    }
+  ],
+  "totals": {
+    "pass_at_1": 0,
+    "passed": 2,
+    "tasks": 2
+  },
+  "unix_time": 1786445004
+}
