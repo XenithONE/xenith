@@ -7,8 +7,12 @@ use std::path::Path;
 use std::process::Command;
 
 fn xenith(args: &[&str]) -> (String, String, Option<i32>) {
+    xenith_in(Path::new(env!("CARGO_MANIFEST_DIR")), args)
+}
+
+fn xenith_in(dir: &Path, args: &[&str]) -> (String, String, Option<i32>) {
     let output = Command::new(env!("CARGO_BIN_EXE_xenith"))
-        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .current_dir(dir)
         .args(args)
         .output()
         .expect("the compiler binary runs");
@@ -131,6 +135,54 @@ fn the_guestbook_example_checks_and_runs() {
     assert_eq!(code, Some(0));
     let (stdout, _, code) = xenith(&["run", entry]);
     assert_eq!(stdout, "guestbook: ada");
+    assert_eq!(code, Some(0));
+}
+
+#[test]
+fn a_relative_path_from_the_project_root_stays_project_mode() {
+    // cwd = the project root itself, path = src/main.xn. Walking the bare
+    // relative path ends on the empty path, whose root no canonicalization
+    // accepts — and the CLI silently degraded to single-file mode, reporting
+    // the wrong errors. Discovery must behave exactly as it does for an
+    // absolute spelling of the same file (design/0010 §2).
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/projects/refused");
+    let (stdout, _, code) = xenith_in(&root, &["check", "src/main.xn"]);
+    assert!(
+        stdout.contains("error[XN7008]"),
+        "project mode must be active for a relative path:\n{stdout}"
+    );
+    assert_eq!(code, Some(1));
+    let (_, stderr, code) = xenith_in(&root, &["run", "src/main.xn"]);
+    assert!(stderr.contains("not run"), "{stderr}");
+    assert_eq!(code, Some(2));
+}
+
+#[test]
+fn a_relative_path_from_the_project_root_resolves_cross_module_refs() {
+    // The clean side of the same coin: the vertical fixture only checks
+    // clean and runs when its cross-module references resolve, which needs
+    // project mode — single-file mode would refuse the qualified names.
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/projects/vertical");
+    let (stdout, _, code) = xenith_in(&root, &["check", "src/main.xn"]);
+    assert_eq!(stdout, "", "no diagnostics expected:\n{stdout}");
+    assert_eq!(code, Some(0));
+    let (stdout, _, code) = xenith_in(&root, &["run", "src/main.xn"]);
+    assert_eq!(stdout, "ada: gold");
+    assert_eq!(code, Some(0));
+}
+
+#[test]
+fn a_relative_path_below_the_manifest_still_discovers_it() {
+    // cwd = src/, path = main.xn: the manifest sits *above* the working
+    // directory, somewhere a walk over the relative path's own components
+    // can never look. Absolutizing at the discovery boundary is what lets
+    // this invocation find it.
+    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/projects/vertical/src");
+    let (stdout, _, code) = xenith_in(&src, &["check", "main.xn"]);
+    assert_eq!(stdout, "", "no diagnostics expected:\n{stdout}");
+    assert_eq!(code, Some(0));
+    let (stdout, _, code) = xenith_in(&src, &["run", "main.xn"]);
+    assert_eq!(stdout, "ada: gold");
     assert_eq!(code, Some(0));
 }
 

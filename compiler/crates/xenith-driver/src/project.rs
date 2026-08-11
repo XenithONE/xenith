@@ -34,9 +34,20 @@ pub struct Project {
 }
 
 /// Walk up from `start` to the nearest directory holding `xenith.toml`.
+///
+/// `start` is made absolute against the working directory first, and the
+/// returned root is therefore absolute too. A relative path runs out of
+/// parents at its own first component — `src/main.xn` has no ancestor above
+/// `src` — so walking it directly ends on the *empty* path. The empty path
+/// resolves `xenith.toml` against the working directory, so a manifest right
+/// there was "found" as root `""`, which no later canonicalization accepts:
+/// `in_sources` returned false and the run silently degraded to single-file
+/// mode. Absolutizing once at this boundary makes relative and absolute
+/// invocation discover the same root (design/0010 §2).
 pub fn discover(start: &Path) -> Option<PathBuf> {
+    let start = std::path::absolute(start).ok()?;
     let origin = if start.is_dir() {
-        start.to_path_buf()
+        start.clone()
     } else {
         start.parent()?.to_path_buf()
     };
