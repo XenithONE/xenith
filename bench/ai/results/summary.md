@@ -47,3 +47,35 @@ in the compiler feedback. Same cell format as above.
 | `opencode-nemotron` | 1 · 1/6 (1.0) | 1 · 4/6 (2.2) | 3 · 5/6 (1.8) | 1 · 5/6 (2.4) |
 | `cursor` | 4 · 6/6 (1.3) | 2 · 6/6 (1.7) | 5 · 6/6 (1.2) | 6 · 6/6 (1.0) |
 | **total** | **24 · 34/42** | **24 · 40/42** | **33 · 41/42** | **30 · 41/42** |
+
+## Constrained integration (0011 tier-5)
+
+The 3×2 of design/0011 §2: docs form (field guide / api-dump / none) ×
+diagnostic teaching, over the six frozen project tasks. Same cell format
+as above; pass@1 is the head of each cell.
+
+| model | t5-guide-on | t5-guide-off | t5-api-on | t5-api-off | t5-none-on | t5-none-off |
+| --- | --- | --- | --- | --- | --- | --- |
+| `codex` | 2 · 4/6 (1.5) | 1 · 5/6 (2.4) | 0 · 6/6 (2.5) | 0 · 6/6 (2.2) | 0 · 3/6 (2.3) | 0 · 4/6 (3.5) |
+| `grok` | 1 · 3/6 (1.7) | 1 · 3/6 (2.0) | 1 · 5/6 (2.0) | 1 · 6/6 (2.5) | 0 · 3/6 (2.0) | 0 · 3/6 (2.0) |
+| `agy` | 1 · 4/6 (2.5) | 2 · 4/6 (1.8) | 3 · 6/6 (1.5) | 4 · 6/6 (1.3) | 0 · 3/6 (3.7) | 0 · 3/6 (3.3) |
+| `opencode` | 0 · 4/6 (2.5) | 0 · 6/6 (2.5) | 0 · 2/6 (4.0) | 0 · 3/6 (3.0) | 0 · 1/6 (3.0) | 0 · 1/6 (3.0) |
+| `opencode-deepseek` | 0 · 4/6 (3.2) | 2 · 4/6 (2.5) | 2 · 6/6 (2.0) | 2 · 5/6 (1.6) | 0 · 3/6 (3.7) | 1 · 2/6 (2.0) |
+| `opencode-nemotron` | 0 · 1/6 (4.0) | 0 · 0/6 | 0 · 0/6 | 0 · 1/6 (4.0) | 0 · 1/6 (4.0) | 0 · 0/6 |
+| `cursor` | 2 · 6/6 (1.8) | 2 · 6/6 (1.7) | 3 · 6/6 (1.5) | 1 · 5/6 (2.0) | 2 · 6/6 (2.8) | 2 · 5/6 (2.2) |
+| **total** | **6 · 26/42** | **8 · 28/42** | **9 · 31/42** | **8 · 32/42** | **2 · 20/42** | **3 · 18/42** |
+
+Rounds to green, all models pooled — how many green cells closed after
+exactly N rounds (censored = never green within the cap):
+
+| condition | 1 | 2 | 3 | 4+ | censored |
+| --- | --- | --- | --- | --- | --- |
+| t5-guide-on | 6 | 11 | 5 | 4 | 16 |
+| t5-guide-off | 8 | 11 | 6 | 3 | 14 |
+| t5-api-on | 9 | 14 | 6 | 2 | 11 |
+| t5-api-off | 8 | 16 | 5 | 3 | 10 |
+| t5-none-on | 2 | 5 | 5 | 8 | 22 |
+| t5-none-off | 3 | 3 | 9 | 3 | 24 |
+
+Green-but-never-references-a-provided-module (0011 §6, from the final submitted
+file text): none observed.

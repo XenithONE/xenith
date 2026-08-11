@@ -1,0 +1,182 @@
+{
+  "condition": "t5-api-off",
+  "model": "opencode-deepseek",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN2007",
+            "XN2008"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-04-opencode-deepseek-t5-api-off-r1\\src\\cutlist.xn:2:18: error[XN2007]: module `mill.stock` is not `use`d in this file; add `use mill.stock;`\n2 |     let planks = mill.stock.inventory();\n  |                  ^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-04-opencode-deepseek-t5-api-off-r1\\src\\cutlist.xn:9:20: error[XN2007]: module `mill.rules` is not `use`d in this file; add `use mill.rules;`\n9 |                 if mill.rules.keeps(p) {\n  |                    ^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-04-opencode-deepseek-t5-api-off-r1\\src\\cutlist.xn:10:44: error[XN2007]: module `mill.rules` is not `use`d in this file; add `use mill.rules;`\n10 |                     kept_labels.push(item: mill.rules.label(p));\n   |                                            ^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-04-opencode-deepseek-t5-api-off-r1\\src\\main.xn:4:20: error[XN2008]: `cutlist.lines` is private to `cutlist`\n4 |     io.write(text: cutlist.lines())?;\n  |                    ^^^^^^^^^^^^^^^\n  run `xenith explain XN2008` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 62.9,
+          "submitted": "fn lines() -> String {\n    let planks = mill.stock.inventory();\n    var kept_labels: List<String> = [];\n    var i = 0;\n    while i < planks.len() {\n        let plank = planks.get(index: i);\n        match plank {\n            Some(p) => {\n                if mill.rules.keeps(p) {\n                    kept_labels.push(item: mill.rules.label(p));\n                }\n            }\n            None => {},\n        }\n        i = i + 1;\n    }\n    kept_labels.join(sep: \",\")\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 18.1,
+          "submitted": "use mill.stock;\nuse mill.rules;\n\npub fn lines() -> String {\n    let planks = mill.stock.inventory();\n    var kept_labels: List<String> = [];\n    var i = 0;\n    while i < planks.len() {\n        let plank = planks.get(index: i);\n        match plank {\n            Some(p) => {\n                if mill.rules.keeps(p) {\n                    kept_labels.push(item: mill.rules.label(p));\n                }\n            }\n            None => {},\n        }\n        i = i + 1;\n    }\n    kept_labels.join(sep: \",\")\n}"
+        }
+      ],
+      "task": "t5-04",
+      "tier": 5
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 102.3,
+          "submitted": "use harbor.signal;\n\nfn render(signal: harbor.signal.Signal) -> String {\n    match signal {\n        Calm => \"calm\",\n        Gale(wind) => \"gale:\".concat(other: wind.to_text()),\n        Fog(word) => \"fog:\".concat(other: word),\n    }\n}\n\npub fn entries() -> String {\n    let signals = harbor.signal.sequence();\n    var parts: List<String> = [];\n    var i = 0;\n    while i < signals.len() {\n        let next = match signals.get(index: i) {\n            Some(s) => s,\n            None => harbor.signal.Signal.Calm,\n        };\n        parts.push(item: render(signal: next));\n        i = i + 1;\n    }\n    parts.join(sep: \";\")\n}"
+        }
+      ],
+      "task": "t5-02",
+      "tier": 5
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 71.6,
+          "submitted": "use depot.locker;\n\npub fn report() -> String {\n    var ax = depot.locker.arrive(\"ax\");\n    ax = depot.locker.stow(locker: ax, load: 12);\n    ax = depot.locker.stow(locker: ax, load: 9);\n\n    var bay = depot.locker.arrive(\"bay\");\n    bay = depot.locker.stow(locker: bay, load: 30);\n    bay = depot.locker.stow(locker: bay, load: 25);\n\n    var cod = depot.locker.arrive(\"cod\");\n    cod = depot.locker.stow(locker: cod, load: 5);\n\n    let labels = [depot.locker.tag(ax), depot.locker.tag(bay), depot.locker.tag(cod)];\n    labels.join(\",\")\n}"
+        }
+      ],
+      "task": "t5-01",
+      "tier": 5
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN2007"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-06-opencode-deepseek-t5-api-off-r1\\src\\main.xn:2:18: error[XN2007]: module `stable.herd` is not `use`d in this file; add `use stable.herd;`\n2 |     let ponies = stable.herd.lineup();\n  |                  ^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-06-opencode-deepseek-t5-api-off-r1\\src\\main.xn:8:27: error[XN2007]: module `stable.herd` is not `use`d in this file; add `use stable.herd;`\n8 |                 let fed = stable.herd.feed(pony: p, scoops: 3);\n  |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-06-opencode-deepseek-t5-api-off-r1\\src\\main.xn:9:36: error[XN2007]: module `stable.ledger` is not `use`d in this file; add `use stable.ledger;`\n9 |                 entries.push(item: stable.ledger.entry(pony: fed));\n  |                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2007` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 53.4,
+          "submitted": "fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    let ponies = stable.herd.lineup();\n    var entries: List<String> = [];\n    var i = 0;\n    while i < ponies.len() {\n        match ponies.get(index: i) {\n            Some(p) => {\n                let fed = stable.herd.feed(pony: p, scoops: 3);\n                entries.push(item: stable.ledger.entry(pony: fed));\n            },\n            None => unit,\n        };\n        i = i + 1;\n    }\n    io.write(text: entries.join(sep: \",\"))?;\n    return Ok(unit);\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 25.3,
+          "submitted": "use stable.herd;\nuse stable.ledger;\n\nfn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    let ponies = stable.herd.lineup();\n    var entries: List<String> = [];\n    var i = 0;\n    while i < ponies.len() {\n        match ponies.get(index: i) {\n            Some(p) => {\n                let fed = stable.herd.feed(pony: p, scoops: 3);\n                entries.push(item: stable.ledger.entry(pony: fed));\n            },\n            None => unit,\n        };\n        i = i + 1;\n    }\n    io.write(text: entries.join(sep: \",\"))?;\n    return Ok(unit);\n}"
+        }
+      ],
+      "task": "t5-06",
+      "tier": 5
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN1008",
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-05-opencode-deepseek-t5-api-off-r1\\src\\main.xn:3:5: error[XN1008]: `for` is not part of the language yet — iterate with `while` + `len()` + `get(index:)`\n3 |     for dish in board() {\n  |     ^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN1008` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-05-opencode-deepseek-t5-api-off-r1\\src\\main.xn:3:17: error[XN2002]: nothing named `board` is in scope; `use galley.menu;` would provide it\n3 |     for dish in board() {\n  |                 ^^^^^\n  fix: insert `use galley.menu;`\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-05-opencode-deepseek-t5-api-off-r1\\src\\main.xn:9:9: error[XN2002]: nothing named `serve` is in scope; `use galley.kitchen;` would provide it\n9 |         serve(io: io, dish: dish)?;\n  |         ^^^^^\n  fix: insert `use galley.kitchen;`\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 2,
+          "outcome": "diagnostics",
+          "seconds": 45.2,
+          "submitted": "fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    var first = true;\n    for dish in board() {\n        if first {\n            first = false;\n        } else {\n            io.write(text: \";\")?;\n        }\n        serve(io: io, dish: dish)?;\n    }\n    return Ok(unit);\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 2,
+          "diag_codes": [
+            "XN2009",
+            "XN2002",
+            "XN1001",
+            "XN1004"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-05-opencode-deepseek-t5-api-off-r2\\src\\main.xn:1:1: error[XN2009]: `use galley.kitchen;` is never used in this file\n1 | use galley.kitchen;\n  | ^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2009` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-05-opencode-deepseek-t5-api-off-r2\\src\\main.xn:2:1: error[XN2009]: `use galley.menu;` is never used in this file\n2 | use galley.menu;\n  | ^^^^^^^^^^^^^^^^\n  run `xenith explain XN2009` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-05-opencode-deepseek-t5-api-off-r2\\src\\main.xn:5:18: error[XN2002]: nothing named `board` is in scope; `use galley.menu;` would provide it\n5 |     let dishes = board();\n  |                  ^^^^^\n  fix: insert `use galley.menu;`\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-05-opencode-deepseek-t5-api-off-r2\\src\\main.xn:13:20: error[XN1001]: expected `,`, found `return`\n13 |             None => return Ok(unit),\n   |                    ^\n  fix: insert `,`\n  run `xenith explain XN1001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-05-opencode-deepseek-t5-api-off-r2\\src\\main.xn:13:21: error[XN1004]: expected an expression, found `return`\n13 |             None => return Ok(unit),\n   |                     ^^^^^^\n  run `xenith explain XN1004` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-05-opencode-deepseek-t5-api-off-r2\\src\\main.xn:15:9: error[XN2002]: nothing named `serve` is in scope; `use galley.kitchen;` would provide it\n15 |         serve(io: io, dish: dish)?;\n   |         ^^^^^\n  fix: insert `use galley.kitchen;`\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 3,
+          "outcome": "diagnostics",
+          "seconds": 31.8,
+          "submitted": "use galley.kitchen;\nuse galley.menu;\n\nfn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    let dishes = board();\n    var i = 0;\n    while i < dishes.len() {\n        if i > 0 {\n            io.write(text: \";\")?;\n        }\n        let dish = match dishes.get(index: i) {\n            Some(d) => d,\n            None => return Ok(unit),\n        };\n        serve(io: io, dish: dish)?;\n        i = i + 1;\n    }\n    return Ok(unit);\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 3,
+          "diag_codes": [
+            "XN2009",
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-05-opencode-deepseek-t5-api-off-r3\\src\\main.xn:1:1: error[XN2009]: `use galley.kitchen;` is never used in this file\n1 | use galley.kitchen;\n  | ^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2009` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-05-opencode-deepseek-t5-api-off-r3\\src\\main.xn:2:1: error[XN2009]: `use galley.menu;` is never used in this file\n2 | use galley.menu;\n  | ^^^^^^^^^^^^^^^^\n  run `xenith explain XN2009` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-05-opencode-deepseek-t5-api-off-r3\\src\\main.xn:5:18: error[XN2002]: nothing named `board` is in scope; `use galley.menu;` would provide it\n5 |     let dishes = board();\n  |                  ^^^^^\n  fix: insert `use galley.menu;`\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-05-opencode-deepseek-t5-api-off-r3\\src\\main.xn:13:17: error[XN2002]: nothing named `serve` is in scope; `use galley.kitchen;` would provide it\n13 |                 serve(io: io, dish: d)?;\n   |                 ^^^^^\n  fix: insert `use galley.kitchen;`\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 2,
+          "outcome": "diagnostics",
+          "seconds": 286.7,
+          "submitted": "use galley.kitchen;\nuse galley.menu;\n\nfn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    let dishes = board();\n    var i = 0;\n    while i < dishes.len() {\n        if i > 0 {\n            io.write(text: \";\")?;\n        }\n        match dishes.get(index: i) {\n            Some(d) => {\n                serve(io: io, dish: d)?;\n            },\n            None => {\n                return Ok(unit);\n            },\n        };\n        i = i + 1;\n    }\n    return Ok(unit);\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 4,
+          "diag_codes": [
+            "XN2009",
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-05-opencode-deepseek-t5-api-off-r4\\src\\main.xn:1:1: error[XN2009]: `use galley.kitchen;` is never used in this file\n1 | use galley.kitchen;\n  | ^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2009` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-05-opencode-deepseek-t5-api-off-r4\\src\\main.xn:2:1: error[XN2009]: `use galley.menu;` is never used in this file\n2 | use galley.menu;\n  | ^^^^^^^^^^^^^^^^\n  run `xenith explain XN2009` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-05-opencode-deepseek-t5-api-off-r4\\src\\main.xn:5:18: error[XN2002]: nothing named `menu` is in scope\n5 |     let dishes = menu.board();\n  |                  ^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-05-opencode-deepseek-t5-api-off-r4\\src\\main.xn:13:17: error[XN2002]: nothing named `kitchen` is in scope\n13 |                 kitchen.serve(io: io, dish: d)?;\n   |                 ^^^^^^^\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 91.7,
+          "submitted": "use galley.kitchen;\nuse galley.menu;\n\nfn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    let dishes = menu.board();\n    var i = 0;\n    while i < dishes.len() {\n        if i > 0 {\n            io.write(text: \";\")?;\n        }\n        match dishes.get(index: i) {\n            Some(d) => {\n                kitchen.serve(io: io, dish: d)?;\n            },\n            None => {\n                return Ok(unit);\n            },\n        };\n        i = i + 1;\n    }\n    return Ok(unit);\n}",
+          "teach_count": 0
+        }
+      ],
+      "task": "t5-05",
+      "tier": 5
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN2008"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-03-opencode-deepseek-t5-api-off-r1\\src\\main.xn:4:5: error[XN2008]: `tally.publish` is private to `tally`\n4 |     tally.publish(io: io)?;\n  |     ^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2008` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 53.8,
+          "submitted": "use relay.feed;\n\nfn publish(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    let frames = relay.feed.frames();\n    var total = 0;\n    var i = 0;\n    while i < frames.len() {\n        let decoded = match frames.get(index: i) {\n            Some(frame) => match relay.feed.decode(frame: frame) {\n                Ok(value) => value,\n                Err(_) => 0,\n            },\n            None => 0,\n        };\n        total = total + decoded;\n        i = i + 1;\n    }\n    relay.feed.emit(io: io, total: total)?;\n    return Ok(unit);\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 18.6,
+          "submitted": "use relay.feed;\n\npub fn publish(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    let frames = relay.feed.frames();\n    var total = 0;\n    var i = 0;\n    while i < frames.len() {\n        let decoded = match frames.get(index: i) {\n            Some(frame) => match relay.feed.decode(frame: frame) {\n                Ok(value) => value,\n                Err(_) => 0,\n            },\n            None => 0,\n        };\n        total = total + decoded;\n        i = i + 1;\n    }\n    relay.feed.emit(io: io, total: total)?;\n    return Ok(unit);\n}"
+        }
+      ],
+      "task": "t5-03",
+      "tier": 5
+    }
+  ],
+  "totals": {
+    "pass_at_1": 2,
+    "passed": 5,
+    "tasks": 6
+  },
+  "unix_time": 1786465436
+}

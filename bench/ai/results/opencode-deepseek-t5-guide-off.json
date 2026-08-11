@@ -1,0 +1,198 @@
+{
+  "condition": "t5-guide-off",
+  "model": "opencode-deepseek",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 111.6,
+          "submitted": "use galley.menu;\nuse galley.kitchen;\n\nfn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    let dishes = galley.menu.board();\n    var i = 0;\n    while i < dishes.len() {\n        if i > 0 {\n            io.write(text: \";\")?;\n        }\n        match dishes.get(index: i) {\n            Some(dish) => {\n                galley.kitchen.serve(io: io, dish: dish)?;\n            }\n            None => {\n                unit\n            }\n        }\n        i = i + 1;\n    }\n    return Ok(unit);\n}"
+        }
+      ],
+      "task": "t5-05",
+      "tier": 5
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "empty reply",
+          "seconds": 64.9
+        },
+        {
+          "attempt": 2,
+          "outcome": "model error: no reply within 300s",
+          "seconds": 301.3
+        }
+      ],
+      "task": "t5-03",
+      "tier": 5
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN1001",
+            "XN1004",
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-04-opencode-deepseek-t5-guide-off-r1\\src\\cutlist.xn:11:20: error[XN1001]: expected `,`, found `break`\n11 |             None => break,\n   |                    ^\n  fix: insert `,`\n  run `xenith explain XN1001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-04-opencode-deepseek-t5-guide-off-r1\\src\\cutlist.xn:11:21: error[XN1004]: expected an expression, found `break`\n11 |             None => break,\n   |                     ^^^^^\n  run `xenith explain XN1004` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-04-opencode-deepseek-t5-guide-off-r1\\src\\cutlist.xn:13:12: error[XN2002]: `mill.rules` has no item named `should_keep`\n13 |         if mill.rules.should_keep(plank: plank) {\n   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-04-opencode-deepseek-t5-guide-off-r1\\src\\cutlist.xn:14:31: error[XN2002]: `mill.rules` has no item named `render_label`\n14 |             labels.push(item: mill.rules.render_label(plank: plank));\n   |                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 1,
+          "outcome": "diagnostics",
+          "seconds": 165.2,
+          "submitted": "use mill.stock;\nuse mill.rules;\n\npub fn lines() -> String {\n    let inventory = mill.stock.inventory();\n    var labels: List<String> = [];\n    var i = 0;\n    while i < inventory.len() {\n        let plank = match inventory.get(index: i) {\n            Some(p) => p,\n            None => break,\n        };\n        if mill.rules.should_keep(plank: plank) {\n            labels.push(item: mill.rules.render_label(plank: plank));\n        }\n        i = i + 1;\n    }\n    return labels.join(sep: \",\");\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 2,
+          "diag_codes": [
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-04-opencode-deepseek-t5-guide-off-r2\\src\\cutlist.xn:12:20: error[XN2002]: `mill.rules` has no item named `is_kept`\n12 |                 if mill.rules.is_kept(plank: plank) {\n   |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-04-opencode-deepseek-t5-guide-off-r2\\src\\cutlist.xn:13:39: error[XN2002]: `mill.rules` has no item named `to_label`\n13 |                     labels.push(item: mill.rules.to_label(plank: plank));\n   |                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 94.2,
+          "submitted": "use mill.stock;\nuse mill.rules;\n\npub fn lines() -> String {\n    let inventory = mill.stock.inventory();\n    var labels: List<String> = [];\n    var i = 0;\n    let n = inventory.len();\n    while i < n {\n        match inventory.get(index: i) {\n            Some(plank) => {\n                if mill.rules.is_kept(plank: plank) {\n                    labels.push(item: mill.rules.to_label(plank: plank));\n                }\n            }\n            None => unit,\n        }\n        i = i + 1;\n    }\n    return labels.join(sep: \",\");\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 3,
+          "outcome": "empty reply",
+          "seconds": 120.4
+        },
+        {
+          "attempt": 4,
+          "outcome": "empty reply",
+          "seconds": 87.8
+        }
+      ],
+      "task": "t5-04",
+      "tier": 5
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-02-opencode-deepseek-t5-guide-off-r1\\src\\watchlog.xn:5:15: error[XN2002]: `harbor.signal` has no item named `signals`\n5 |     let all = harbor.signal.signals();\n  |               ^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 109.2,
+          "submitted": "use harbor.signal;\n\npub fn entries() -> String {\n    var out = \"\";\n    let all = harbor.signal.signals();\n    var i = 0;\n    while i < all.len() {\n        if i > 0 {\n            out = out.concat(other: \";\");\n        }\n        let piece = match all.get(index: i) {\n            Some(s) => match s {\n                harbor.signal.Signal.Calm => \"calm\",\n                harbor.signal.Signal.Gale(speed) => \"gale:\".concat(other: speed.to_text()),\n                harbor.signal.Signal.Fog(word) => \"fog:\".concat(other: word),\n            },\n            None => \"\",\n        };\n        out = out.concat(other: piece);\n        i = i + 1;\n    }\n    out\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 2,
+          "outcome": "empty reply",
+          "seconds": 64.5
+        },
+        {
+          "attempt": 3,
+          "diag_codes": [
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-02-opencode-deepseek-t5-guide-off-r3\\src\\watchlog.xn:5:15: error[XN2002]: `harbor.signal` has no item named `today`\n5 |     let all = harbor.signal.today();\n  |               ^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 44.6,
+          "submitted": "use harbor.signal;\n\npub fn entries() -> String {\n    var out = \"\";\n    let all = harbor.signal.today();\n    var i = 0;\n    while i < all.len() {\n        if i > 0 {\n            out = out.concat(other: \";\");\n        }\n        let piece = match all.get(index: i) {\n            Some(s) => match s {\n                harbor.signal.Signal.Calm => \"calm\",\n                harbor.signal.Signal.Gale(speed) => \"gale:\".concat(other: speed.to_text()),\n                harbor.signal.Signal.Fog(word) => \"fog:\".concat(other: word),\n            },\n            None => \"\",\n        };\n        out = out.concat(other: piece);\n        i = i + 1;\n    }\n    out\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 4,
+          "outcome": "pass",
+          "seconds": 50.2,
+          "submitted": "use harbor.signal;\n\npub fn entries() -> String {\n    var out = \"\";\n    let all = harbor.signal.sequence();\n    var i = 0;\n    while i < all.len() {\n        if i > 0 {\n            out = out.concat(other: \";\");\n        }\n        let piece = match all.get(index: i) {\n            Some(s) => match s {\n                harbor.signal.Signal.Calm => \"calm\",\n                harbor.signal.Signal.Gale(speed) => \"gale:\".concat(other: speed.to_text()),\n                harbor.signal.Signal.Fog(word) => \"fog:\".concat(other: word),\n            },\n            None => \"\",\n        };\n        out = out.concat(other: piece);\n        i = i + 1;\n    }\n    out\n}"
+        }
+      ],
+      "task": "t5-02",
+      "tier": 5
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN2002",
+            "XN5001",
+            "XN2006"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-guide-off-r1\\src\\manifest.xn:4:14: error[XN2002]: `depot.locker` has no item named `new`\n4 |     var ax = depot.locker.new(label: \"ax\");\n  |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-guide-off-r1\\src\\manifest.xn:5:10: error[XN5001]: this `match` is not exhaustive: `depot.locker.Locker { }` is not covered\n5 |     ax = match depot.locker.stow(locker: ax, load: 12) {\n  |          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN5001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-guide-off-r1\\src\\manifest.xn:6:9: error[XN2006]: `depot.locker.Locker` has no variant named `Ok`\n6 |         Ok(l) => l,\n  |         ^^\n  run `xenith explain XN2006` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-guide-off-r1\\src\\manifest.xn:7:9: error[XN2006]: `depot.locker.Locker` has no variant named `Err`\n7 |         Err(_) => ax,\n  |         ^^^\n  run `xenith explain XN2006` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-guide-off-r1\\src\\manifest.xn:9:10: error[XN5001]: this `match` is not exhaustive: `depot.locker.Locker { }` is not covered\n9 |     ax = match depot.locker.stow(locker: ax, load: 9) {\n  |          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN5001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-guide-off-r1\\src\\manifest.xn:10:9: error[XN2006]: `depot.locker.Locker` has no variant named `Ok`\n10 |         Ok(l) => l,\n   |         ^^\n  run `xenith explain XN2006` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-guide-off-r1\\src\\manifest.xn:11:9: error[XN2006]: `depot.locker.Locker` has no variant named `Err`\n11 |         Err(_) => ax,\n   |         ^^^\n  run `xenith explain XN2006` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-guide-off-r1\\src\\manifest.xn:14:15: error[XN2002]: `depot.locker` has no item named `new`\n14 |     var bay = depot.locker.new(label: \"bay\");\n   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-guide-off-r1\\src\\manifest.xn:15:11: error[XN5001]: this `match` is not exhaustive: `depot.locker.Locker { }` is not covered\n15 |     bay = match depot.locker.stow(locker: bay, load: 30) {\n   |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN5001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-guide-off-r1\\src\\manifest.xn:16:9: error[XN2006]: `depot.locker.Locker` has no variant named `Ok`\n16 |         Ok(l) => l,\n   |         ^^\n  run `xenith explain XN2006` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-guide-off-r1\\src\\manifest.xn:17:9: error[XN2006]: `depot.locker.Locker` has no variant named `Err`\n17 |         Err(_) => bay,\n   |         ^^^\n  run `xenith explain XN2006` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-guide-off-r1\\src\\manifest.xn:19:11: error[XN5001]: this `match` is not exhaustive: `depot.locker.Locker { }` is not covered\n19 |     bay = match depot.locker.stow(locker: bay, load: 25) {\n   |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN5001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-guide-off-r1\\src\\manifest.xn:20:9: error[XN2006]: `depot.locker.Locker` has no variant named `Ok`\n20 |         Ok(l) => l,\n   |         ^^\n  run `xenith explain XN2006` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-guide-off-r1\\src\\manifest.xn:21:9: error[XN2006]: `depot.locker.Locker` has no variant named `Err`\n21 |         Err(_) => bay,\n   |         ^^^\n  run `xenith explain XN2006` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-guide-off-r1\\src\\manifest.xn:24:15: error[XN2002]: `depot.locker` has no item named `new`\n24 |     var cod = depot.locker.new(label: \"cod\");\n   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-guide-off-r1\\src\\manifest.xn:25:11: error[XN5001]: this `match` is not exhaustive: `depot.locker.Locker { }` is not covered\n25 |     cod = match depot.locker.stow(locker: cod, load: 5) {\n   |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN5001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-guide-off-r1\\src\\manifest.xn:26:9: error[XN2006]: `depot.locker.Locker` has no variant named `Ok`\n26 |         Ok(l) => l,\n   |         ^^\n  run `xenith explain XN2006` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-guide-off-r1\\src\\manifest.xn:27:9: error[XN2006]: `depot.locker.Locker` has no variant named `Err`\n27 |         Err(_) => cod,\n   |         ^^^\n  run `xenith explain XN2006` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 138.9,
+          "submitted": "use depot.locker;\n\npub fn report() -> String {\n    var ax = depot.locker.new(label: \"ax\");\n    ax = match depot.locker.stow(locker: ax, load: 12) {\n        Ok(l) => l,\n        Err(_) => ax,\n    };\n    ax = match depot.locker.stow(locker: ax, load: 9) {\n        Ok(l) => l,\n        Err(_) => ax,\n    };\n\n    var bay = depot.locker.new(label: \"bay\");\n    bay = match depot.locker.stow(locker: bay, load: 30) {\n        Ok(l) => l,\n        Err(_) => bay,\n    };\n    bay = match depot.locker.stow(locker: bay, load: 25) {\n        Ok(l) => l,\n        Err(_) => bay,\n    };\n\n    var cod = depot.locker.new(label: \"cod\");\n    cod = match depot.locker.stow(locker: cod, load: 5) {\n        Ok(l) => l,\n        Err(_) => cod,\n    };\n\n    let parts: List<String> = [\n        ax.label.concat(other: \"=\").concat(other: ax.weight.to_text()),\n        bay.label.concat(other: \"=\").concat(other: bay.weight.to_text()),\n        cod.label.concat(other: \"=\").concat(other: cod.weight.to_text()),\n    ];\n    parts.join(sep: \",\")\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 2,
+          "diag_codes": [
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-guide-off-r2\\src\\manifest.xn:4:14: error[XN2002]: `depot.locker` has no item named `from_label`\n4 |     var ax = depot.locker.from_label(label: \"ax\");\n  |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-guide-off-r2\\src\\manifest.xn:8:15: error[XN2002]: `depot.locker` has no item named `from_label`\n8 |     var bay = depot.locker.from_label(label: \"bay\");\n  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-guide-off-r2\\src\\manifest.xn:12:15: error[XN2002]: `depot.locker` has no item named `from_label`\n12 |     var cod = depot.locker.from_label(label: \"cod\");\n   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 41.3,
+          "submitted": "use depot.locker;\n\npub fn report() -> String {\n    var ax = depot.locker.from_label(label: \"ax\");\n    ax = depot.locker.stow(locker: ax, load: 12);\n    ax = depot.locker.stow(locker: ax, load: 9);\n\n    var bay = depot.locker.from_label(label: \"bay\");\n    bay = depot.locker.stow(locker: bay, load: 30);\n    bay = depot.locker.stow(locker: bay, load: 25);\n\n    var cod = depot.locker.from_label(label: \"cod\");\n    cod = depot.locker.stow(locker: cod, load: 5);\n\n    let parts: List<String> = [\n        ax.label.concat(other: \"=\").concat(other: ax.weight.to_text()),\n        bay.label.concat(other: \"=\").concat(other: bay.weight.to_text()),\n        cod.label.concat(other: \"=\").concat(other: cod.weight.to_text()),\n    ];\n    parts.join(sep: \",\")\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 3,
+          "diag_codes": [
+            "XN3007"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-guide-off-r3\\src\\manifest.xn:4:14: error[XN3007]: `depot.locker.Locker` is missing the field `weight`\n4 |     var ax = depot.locker.Locker { label: \"ax\" };\n  |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  fix: add `weight: ??`\n  run `xenith explain XN3007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-guide-off-r3\\src\\manifest.xn:8:15: error[XN3007]: `depot.locker.Locker` is missing the field `weight`\n8 |     var bay = depot.locker.Locker { label: \"bay\" };\n  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  fix: add `weight: ??`\n  run `xenith explain XN3007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-guide-off-r3\\src\\manifest.xn:12:15: error[XN3007]: `depot.locker.Locker` is missing the field `weight`\n12 |     var cod = depot.locker.Locker { label: \"cod\" };\n   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  fix: add `weight: ??`\n  run `xenith explain XN3007` for the rule\n",
+          "fix_count": 3,
+          "outcome": "diagnostics",
+          "seconds": 62.4,
+          "submitted": "use depot.locker;\n\npub fn report() -> String {\n    var ax = depot.locker.Locker { label: \"ax\" };\n    ax = depot.locker.stow(locker: ax, load: 12);\n    ax = depot.locker.stow(locker: ax, load: 9);\n\n    var bay = depot.locker.Locker { label: \"bay\" };\n    bay = depot.locker.stow(locker: bay, load: 30);\n    bay = depot.locker.stow(locker: bay, load: 25);\n\n    var cod = depot.locker.Locker { label: \"cod\" };\n    cod = depot.locker.stow(locker: cod, load: 5);\n\n    let parts: List<String> = [\n        ax.label.concat(other: \"=\").concat(other: ax.weight.to_text()),\n        bay.label.concat(other: \"=\").concat(other: bay.weight.to_text()),\n        cod.label.concat(other: \"=\").concat(other: cod.weight.to_text()),\n    ];\n    parts.join(sep: \",\")\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 4,
+          "outcome": "pass",
+          "seconds": 53.3,
+          "submitted": "use depot.locker;\n\npub fn report() -> String {\n    var ax = depot.locker.Locker { label: \"ax\", weight: 0 };\n    ax = depot.locker.stow(locker: ax, load: 12);\n    ax = depot.locker.stow(locker: ax, load: 9);\n\n    var bay = depot.locker.Locker { label: \"bay\", weight: 0 };\n    bay = depot.locker.stow(locker: bay, load: 30);\n    bay = depot.locker.stow(locker: bay, load: 25);\n\n    var cod = depot.locker.Locker { label: \"cod\", weight: 0 };\n    cod = depot.locker.stow(locker: cod, load: 5);\n\n    let parts: List<String> = [\n        ax.label.concat(other: \"=\").concat(other: ax.weight.to_text()),\n        bay.label.concat(other: \"=\").concat(other: bay.weight.to_text()),\n        cod.label.concat(other: \"=\").concat(other: cod.weight.to_text()),\n    ];\n    parts.join(sep: \",\")\n}"
+        }
+      ],
+      "task": "t5-01",
+      "tier": 5
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 158.0,
+          "submitted": "use stable.herd;\nuse stable.ledger;\n\nfn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    let ponies = stable.herd.lineup();\n    var entries: List<String> = [];\n    var i = 0;\n    while i < ponies.len() {\n        let entry_text = match ponies.get(index: i) {\n            Some(p) => {\n                let fed = stable.herd.feed(pony: p, scoops: 3);\n                stable.ledger.entry(pony: fed)\n            }\n            None => \"\",\n        };\n        entries.push(entry_text);\n        i += 1;\n    }\n    io.write(text: entries.join(sep: \",\"))?;\n    return Ok(unit);\n}"
+        }
+      ],
+      "task": "t5-06",
+      "tier": 5
+    }
+  ],
+  "totals": {
+    "pass_at_1": 2,
+    "passed": 4,
+    "tasks": 6
+  },
+  "unix_time": 1786463543
+}

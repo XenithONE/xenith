@@ -187,12 +187,179 @@
       ],
       "task": "t5-06",
       "tier": 5
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN2009",
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-05-opencode-t5-api-on-r1\\src\\main.xn:1:1: error[XN2009]: `use galley.kitchen;` is never used in this file\n1 | use galley.kitchen;\n  | ^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2009` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-05-opencode-t5-api-on-r1\\src\\main.xn:2:1: error[XN2009]: `use galley.menu;` is never used in this file\n2 | use galley.menu;\n  | ^^^^^^^^^^^^^^^^\n  run `xenith explain XN2009` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-05-opencode-t5-api-on-r1\\src\\main.xn:5:18: error[XN2002]: nothing named `menu` is in scope\n5 |     let dishes = menu.board();\n  |                  ^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-05-opencode-t5-api-on-r1\\src\\main.xn:11:9: error[XN2002]: nothing named `kitchen` is in scope\n11 |         kitchen.serve(io: io, dish: dishes.get(index: i)?)?;\n   |         ^^^^^^^\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 19.8,
+          "submitted": "use galley.kitchen;\nuse galley.menu;\n\nfn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    let dishes = menu.board();\n    var i = 0;\n    while i < dishes.len() {\n        if i > 0 {\n            io.write(text: \";\")?;\n        }\n        kitchen.serve(io: io, dish: dishes.get(index: i)?)?;\n        i = i + 1;\n    }\n    return Ok(unit);\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 2,
+          "diag_codes": [
+            "XN2007"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-05-opencode-t5-api-on-r2\\src\\main.xn:2:18: error[XN2007]: module `galley.menu` is not `use`d in this file; add `use galley.menu;`\n2 |     let dishes = galley.menu.board();\n  |                  ^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-05-opencode-t5-api-on-r2\\src\\main.xn:8:9: error[XN2007]: module `galley.kitchen` is not `use`d in this file; add `use galley.kitchen;`\n8 |         galley.kitchen.serve(io: io, dish: dishes.get(index: i)?)?;\n  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2007` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 16.2,
+          "submitted": "fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    let dishes = galley.menu.board();\n    var i = 0;\n    while i < dishes.len() {\n        if i > 0 {\n            io.write(text: \";\")?;\n        }\n        galley.kitchen.serve(io: io, dish: dishes.get(index: i)?)?;\n        i = i + 1;\n    }\n    return Ok(unit);\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 3,
+          "diag_codes": [
+            "XN3001"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-05-opencode-t5-api-on-r3\\src\\main.xn:11:44: error[XN3001]: `?` on an `Option` needs `main.main` to return `Option<_>`; it returns `Result<Unit, Error>`\n11 |         galley.kitchen.serve(io: io, dish: dishes.get(index: i)?)?;\n   |                                            ^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN3001` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 17.6,
+          "submitted": "use galley.kitchen;\nuse galley.menu;\n\nfn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    let dishes = galley.menu.board();\n    var i = 0;\n    while i < dishes.len() {\n        if i > 0 {\n            io.write(text: \";\")?;\n        }\n        galley.kitchen.serve(io: io, dish: dishes.get(index: i)?)?;\n        i = i + 1;\n    }\n    return Ok(unit);\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 4,
+          "outcome": "pass",
+          "seconds": 17.1,
+          "submitted": "use galley.kitchen;\nuse galley.menu;\n\nfn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    let dishes = galley.menu.board();\n    var i = 0;\n    while i < dishes.len() {\n        if i > 0 {\n            io.write(text: \";\")?;\n        }\n        match dishes.get(index: i) {\n            Some(dish) => galley.kitchen.serve(io: io, dish: dish)?,\n            None => unit,\n        };\n        i = i + 1;\n    }\n    return Ok(unit);\n}"
+        }
+      ],
+      "task": "t5-05",
+      "tier": 5
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN2009",
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r1\\src\\manifest.xn:1:1: error[XN2009]: `use depot.locker;` is never used in this file\n1 | use depot.locker;\n  | ^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2009` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r1\\src\\manifest.xn:4:14: error[XN2002]: nothing named `locker` is in scope\n4 |     let ax = locker.arrive(label: \"ax\");\n  |              ^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r1\\src\\manifest.xn:5:14: error[XN2002]: nothing named `locker` is in scope\n5 |     let ax = locker.stow(locker: ax, load: 12);\n  |              ^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r1\\src\\manifest.xn:6:14: error[XN2002]: nothing named `locker` is in scope\n6 |     let ax = locker.stow(locker: ax, load: 9);\n  |              ^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r1\\src\\manifest.xn:7:15: error[XN2002]: nothing named `locker` is in scope\n7 |     let bay = locker.arrive(label: \"bay\");\n  |               ^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r1\\src\\manifest.xn:8:15: error[XN2002]: nothing named `locker` is in scope\n8 |     let bay = locker.stow(locker: bay, load: 30);\n  |               ^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r1\\src\\manifest.xn:9:15: error[XN2002]: nothing named `locker` is in scope\n9 |     let bay = locker.stow(locker: bay, load: 25);\n  |               ^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r1\\src\\manifest.xn:10:15: error[XN2002]: nothing named `locker` is in scope\n10 |     let cod = locker.arrive(label: \"cod\");\n   |               ^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r1\\src\\manifest.xn:11:15: error[XN2002]: nothing named `locker` is in scope\n11 |     let cod = locker.stow(locker: cod, load: 5);\n   |               ^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r1\\src\\manifest.xn:13:9: error[XN2002]: nothing named `locker` is in scope\n13 |         locker.tag(locker: ax),\n   |         ^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r1\\src\\manifest.xn:14:9: error[XN2002]: nothing named `locker` is in scope\n14 |         locker.tag(locker: bay),\n   |         ^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r1\\src\\manifest.xn:15:9: error[XN2002]: nothing named `locker` is in scope\n15 |         locker.tag(locker: cod),\n   |         ^^^^^^\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 24.0,
+          "submitted": "use depot.locker;\n\npub fn report() -> String {\n    let ax = locker.arrive(label: \"ax\");\n    let ax = locker.stow(locker: ax, load: 12);\n    let ax = locker.stow(locker: ax, load: 9);\n    let bay = locker.arrive(label: \"bay\");\n    let bay = locker.stow(locker: bay, load: 30);\n    let bay = locker.stow(locker: bay, load: 25);\n    let cod = locker.arrive(label: \"cod\");\n    let cod = locker.stow(locker: cod, load: 5);\n    let labels = [\n        locker.tag(locker: ax),\n        locker.tag(locker: bay),\n        locker.tag(locker: cod),\n    ];\n    labels.join(sep: \",\")\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 2,
+          "diag_codes": [
+            "XN2009",
+            "XN1002",
+            "XN1007",
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r2\\src\\manifest.xn:1:1: error[XN2009]: `use depot.locker;` is never used in this file\n1 | use depot.locker.{arrive, stow, tag};\n  | ^^^^^^^^^^^^^^^^\n  run `xenith explain XN2009` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r2\\src\\manifest.xn:1:17: error[XN1002]: expected `;`\n1 | use depot.locker.{arrive, stow, tag};\n  |                 ^\n  fix: insert `;`\n  run `xenith explain XN1002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r2\\src\\manifest.xn:1:17: error[XN1007]: expected a declaration, found `.`\n1 | use depot.locker.{arrive, stow, tag};\n  |                 ^\n  run `xenith explain XN1007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r2\\src\\manifest.xn:4:14: error[XN2002]: nothing named `arrive` is in scope; `use depot.locker;` would provide it\n4 |     let ax = arrive(label: \"ax\");\n  |              ^^^^^^\n  fix: insert `use depot.locker;`\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r2\\src\\manifest.xn:5:14: error[XN2002]: nothing named `stow` is in scope; `use depot.locker;` would provide it\n5 |     let ax = stow(locker: ax, load: 12);\n  |              ^^^^\n  fix: insert `use depot.locker;`\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r2\\src\\manifest.xn:6:14: error[XN2002]: nothing named `stow` is in scope; `use depot.locker;` would provide it\n6 |     let ax = stow(locker: ax, load: 9);\n  |              ^^^^\n  fix: insert `use depot.locker;`\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r2\\src\\manifest.xn:7:15: error[XN2002]: nothing named `arrive` is in scope; `use depot.locker;` would provide it\n7 |     let bay = arrive(label: \"bay\");\n  |               ^^^^^^\n  fix: insert `use depot.locker;`\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r2\\src\\manifest.xn:8:15: error[XN2002]: nothing named `stow` is in scope; `use depot.locker;` would provide it\n8 |     let bay = stow(locker: bay, load: 30);\n  |               ^^^^\n  fix: insert `use depot.locker;`\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r2\\src\\manifest.xn:9:15: error[XN2002]: nothing named `stow` is in scope; `use depot.locker;` would provide it\n9 |     let bay = stow(locker: bay, load: 25);\n  |               ^^^^\n  fix: insert `use depot.locker;`\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r2\\src\\manifest.xn:10:15: error[XN2002]: nothing named `arrive` is in scope; `use depot.locker;` would provide it\n10 |     let cod = arrive(label: \"cod\");\n   |               ^^^^^^\n  fix: insert `use depot.locker;`\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r2\\src\\manifest.xn:11:15: error[XN2002]: nothing named `stow` is in scope; `use depot.locker;` would provide it\n11 |     let cod = stow(locker: cod, load: 5);\n   |               ^^^^\n  fix: insert `use depot.locker;`\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r2\\src\\manifest.xn:12:6: error[XN2002]: nothing named `tag` is in scope; `use depot.locker;` would provide it\n12 |     [tag(locker: ax), tag(locker: bay), tag(locker: cod)].join(sep: \",\")\n   |      ^^^\n  fix: insert `use depot.locker;`\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r2\\src\\manifest.xn:12:23: error[XN2002]: nothing named `tag` is in scope; `use depot.locker;` would provide it\n12 |     [tag(locker: ax), tag(locker: bay), tag(locker: cod)].join(sep: \",\")\n   |                       ^^^\n  fix: insert `use depot.locker;`\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r2\\src\\manifest.xn:12:41: error[XN2002]: nothing named `tag` is in scope; `use depot.locker;` would provide it\n12 |     [tag(locker: ax), tag(locker: bay), tag(locker: cod)].join(sep: \",\")\n   |                                         ^^^\n  fix: insert `use depot.locker;`\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 12,
+          "outcome": "diagnostics",
+          "seconds": 14.0,
+          "submitted": "use depot.locker.{arrive, stow, tag};\n\npub fn report() -> String {\n    let ax = arrive(label: \"ax\");\n    let ax = stow(locker: ax, load: 12);\n    let ax = stow(locker: ax, load: 9);\n    let bay = arrive(label: \"bay\");\n    let bay = stow(locker: bay, load: 30);\n    let bay = stow(locker: bay, load: 25);\n    let cod = arrive(label: \"cod\");\n    let cod = stow(locker: cod, load: 5);\n    [tag(locker: ax), tag(locker: bay), tag(locker: cod)].join(sep: \",\")\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 3,
+          "diag_codes": [
+            "XN2009",
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r3\\src\\manifest.xn:1:1: error[XN2009]: `use depot.locker;` is never used in this file\n1 | use depot.locker;\n  | ^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2009` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r3\\src\\manifest.xn:4:14: error[XN2002]: nothing named `arrive` is in scope; `use depot.locker;` would provide it\n4 |     let ax = arrive(label: \"ax\");\n  |              ^^^^^^\n  fix: insert `use depot.locker;`\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r3\\src\\manifest.xn:5:14: error[XN2002]: nothing named `stow` is in scope; `use depot.locker;` would provide it\n5 |     let ax = stow(locker: ax, load: 12);\n  |              ^^^^\n  fix: insert `use depot.locker;`\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r3\\src\\manifest.xn:6:14: error[XN2002]: nothing named `stow` is in scope; `use depot.locker;` would provide it\n6 |     let ax = stow(locker: ax, load: 9);\n  |              ^^^^\n  fix: insert `use depot.locker;`\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r3\\src\\manifest.xn:7:15: error[XN2002]: nothing named `arrive` is in scope; `use depot.locker;` would provide it\n7 |     let bay = arrive(label: \"bay\");\n  |               ^^^^^^\n  fix: insert `use depot.locker;`\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r3\\src\\manifest.xn:8:15: error[XN2002]: nothing named `stow` is in scope; `use depot.locker;` would provide it\n8 |     let bay = stow(locker: bay, load: 30);\n  |               ^^^^\n  fix: insert `use depot.locker;`\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r3\\src\\manifest.xn:9:15: error[XN2002]: nothing named `stow` is in scope; `use depot.locker;` would provide it\n9 |     let bay = stow(locker: bay, load: 25);\n  |               ^^^^\n  fix: insert `use depot.locker;`\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r3\\src\\manifest.xn:10:15: error[XN2002]: nothing named `arrive` is in scope; `use depot.locker;` would provide it\n10 |     let cod = arrive(label: \"cod\");\n   |               ^^^^^^\n  fix: insert `use depot.locker;`\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r3\\src\\manifest.xn:11:15: error[XN2002]: nothing named `stow` is in scope; `use depot.locker;` would provide it\n11 |     let cod = stow(locker: cod, load: 5);\n   |               ^^^^\n  fix: insert `use depot.locker;`\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r3\\src\\manifest.xn:12:6: error[XN2002]: nothing named `tag` is in scope; `use depot.locker;` would provide it\n12 |     [tag(locker: ax), tag(locker: bay), tag(locker: cod)].join(sep: \",\")\n   |      ^^^\n  fix: insert `use depot.locker;`\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r3\\src\\manifest.xn:12:23: error[XN2002]: nothing named `tag` is in scope; `use depot.locker;` would provide it\n12 |     [tag(locker: ax), tag(locker: bay), tag(locker: cod)].join(sep: \",\")\n   |                       ^^^\n  fix: insert `use depot.locker;`\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r3\\src\\manifest.xn:12:41: error[XN2002]: nothing named `tag` is in scope; `use depot.locker;` would provide it\n12 |     [tag(locker: ax), tag(locker: bay), tag(locker: cod)].join(sep: \",\")\n   |                                         ^^^\n  fix: insert `use depot.locker;`\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 11,
+          "outcome": "diagnostics",
+          "seconds": 17.2,
+          "submitted": "use depot.locker;\n\npub fn report() -> String {\n    let ax = arrive(label: \"ax\");\n    let ax = stow(locker: ax, load: 12);\n    let ax = stow(locker: ax, load: 9);\n    let bay = arrive(label: \"bay\");\n    let bay = stow(locker: bay, load: 30);\n    let bay = stow(locker: bay, load: 25);\n    let cod = arrive(label: \"cod\");\n    let cod = stow(locker: cod, load: 5);\n    [tag(locker: ax), tag(locker: bay), tag(locker: cod)].join(sep: \",\")\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 4,
+          "diag_codes": [
+            "XN2007"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r4\\src\\manifest.xn:2:14: error[XN2007]: module `depot.locker` is not `use`d in this file; add `use depot.locker;`\n2 |     let ax = depot.locker.arrive(label: \"ax\");\n  |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r4\\src\\manifest.xn:3:14: error[XN2007]: module `depot.locker` is not `use`d in this file; add `use depot.locker;`\n3 |     let ax = depot.locker.stow(locker: ax, load: 12);\n  |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r4\\src\\manifest.xn:4:14: error[XN2007]: module `depot.locker` is not `use`d in this file; add `use depot.locker;`\n4 |     let ax = depot.locker.stow(locker: ax, load: 9);\n  |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r4\\src\\manifest.xn:5:15: error[XN2007]: module `depot.locker` is not `use`d in this file; add `use depot.locker;`\n5 |     let bay = depot.locker.arrive(label: \"bay\");\n  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r4\\src\\manifest.xn:6:15: error[XN2007]: module `depot.locker` is not `use`d in this file; add `use depot.locker;`\n6 |     let bay = depot.locker.stow(locker: bay, load: 30);\n  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r4\\src\\manifest.xn:7:15: error[XN2007]: module `depot.locker` is not `use`d in this file; add `use depot.locker;`\n7 |     let bay = depot.locker.stow(locker: bay, load: 25);\n  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r4\\src\\manifest.xn:8:15: error[XN2007]: module `depot.locker` is not `use`d in this file; add `use depot.locker;`\n8 |     let cod = depot.locker.arrive(label: \"cod\");\n  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r4\\src\\manifest.xn:9:15: error[XN2007]: module `depot.locker` is not `use`d in this file; add `use depot.locker;`\n9 |     let cod = depot.locker.stow(locker: cod, load: 5);\n  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r4\\src\\manifest.xn:11:9: error[XN2007]: module `depot.locker` is not `use`d in this file; add `use depot.locker;`\n11 |         depot.locker.tag(locker: ax),\n   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r4\\src\\manifest.xn:12:9: error[XN2007]: module `depot.locker` is not `use`d in this file; add `use depot.locker;`\n12 |         depot.locker.tag(locker: bay),\n   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-t5-api-on-r4\\src\\manifest.xn:13:9: error[XN2007]: module `depot.locker` is not `use`d in this file; add `use depot.locker;`\n13 |         depot.locker.tag(locker: cod),\n   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2007` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 17.7,
+          "submitted": "pub fn report() -> String {\n    let ax = depot.locker.arrive(label: \"ax\");\n    let ax = depot.locker.stow(locker: ax, load: 12);\n    let ax = depot.locker.stow(locker: ax, load: 9);\n    let bay = depot.locker.arrive(label: \"bay\");\n    let bay = depot.locker.stow(locker: bay, load: 30);\n    let bay = depot.locker.stow(locker: bay, load: 25);\n    let cod = depot.locker.arrive(label: \"cod\");\n    let cod = depot.locker.stow(locker: cod, load: 5);\n    [\n        depot.locker.tag(locker: ax),\n        depot.locker.tag(locker: bay),\n        depot.locker.tag(locker: cod),\n    ].join(sep: \",\")\n}",
+          "teach_count": 0
+        }
+      ],
+      "task": "t5-01",
+      "tier": 5
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN2009",
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-03-opencode-t5-api-on-r1\\src\\tally.xn:1:1: error[XN2009]: `use relay.feed;` is never used in this file\n1 | use relay.feed;\n  | ^^^^^^^^^^^^^^^\n  run `xenith explain XN2009` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-03-opencode-t5-api-on-r1\\src\\tally.xn:4:18: error[XN2002]: nothing named `feed` is in scope\n4 |     let frames = feed.frames();\n  |                  ^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-03-opencode-t5-api-on-r1\\src\\tally.xn:9:34: error[XN2002]: nothing named `feed` is in scope\n9 |             Some(frame) => match feed.decode(frame) {\n  |                                  ^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-03-opencode-t5-api-on-r1\\src\\tally.xn:18:5: error[XN2002]: nothing named `feed` is in scope\n18 |     feed.emit(io: io, total: total)\n   |     ^^^^\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 17.6,
+          "submitted": "use relay.feed;\n\npub fn publish(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    let frames = feed.frames();\n    var total = 0;\n    var index = 0;\n    while index < frames.len() {\n        let value = match frames.get(index: index) {\n            Some(frame) => match feed.decode(frame) {\n                Ok(number) => number,\n                Err(_) => 0,\n            },\n            None => 0,\n        };\n        total = total + value;\n        index = index + 1;\n    }\n    feed.emit(io: io, total: total)\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 2,
+          "diag_codes": [
+            "XN2009",
+            "XN1002",
+            "XN1007",
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-03-opencode-t5-api-on-r2\\src\\tally.xn:1:1: error[XN2009]: `use relay.feed;` is never used in this file\n1 | use relay.feed.{decode, emit, frames};\n  | ^^^^^^^^^^^^^^\n  run `xenith explain XN2009` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-03-opencode-t5-api-on-r2\\src\\tally.xn:1:15: error[XN1002]: expected `;`\n1 | use relay.feed.{decode, emit, frames};\n  |               ^\n  fix: insert `;`\n  run `xenith explain XN1002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-03-opencode-t5-api-on-r2\\src\\tally.xn:1:15: error[XN1007]: expected a declaration, found `.`\n1 | use relay.feed.{decode, emit, frames};\n  |               ^\n  run `xenith explain XN1007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-03-opencode-t5-api-on-r2\\src\\tally.xn:4:20: error[XN2002]: nothing named `frames` is in scope; `use relay.feed;` would provide it\n4 |     let received = frames();\n  |                    ^^^^^^\n  fix: insert `use relay.feed;`\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-03-opencode-t5-api-on-r2\\src\\tally.xn:9:34: error[XN2002]: nothing named `decode` is in scope; `use relay.feed;` would provide it\n9 |             Some(frame) => match decode(frame) {\n  |                                  ^^^^^^\n  fix: insert `use relay.feed;`\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-03-opencode-t5-api-on-r2\\src\\tally.xn:18:5: error[XN2002]: nothing named `emit` is in scope; `use relay.feed;` would provide it\n18 |     emit(io: io, total: total)\n   |     ^^^^\n  fix: insert `use relay.feed;`\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 4,
+          "outcome": "diagnostics",
+          "seconds": 15.1,
+          "submitted": "use relay.feed.{decode, emit, frames};\n\npub fn publish(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    let received = frames();\n    var total = 0;\n    var index = 0;\n    while index < received.len() {\n        let value = match received.get(index: index) {\n            Some(frame) => match decode(frame) {\n                Ok(number) => number,\n                Err(_) => 0,\n            },\n            None => 0,\n        };\n        total = total + value;\n        index = index + 1;\n    }\n    emit(io: io, total: total)\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 3,
+          "diag_codes": [
+            "XN2009",
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-03-opencode-t5-api-on-r3\\src\\tally.xn:1:1: error[XN2009]: `use relay.feed;` is never used in this file\n1 | use relay.feed;\n  | ^^^^^^^^^^^^^^^\n  run `xenith explain XN2009` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-03-opencode-t5-api-on-r3\\src\\tally.xn:4:20: error[XN2002]: nothing named `frames` is in scope; `use relay.feed;` would provide it\n4 |     let received = frames();\n  |                    ^^^^^^\n  fix: insert `use relay.feed;`\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-03-opencode-t5-api-on-r3\\src\\tally.xn:9:34: error[XN2002]: nothing named `decode` is in scope; `use relay.feed;` would provide it\n9 |             Some(frame) => match decode(frame) {\n  |                                  ^^^^^^\n  fix: insert `use relay.feed;`\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-03-opencode-t5-api-on-r3\\src\\tally.xn:18:5: error[XN2002]: nothing named `emit` is in scope; `use relay.feed;` would provide it\n18 |     emit(io: io, total: total)\n   |     ^^^^\n  fix: insert `use relay.feed;`\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 3,
+          "outcome": "diagnostics",
+          "seconds": 19.7,
+          "submitted": "use relay.feed;\n\npub fn publish(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    let received = frames();\n    var total = 0;\n    var index = 0;\n    while index < received.len() {\n        let value = match received.get(index) {\n            Some(frame) => match decode(frame) {\n                Ok(number) => number,\n                Err(_) => 0,\n            },\n            None => 0,\n        };\n        total = total + value;\n        index = index + 1;\n    }\n    emit(io: io, total: total)\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 4,
+          "outcome": "pass",
+          "seconds": 18.6,
+          "submitted": "use relay.feed;\n\npub fn publish(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    let received = relay.feed.frames();\n    var total = 0;\n    var index = 0;\n    while index < received.len() {\n        let value = match received.get(index) {\n            Some(frame) => match relay.feed.decode(frame) {\n                Ok(number) => number,\n                Err(_) => 0,\n            },\n            None => 0,\n        };\n        total = total + value;\n        index = index + 1;\n    }\n    relay.feed.emit(io: io, total: total)\n}"
+        }
+      ],
+      "task": "t5-03",
+      "tier": 5
     }
   ],
   "totals": {
     "pass_at_1": 0,
-    "passed": 0,
-    "tasks": 3
+    "passed": 2,
+    "tasks": 6
   },
-  "unix_time": 1786444997
+  "unix_time": 1786461912
 }

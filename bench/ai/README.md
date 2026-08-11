@@ -97,6 +97,31 @@ checks the golden gate: every provided-module surface the reference solution con
 must appear in the dump (0011 §7 — no measuring against a broken map). With the six
 project references, `verify` covers 22 references.
 
+**Reading (252/252 runs, 2026-08-08).** The family split is the finding — a double
+dissociation the pooled table hides:
+
+| family | guide arms | api arms | none arms |
+| --- | --- | --- | --- |
+| t5a implementation, pass@1 (of 56) | **2** | **17** | 4 |
+| t5b wiring, pass@1 (of 28) | **12** | **0** | 1 |
+
+The field guide structurally cannot carry a project's API, so on implementation
+tasks it is nearly as blind as nothing (2 vs 4 first-shot) while the machine dump
+carries them (17). But the dump never teaches `use` discipline, so on wiring
+tasks it goes to zero while the guide's eight-line module section pays 12.
+*What to call* and *how to wire* are different knowledge in different documents;
+neither substitutes for the other — the 0011 central prediction ("full-pack
+stops scaling the moment a second file exists") is confirmed, and the honest
+product shape is primer + repo map, not either alone. Other pre-registered
+outcomes: none+off is the floor (H0 holds); 164/252 runs opened with a
+module-discipline diagnostic (H3's "majority" confirmed at 65%, largely repaired
+by the loop — 155/252 green overall); diagnostic teaching moved nothing overall
+(amendment 1's coverage map, registered before these runs) *except* exactly
+where its coverage exists — wiring tasks with no docs, where `use_candidates`
+lifts green 6/14 → 10/14; the XN7008 temptation never fired in 252 runs (no
+model ever attempted a cross-boundary write — a null observation point); and
+zero greens bypassed the provided API.
+
 ## Metrics
 
 - **pass@1** — first attempt passes the hidden expectation

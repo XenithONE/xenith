@@ -1,0 +1,338 @@
+{
+  "condition": "t5-none-on",
+  "model": "opencode-deepseek",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "empty reply",
+          "seconds": 62.7
+        },
+        {
+          "attempt": 2,
+          "diag_codes": [
+            "XN2008",
+            "XN2002",
+            "XN5001",
+            "XN1001",
+            "XN1002",
+            "XN1004",
+            "XN3005",
+            "XN3001"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-03-opencode-deepseek-t5-none-on-r2\\src\\main.xn:4:5: error[XN2008]: `tally.publish` is private to `tally`\n4 |     tally.publish(io: io)?;\n  |     ^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2008` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-03-opencode-deepseek-t5-none-on-r2\\src\\tally.xn:4:18: error[XN2002]: `relay.feed` has no item named `receive`\n4 |     let frames = relay.feed.receive();\n  |                  ^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-03-opencode-deepseek-t5-none-on-r2\\src\\tally.xn:8:21: error[XN5001]: this `match` is not exhaustive: `Ok(_)` is not covered\n8 |         let value = match relay.feed.decode(frame: frames[i]) {\n  |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN5001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-03-opencode-deepseek-t5-none-on-r2\\src\\tally.xn:8:58: error[XN1001]: expected `)`, found `[`\n8 |         let value = match relay.feed.decode(frame: frames[i]) {\n  |                                                          ^\n  fix: insert `)`\n  run `xenith explain XN1001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-03-opencode-deepseek-t5-none-on-r2\\src\\tally.xn:8:58: error[XN1001]: expected `{`, found `[`\n8 |         let value = match relay.feed.decode(frame: frames[i]) {\n  |                                                          ^\n  fix: insert `{`\n  run `xenith explain XN1001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-03-opencode-deepseek-t5-none-on-r2\\src\\tally.xn:8:58: error[XN1002]: expected `;`\n8 |         let value = match relay.feed.decode(frame: frames[i]) {\n  |                                                          ^\n  fix: insert `;`\n  run `xenith explain XN1002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-03-opencode-deepseek-t5-none-on-r2\\src\\tally.xn:8:61: error[XN1002]: expected `;`\n8 |         let value = match relay.feed.decode(frame: frames[i]) {\n  |                                                             ^\n  fix: insert `;`\n  run `xenith explain XN1002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-03-opencode-deepseek-t5-none-on-r2\\src\\tally.xn:8:61: error[XN1004]: expected an expression, found `)`\n8 |         let value = match relay.feed.decode(frame: frames[i]) {\n  |                                                             ^\n  run `xenith explain XN1004` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-03-opencode-deepseek-t5-none-on-r2\\src\\tally.xn:8:61: error[XN1002]: expected `;`\n8 |         let value = match relay.feed.decode(frame: frames[i]) {\n  |                                                             ^\n  fix: insert `;`\n  run `xenith explain XN1002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-03-opencode-deepseek-t5-none-on-r2\\src\\tally.xn:9:13: error[XN3005]: cannot determine `T` of `Result` here; annotate the surrounding binding\n9 |             Ok(v) => v,\n  |             ^^^^^\n  run `xenith explain XN3005` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-03-opencode-deepseek-t5-none-on-r2\\src\\tally.xn:9:13: error[XN3005]: cannot determine `E` of `Result` here; annotate the surrounding binding\n9 |             Ok(v) => v,\n  |             ^^^^^\n  run `xenith explain XN3005` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-03-opencode-deepseek-t5-none-on-r2\\src\\tally.xn:9:16: error[XN2002]: nothing named `v` is in scope; did you mean `i`?\n9 |             Ok(v) => v,\n  |                ^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-03-opencode-deepseek-t5-none-on-r2\\src\\tally.xn:9:18: error[XN1002]: expected `;`\n9 |             Ok(v) => v,\n  |                  ^\n  fix: insert `;`\n  run `xenith explain XN1002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-03-opencode-deepseek-t5-none-on-r2\\src\\tally.xn:12:25: error[XN3001]: expected `Int`, found `Unit`\n12 |         total = total + value;\n   |                         ^^^^^\n  run `xenith explain XN3001` for the rule\n",
+          "fix_count": 6,
+          "outcome": "diagnostics",
+          "seconds": 121.1,
+          "submitted": "use relay.feed;\n\nfn publish(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    let frames = relay.feed.receive();\n    var total = 0;\n    var i = 0;\n    while i < frames.len() {\n        let value = match relay.feed.decode(frame: frames[i]) {\n            Ok(v) => v,\n            Err(_) => 0,\n        };\n        total = total + value;\n        i = i + 1;\n    }\n    relay.feed.emit(io: io, total: total)?;\n    return Ok(unit);\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 3,
+          "diag_codes": [
+            "XN2003"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-03-opencode-deepseek-t5-none-on-r3\\src\\tally.xn:8:64: error[XN2003]: `List<String>` has no method named `at`; did you mean `get`?\n  methods of List<String> (6 of 10):\n      len() -> Int\n      is_empty() -> Bool\n      push(item: String) -> Unit\n      pop() -> Option<String>\n      get(index: Int) -> Option<String>\n      replace(index: Int, value: String) -> Option<String>\n8 |         let value: Int = match relay.feed.decode(frame: frames.at(i)) {\n  |                                                                ^^\n  run `xenith explain XN2003` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 170.7,
+          "submitted": "use relay.feed;\n\npub fn publish(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    let frames = relay.feed.frames();\n    var total = 0;\n    var i = 0;\n    while i < frames.len() {\n        let value: Int = match relay.feed.decode(frame: frames.at(i)) {\n            Ok(v) => v,\n            Err(_) => 0,\n        };\n        total = total + value;\n        i = i + 1;\n    }\n    relay.feed.emit(io: io, total: total)?;\n    return Ok(unit);\n}",
+          "teach_count": 1
+        },
+        {
+          "attempt": 4,
+          "outcome": "pass",
+          "seconds": 68.0,
+          "submitted": "use relay.feed;\n\npub fn publish(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    let frames = relay.feed.frames();\n    var total = 0;\n    var i = 0;\n    while i < frames.len() {\n        let value: Int = match frames.get(index: i) {\n            Some(frame) => match relay.feed.decode(frame: frame) {\n                Ok(v) => v,\n                Err(_) => 0,\n            },\n            None => 0,\n        };\n        total = total + value;\n        i = i + 1;\n    }\n    relay.feed.emit(io: io, total: total)?;\n    return Ok(unit);\n}"
+        }
+      ],
+      "task": "t5-03",
+      "tier": 5
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-05-opencode-deepseek-t5-none-on-r1\\src\\main.xn:2:17: error[XN2002]: nothing named `menu` is in scope\n2 |     let board = menu.board();\n  |                 ^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-05-opencode-deepseek-t5-none-on-r1\\src\\main.xn:8:9: error[XN2002]: nothing named `kitchen` is in scope\n8 |         kitchen.serve(dish: board.get(i))?;\n  |         ^^^^^^^\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 69.9,
+          "submitted": "fn main(io: Io) -> Result<Unit, Error> uses {Io.write, Kitchen.serve} {\n    let board = menu.board();\n    var i = 0;\n    while i < board.length() {\n        if i > 0 {\n            io.write(text: \";\")?;\n        }\n        kitchen.serve(dish: board.get(i))?;\n        i = i + 1;\n    }\n    return Ok(unit);\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 2,
+          "diag_codes": [
+            "XN2007"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-05-opencode-deepseek-t5-none-on-r2\\src\\main.xn:2:17: error[XN2007]: module `galley.menu` is not `use`d in this file; add `use galley.menu;`\n2 |     let board = galley.menu.board();\n  |                 ^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-05-opencode-deepseek-t5-none-on-r2\\src\\main.xn:8:9: error[XN2007]: module `galley.kitchen` is not `use`d in this file; add `use galley.kitchen;`\n8 |         galley.kitchen.serve(dish: board.get(i))?;\n  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2007` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 169.0,
+          "submitted": "fn main(io: Io) -> Result<Unit, Error> uses {Io.write, Kitchen.serve} {\n    let board = galley.menu.board();\n    var i = 0;\n    while i < board.length() {\n        if i > 0 {\n            io.write(text: \";\")?;\n        }\n        galley.kitchen.serve(dish: board.get(i))?;\n        i = i + 1;\n    }\n    return Ok(unit);\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 3,
+          "diag_codes": [
+            "XN2003",
+            "XN3002",
+            "XN3003",
+            "XN3001"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-05-opencode-deepseek-t5-none-on-r3\\src\\main.xn:7:21: error[XN2003]: `List<galley.menu.Dish>` has no method named `length`\n  methods of List<galley.menu.Dish> (6 of 10):\n      len() -> Int\n      is_empty() -> Bool\n      push(item: galley.menu.Dish) -> Unit\n      pop() -> Option<galley.menu.Dish>\n      get(index: Int) -> Option<galley.menu.Dish>\n      replace(index: Int, value: galley.menu.Dish) -> Option<galley.menu.Dish>\n7 |     while i < board.length() {\n  |                     ^^^^^^\n  run `xenith explain XN2003` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-05-opencode-deepseek-t5-none-on-r3\\src\\main.xn:11:9: error[XN3002]: `galley.kitchen.serve` takes 2 argument(s), 1 given\n  call shape: galley.kitchen.serve(io: Io, dish: galley.menu.Dish) -> Result<Unit, Error> uses {Io.write}\n11 |         galley.kitchen.serve(dish: board.get(i))?;\n   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN3002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-05-opencode-deepseek-t5-none-on-r3\\src\\main.xn:11:30: error[XN3003]: this argument is `io`, not `dish`\n11 |         galley.kitchen.serve(dish: board.get(i))?;\n   |                              ^^^^\n  fix: name it `io`\n  run `xenith explain XN3003` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-05-opencode-deepseek-t5-none-on-r3\\src\\main.xn:11:36: error[XN3001]: expected `Io`, found `Option<galley.menu.Dish>`\n11 |         galley.kitchen.serve(dish: board.get(i))?;\n   |                                    ^^^^^^^^^^^^\n  run `xenith explain XN3001` for the rule\n",
+          "fix_count": 1,
+          "outcome": "diagnostics",
+          "seconds": 90.5,
+          "submitted": "use galley.menu;\nuse galley.kitchen;\n\nfn main(io: Io) -> Result<Unit, Error> uses {Io.write, Kitchen.serve} {\n    let board = galley.menu.board();\n    var i = 0;\n    while i < board.length() {\n        if i > 0 {\n            io.write(text: \";\")?;\n        }\n        galley.kitchen.serve(dish: board.get(i))?;\n        i = i + 1;\n    }\n    return Ok(unit);\n}",
+          "teach_count": 2
+        },
+        {
+          "attempt": 4,
+          "outcome": "pass",
+          "seconds": 143.6,
+          "submitted": "use galley.menu;\nuse galley.kitchen;\n\nfn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    let board = galley.menu.board();\n    var i = 0;\n    while i < board.len() {\n        if i > 0 {\n            io.write(text: \";\")?;\n        }\n        match board.get(i) {\n            Some(dish) => galley.kitchen.serve(io: io, dish: dish)?,\n            None => unit,\n        };\n        i = i + 1;\n    }\n    return Ok(unit);\n}"
+        }
+      ],
+      "task": "t5-05",
+      "tier": 5
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN2007",
+            "XN1001",
+            "XN1002",
+            "XN1004"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-06-opencode-deepseek-t5-none-on-r1\\src\\main.xn:2:18: error[XN2007]: module `stable.herd` is not `use`d in this file; add `use stable.herd;`\n2 |     let ponies = stable.herd.lineup();\n  |                  ^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-06-opencode-deepseek-t5-none-on-r1\\src\\main.xn:6:19: error[XN2007]: module `stable.herd` is not `use`d in this file; add `use stable.herd;`\n6 |         let fed = stable.herd.feed(pony: ponies[i], scoops: 3);\n  |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-06-opencode-deepseek-t5-none-on-r1\\src\\main.xn:6:48: error[XN1001]: expected `)`, found `[`\n6 |         let fed = stable.herd.feed(pony: ponies[i], scoops: 3);\n  |                                                ^\n  fix: insert `)`\n  run `xenith explain XN1001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-06-opencode-deepseek-t5-none-on-r1\\src\\main.xn:6:48: error[XN1002]: expected `;`\n6 |         let fed = stable.herd.feed(pony: ponies[i], scoops: 3);\n  |                                                ^\n  fix: insert `;`\n  run `xenith explain XN1002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-06-opencode-deepseek-t5-none-on-r1\\src\\main.xn:6:51: error[XN1002]: expected `;`\n6 |         let fed = stable.herd.feed(pony: ponies[i], scoops: 3);\n  |                                                   ^\n  fix: insert `;`\n  run `xenith explain XN1002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-06-opencode-deepseek-t5-none-on-r1\\src\\main.xn:6:62: error[XN1004]: expected an expression, found `)`\n6 |         let fed = stable.herd.feed(pony: ponies[i], scoops: 3);\n  |                                                              ^\n  run `xenith explain XN1004` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-06-opencode-deepseek-t5-none-on-r1\\src\\main.xn:6:62: error[XN1002]: expected `;`\n6 |         let fed = stable.herd.feed(pony: ponies[i], scoops: 3);\n  |                                                              ^\n  fix: insert `;`\n  run `xenith explain XN1002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-06-opencode-deepseek-t5-none-on-r1\\src\\main.xn:6:63: error[XN1004]: expected an expression, found `;`\n6 |         let fed = stable.herd.feed(pony: ponies[i], scoops: 3);\n  |                                                               ^\n  run `xenith explain XN1004` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-06-opencode-deepseek-t5-none-on-r1\\src\\main.xn:7:21: error[XN2007]: module `stable.ledger` is not `use`d in this file; add `use stable.ledger;`\n7 |         let entry = stable.ledger.entry(pony: fed);\n  |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2007` for the rule\n",
+          "fix_count": 4,
+          "outcome": "diagnostics",
+          "seconds": 61.1,
+          "submitted": "fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    let ponies = stable.herd.lineup();\n    var i = 0;\n    var first = true;\n    while i < ponies.length() {\n        let fed = stable.herd.feed(pony: ponies[i], scoops: 3);\n        let entry = stable.ledger.entry(pony: fed);\n        if first {\n            first = false;\n        } else {\n            io.write(text: \",\")?;\n        }\n        io.write(text: entry)?;\n        i = i + 1;\n    }\n    return Ok(unit);\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 2,
+          "diag_codes": [
+            "XN2003"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-06-opencode-deepseek-t5-none-on-r2\\src\\main.xn:8:22: error[XN2003]: `List<stable.herd.Pony>` has no method named `length`\n  methods of List<stable.herd.Pony> (6 of 10):\n      len() -> Int\n      is_empty() -> Bool\n      push(item: stable.herd.Pony) -> Unit\n      pop() -> Option<stable.herd.Pony>\n      get(index: Int) -> Option<stable.herd.Pony>\n      replace(index: Int, value: stable.herd.Pony) -> Option<stable.herd.Pony>\n8 |     while i < ponies.length() {\n  |                      ^^^^^^\n  run `xenith explain XN2003` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-06-opencode-deepseek-t5-none-on-r2\\src\\main.xn:9:49: error[XN2003]: `List<stable.herd.Pony>` has no method named `at`; did you mean `get`?\n9 |         let fed = stable.herd.feed(pony: ponies.at(i), scoops: 3);\n  |                                                 ^^\n  run `xenith explain XN2003` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 59.1,
+          "submitted": "use stable.herd;\nuse stable.ledger;\n\nfn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    let ponies = stable.herd.lineup();\n    var i = 0;\n    var first = true;\n    while i < ponies.length() {\n        let fed = stable.herd.feed(pony: ponies.at(i), scoops: 3);\n        let entry = stable.ledger.entry(pony: fed);\n        if first {\n            first = false;\n        } else {\n            io.write(text: \",\")?;\n        }\n        io.write(text: entry)?;\n        i = i + 1;\n    }\n    return Ok(unit);\n}",
+          "teach_count": 1
+        },
+        {
+          "attempt": 3,
+          "outcome": "pass",
+          "seconds": 74.6,
+          "submitted": "use stable.herd;\nuse stable.ledger;\n\nfn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    let ponies = stable.herd.lineup();\n    var i = 0;\n    var first = true;\n    while i < ponies.len() {\n        match ponies.get(index: i) {\n            Some(p) => {\n                let fed = stable.herd.feed(pony: p, scoops: 3);\n                let entry = stable.ledger.entry(pony: fed);\n                if first {\n                    first = false;\n                } else {\n                    io.write(text: \",\")?;\n                }\n                io.write(text: entry)?;\n            }\n            None => unit,\n        }\n        i = i + 1;\n    }\n    return Ok(unit);\n}"
+        }
+      ],
+      "task": "t5-06",
+      "tier": 5
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN2008",
+            "XN2009",
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r1\\src\\main.xn:4:20: error[XN2008]: `manifest.report` is private to `manifest`\n4 |     io.write(text: manifest.report())?;\n  |                    ^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2008` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r1\\src\\manifest.xn:1:1: error[XN2009]: `use depot.locker;` is never used in this file\n1 | use depot.locker;\n  | ^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2009` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r1\\src\\manifest.xn:4:14: error[XN2002]: nothing named `locker` is in scope\n4 |     var ax = locker.new(label: \"ax\");\n  |              ^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r1\\src\\manifest.xn:5:15: error[XN2002]: nothing named `locker` is in scope\n5 |     var bay = locker.new(label: \"bay\");\n  |               ^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r1\\src\\manifest.xn:6:15: error[XN2002]: nothing named `locker` is in scope\n6 |     var cod = locker.new(label: \"cod\");\n  |               ^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r1\\src\\manifest.xn:8:11: error[XN2002]: nothing named `locker` is in scope\n8 |     match locker.stow(locker: ax, weight: 12) {\n  |           ^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r1\\src\\manifest.xn:12:11: error[XN2002]: nothing named `locker` is in scope\n12 |     match locker.stow(locker: ax, weight: 9) {\n   |           ^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r1\\src\\manifest.xn:16:11: error[XN2002]: nothing named `locker` is in scope\n16 |     match locker.stow(locker: bay, weight: 30) {\n   |           ^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r1\\src\\manifest.xn:20:11: error[XN2002]: nothing named `locker` is in scope\n20 |     match locker.stow(locker: bay, weight: 25) {\n   |           ^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r1\\src\\manifest.xn:24:11: error[XN2002]: nothing named `locker` is in scope\n24 |     match locker.stow(locker: cod, weight: 5) {\n   |           ^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r1\\src\\manifest.xn:29:25: error[XN2002]: nothing named `locker` is in scope\n29 |     \"ax=\".concat(other: locker.weight(locker: ax).to_text())\n   |                         ^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r1\\src\\manifest.xn:31:24: error[XN2002]: nothing named `locker` is in scope\n31 |         .concat(other: locker.weight(locker: bay).to_text())\n   |                        ^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r1\\src\\manifest.xn:33:24: error[XN2002]: nothing named `locker` is in scope\n33 |         .concat(other: locker.weight(locker: cod).to_text())\n   |                        ^^^^^^\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 211.2,
+          "submitted": "use depot.locker;\n\nfn report() -> String {\n    var ax = locker.new(label: \"ax\");\n    var bay = locker.new(label: \"bay\");\n    var cod = locker.new(label: \"cod\");\n\n    match locker.stow(locker: ax, weight: 12) {\n        Ok(_) => unit,\n        Err(_) => unit,\n    };\n    match locker.stow(locker: ax, weight: 9) {\n        Ok(_) => unit,\n        Err(_) => unit,\n    };\n    match locker.stow(locker: bay, weight: 30) {\n        Ok(_) => unit,\n        Err(_) => unit,\n    };\n    match locker.stow(locker: bay, weight: 25) {\n        Ok(_) => unit,\n        Err(_) => unit,\n    };\n    match locker.stow(locker: cod, weight: 5) {\n        Ok(_) => unit,\n        Err(_) => unit,\n    };\n\n    \"ax=\".concat(other: locker.weight(locker: ax).to_text())\n        .concat(other: \",bay=\")\n        .concat(other: locker.weight(locker: bay).to_text())\n        .concat(other: \",cod=\")\n        .concat(other: locker.weight(locker: cod).to_text())\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 2,
+          "diag_codes": [
+            "XN2002",
+            "XN5001",
+            "XN3003",
+            "XN2006"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r2\\src\\manifest.xn:4:14: error[XN2002]: `depot.locker` has no item named `new`\n4 |     var ax = depot.locker.new(label: \"ax\");\n  |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r2\\src\\manifest.xn:5:15: error[XN2002]: `depot.locker` has no item named `new`\n5 |     var bay = depot.locker.new(label: \"bay\");\n  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r2\\src\\manifest.xn:6:15: error[XN2002]: `depot.locker` has no item named `new`\n6 |     var cod = depot.locker.new(label: \"cod\");\n  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r2\\src\\manifest.xn:8:5: error[XN5001]: this `match` is not exhaustive: `depot.locker.Locker { }` is not covered\n8 |     match depot.locker.stow(locker: ax, weight: 12) {\n  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN5001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r2\\src\\manifest.xn:8:41: error[XN3003]: this argument is `load`, not `weight`\n  call shape: depot.locker.stow(locker: depot.locker.Locker, load: Int) -> depot.locker.Locker\n8 |     match depot.locker.stow(locker: ax, weight: 12) {\n  |                                         ^^^^^^\n  fix: name it `load`\n  run `xenith explain XN3003` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r2\\src\\manifest.xn:9:9: error[XN2006]: `depot.locker.Locker` has no variant named `Ok`\n9 |         Ok(_) => unit,\n  |         ^^\n  run `xenith explain XN2006` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r2\\src\\manifest.xn:9:9: error[XN2006]: `depot.locker.Locker` has no variant named `Ok`\n9 |         Ok(_) => unit,\n  |         ^^\n  run `xenith explain XN2006` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r2\\src\\manifest.xn:10:9: error[XN2006]: `depot.locker.Locker` has no variant named `Err`\n10 |         Err(_) => unit,\n   |         ^^^\n  run `xenith explain XN2006` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r2\\src\\manifest.xn:12:5: error[XN5001]: this `match` is not exhaustive: `depot.locker.Locker { }` is not covered\n12 |     match depot.locker.stow(locker: ax, weight: 9) {\n   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN5001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r2\\src\\manifest.xn:12:41: error[XN3003]: this argument is `load`, not `weight`\n  call shape: depot.locker.stow(locker: depot.locker.Locker, load: Int) -> depot.locker.Locker\n12 |     match depot.locker.stow(locker: ax, weight: 9) {\n   |                                         ^^^^^^\n  fix: name it `load`\n  run `xenith explain XN3003` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r2\\src\\manifest.xn:13:9: error[XN2006]: `depot.locker.Locker` has no variant named `Ok`\n13 |         Ok(_) => unit,\n   |         ^^\n  run `xenith explain XN2006` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r2\\src\\manifest.xn:13:9: error[XN2006]: `depot.locker.Locker` has no variant named `Ok`\n13 |         Ok(_) => unit,\n   |         ^^\n  run `xenith explain XN2006` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r2\\src\\manifest.xn:14:9: error[XN2006]: `depot.locker.Locker` has no variant named `Err`\n14 |         Err(_) => unit,\n   |         ^^^\n  run `xenith explain XN2006` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r2\\src\\manifest.xn:16:5: error[XN5001]: this `match` is not exhaustive: `depot.locker.Locker { }` is not covered\n16 |     match depot.locker.stow(locker: bay, weight: 30) {\n   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN5001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r2\\src\\manifest.xn:16:42: error[XN3003]: this argument is `load`, not `weight`\n  call shape: depot.locker.stow(locker: depot.locker.Locker, load: Int) -> depot.locker.Locker\n16 |     match depot.locker.stow(locker: bay, weight: 30) {\n   |                                          ^^^^^^\n  fix: name it `load`\n  run `xenith explain XN3003` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r2\\src\\manifest.xn:17:9: error[XN2006]: `depot.locker.Locker` has no variant named `Ok`\n17 |         Ok(_) => unit,\n   |         ^^\n  run `xenith explain XN2006` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r2\\src\\manifest.xn:17:9: error[XN2006]: `depot.locker.Locker` has no variant named `Ok`\n17 |         Ok(_) => unit,\n   |         ^^\n  run `xenith explain XN2006` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r2\\src\\manifest.xn:18:9: error[XN2006]: `depot.locker.Locker` has no variant named `Err`\n18 |         Err(_) => unit,\n   |         ^^^\n  run `xenith explain XN2006` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r2\\src\\manifest.xn:20:5: error[XN5001]: this `match` is not exhaustive: `depot.locker.Locker { }` is not covered\n20 |     match depot.locker.stow(locker: bay, weight: 25) {\n   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN5001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r2\\src\\manifest.xn:20:42: error[XN3003]: this argument is `load`, not `weight`\n  call shape: depot.locker.stow(locker: depot.locker.Locker, load: Int) -> depot.locker.Locker\n20 |     match depot.locker.stow(locker: bay, weight: 25) {\n   |                                          ^^^^^^\n  fix: name it `load`\n  run `xenith explain XN3003` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r2\\src\\manifest.xn:21:9: error[XN2006]: `depot.locker.Locker` has no variant named `Ok`\n21 |         Ok(_) => unit,\n   |         ^^\n  run `xenith explain XN2006` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r2\\src\\manifest.xn:21:9: error[XN2006]: `depot.locker.Locker` has no variant named `Ok`\n21 |         Ok(_) => unit,\n   |         ^^\n  run `xenith explain XN2006` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r2\\src\\manifest.xn:22:9: error[XN2006]: `depot.locker.Locker` has no variant named `Err`\n22 |         Err(_) => unit,\n   |         ^^^\n  run `xenith explain XN2006` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r2\\src\\manifest.xn:24:5: error[XN5001]: this `match` is not exhaustive: `depot.locker.Locker { }` is not covered\n24 |     match depot.locker.stow(locker: cod, weight: 5) {\n   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN5001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r2\\src\\manifest.xn:24:42: error[XN3003]: this argument is `load`, not `weight`\n  call shape: depot.locker.stow(locker: depot.locker.Locker, load: Int) -> depot.locker.Locker\n24 |     match depot.locker.stow(locker: cod, weight: 5) {\n   |                                          ^^^^^^\n  fix: name it `load`\n  run `xenith explain XN3003` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r2\\src\\manifest.xn:25:9: error[XN2006]: `depot.locker.Locker` has no variant named `Ok`\n25 |         Ok(_) => unit,\n   |         ^^\n  run `xenith explain XN2006` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r2\\src\\manifest.xn:25:9: error[XN2006]: `depot.locker.Locker` has no variant named `Ok`\n25 |         Ok(_) => unit,\n   |         ^^\n  run `xenith explain XN2006` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r2\\src\\manifest.xn:26:9: error[XN2006]: `depot.locker.Locker` has no variant named `Err`\n26 |         Err(_) => unit,\n   |         ^^^\n  run `xenith explain XN2006` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r2\\src\\manifest.xn:29:25: error[XN2002]: `depot.locker` has no item named `weight`\n29 |     \"ax=\".concat(other: depot.locker.weight(locker: ax).to_text())\n   |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r2\\src\\manifest.xn:31:24: error[XN2002]: `depot.locker` has no item named `weight`\n31 |         .concat(other: depot.locker.weight(locker: bay).to_text())\n   |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r2\\src\\manifest.xn:33:24: error[XN2002]: `depot.locker` has no item named `weight`\n33 |         .concat(other: depot.locker.weight(locker: cod).to_text())\n   |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 5,
+          "outcome": "diagnostics",
+          "seconds": 55.1,
+          "submitted": "use depot.locker;\n\npub fn report() -> String {\n    var ax = depot.locker.new(label: \"ax\");\n    var bay = depot.locker.new(label: \"bay\");\n    var cod = depot.locker.new(label: \"cod\");\n\n    match depot.locker.stow(locker: ax, weight: 12) {\n        Ok(_) => unit,\n        Err(_) => unit,\n    };\n    match depot.locker.stow(locker: ax, weight: 9) {\n        Ok(_) => unit,\n        Err(_) => unit,\n    };\n    match depot.locker.stow(locker: bay, weight: 30) {\n        Ok(_) => unit,\n        Err(_) => unit,\n    };\n    match depot.locker.stow(locker: bay, weight: 25) {\n        Ok(_) => unit,\n        Err(_) => unit,\n    };\n    match depot.locker.stow(locker: cod, weight: 5) {\n        Ok(_) => unit,\n        Err(_) => unit,\n    };\n\n    \"ax=\".concat(other: depot.locker.weight(locker: ax).to_text())\n        .concat(other: \",bay=\")\n        .concat(other: depot.locker.weight(locker: bay).to_text())\n        .concat(other: \",cod=\")\n        .concat(other: depot.locker.weight(locker: cod).to_text())\n}",
+          "teach_count": 5
+        },
+        {
+          "attempt": 3,
+          "diag_codes": [
+            "XN2007"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r3\\src\\manifest.xn:2:14: error[XN2007]: module `depot.locker` is not `use`d in this file; add `use depot.locker;`\n2 |     var ax = depot.locker.arrive(\"ax\");\n  |              ^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r3\\src\\manifest.xn:3:15: error[XN2007]: module `depot.locker` is not `use`d in this file; add `use depot.locker;`\n3 |     var bay = depot.locker.arrive(\"bay\");\n  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r3\\src\\manifest.xn:4:15: error[XN2007]: module `depot.locker` is not `use`d in this file; add `use depot.locker;`\n4 |     var cod = depot.locker.arrive(\"cod\");\n  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r3\\src\\manifest.xn:6:10: error[XN2007]: module `depot.locker` is not `use`d in this file; add `use depot.locker;`\n6 |     ax = depot.locker.stow(locker: ax, load: 12);\n  |          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r3\\src\\manifest.xn:7:10: error[XN2007]: module `depot.locker` is not `use`d in this file; add `use depot.locker;`\n7 |     ax = depot.locker.stow(locker: ax, load: 9);\n  |          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r3\\src\\manifest.xn:8:11: error[XN2007]: module `depot.locker` is not `use`d in this file; add `use depot.locker;`\n8 |     bay = depot.locker.stow(locker: bay, load: 30);\n  |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r3\\src\\manifest.xn:9:11: error[XN2007]: module `depot.locker` is not `use`d in this file; add `use depot.locker;`\n9 |     bay = depot.locker.stow(locker: bay, load: 25);\n  |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r3\\src\\manifest.xn:10:11: error[XN2007]: module `depot.locker` is not `use`d in this file; add `use depot.locker;`\n10 |     cod = depot.locker.stow(locker: cod, load: 5);\n   |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2007` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 174.2,
+          "submitted": "pub fn report() -> String {\n    var ax = depot.locker.arrive(\"ax\");\n    var bay = depot.locker.arrive(\"bay\");\n    var cod = depot.locker.arrive(\"cod\");\n\n    ax = depot.locker.stow(locker: ax, load: 12);\n    ax = depot.locker.stow(locker: ax, load: 9);\n    bay = depot.locker.stow(locker: bay, load: 30);\n    bay = depot.locker.stow(locker: bay, load: 25);\n    cod = depot.locker.stow(locker: cod, load: 5);\n\n    \"ax=\".concat(other: ax.weight().to_text())\n        .concat(other: \",bay=\")\n        .concat(other: bay.weight().to_text())\n        .concat(other: \",cod=\")\n        .concat(other: cod.weight().to_text())\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 4,
+          "diag_codes": [
+            "XN2003"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r4\\src\\manifest.xn:14:28: error[XN2003]: `depot.locker.Locker` has no method named `weight`\n14 |     \"ax=\".concat(other: ax.weight().to_text())\n   |                            ^^^^^^\n  run `xenith explain XN2003` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r4\\src\\manifest.xn:16:28: error[XN2003]: `depot.locker.Locker` has no method named `weight`\n16 |         .concat(other: bay.weight().to_text())\n   |                            ^^^^^^\n  run `xenith explain XN2003` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-01-opencode-deepseek-t5-none-on-r4\\src\\manifest.xn:18:28: error[XN2003]: `depot.locker.Locker` has no method named `weight`\n18 |         .concat(other: cod.weight().to_text())\n   |                            ^^^^^^\n  run `xenith explain XN2003` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 32.1,
+          "submitted": "use depot.locker;\n\npub fn report() -> String {\n    var ax = depot.locker.arrive(\"ax\");\n    var bay = depot.locker.arrive(\"bay\");\n    var cod = depot.locker.arrive(\"cod\");\n\n    ax = depot.locker.stow(locker: ax, load: 12);\n    ax = depot.locker.stow(locker: ax, load: 9);\n    bay = depot.locker.stow(locker: bay, load: 30);\n    bay = depot.locker.stow(locker: bay, load: 25);\n    cod = depot.locker.stow(locker: cod, load: 5);\n\n    \"ax=\".concat(other: ax.weight().to_text())\n        .concat(other: \",bay=\")\n        .concat(other: bay.weight().to_text())\n        .concat(other: \",cod=\")\n        .concat(other: cod.weight().to_text())\n}",
+          "teach_count": 0
+        }
+      ],
+      "task": "t5-01",
+      "tier": 5
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN2008",
+            "XN2009",
+            "XN2002",
+            "XN1001",
+            "XN1002",
+            "XN3001"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-02-opencode-deepseek-t5-none-on-r1\\src\\main.xn:4:20: error[XN2008]: `watchlog.entries` is private to `watchlog`\n4 |     io.write(text: watchlog.entries())?;\n  |                    ^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2008` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-02-opencode-deepseek-t5-none-on-r1\\src\\watchlog.xn:1:1: error[XN2009]: `use harbor.signal;` is never used in this file\n1 | use harbor.signal;\n  | ^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2009` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-02-opencode-deepseek-t5-none-on-r1\\src\\watchlog.xn:4:19: error[XN2002]: nothing named `signal` is in scope\n4 |     let signals = signal.signals();\n  |                   ^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-02-opencode-deepseek-t5-none-on-r1\\src\\watchlog.xn:11:33: error[XN1001]: expected `{`, found `[`\n11 |         let text = match signals[i] {\n   |                                 ^\n  fix: insert `{`\n  run `xenith explain XN1001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-02-opencode-deepseek-t5-none-on-r1\\src\\watchlog.xn:11:33: error[XN1002]: expected `;`\n11 |         let text = match signals[i] {\n   |                                 ^\n  fix: insert `;`\n  run `xenith explain XN1002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-02-opencode-deepseek-t5-none-on-r1\\src\\watchlog.xn:11:36: error[XN1002]: expected `;`\n11 |         let text = match signals[i] {\n   |                                    ^\n  fix: insert `;`\n  run `xenith explain XN1002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-02-opencode-deepseek-t5-none-on-r1\\src\\watchlog.xn:16:33: error[XN3001]: expected `String`, found `Unit`\n16 |         out = out.concat(other: text);\n   |                                 ^^^^\n  run `xenith explain XN3001` for the rule\n",
+          "fix_count": 3,
+          "outcome": "diagnostics",
+          "seconds": 104.1,
+          "submitted": "use harbor.signal;\n\nfn entries() -> String {\n    let signals = signal.signals();\n    var out = \"\";\n    var i = 0;\n    while i < signals.len() {\n        if i > 0 {\n            out = out.concat(other: \";\");\n        }\n        let text = match signals[i] {\n            Calm => \"calm\",\n            Gale(speed) => \"gale:\".concat(other: speed.to_text()),\n            Fog(density) => \"fog:\".concat(other: density),\n        };\n        out = out.concat(other: text);\n        i = i + 1;\n    }\n    out\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 2,
+          "diag_codes": [
+            "XN1008",
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-02-opencode-deepseek-t5-none-on-r2\\src\\watchlog.xn:6:5: error[XN1008]: `for` is not part of the language yet — iterate with `while` + `len()` + `get(index:)`\n6 |     for signal in harbor.signal.signals() {\n  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN1008` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-02-opencode-deepseek-t5-none-on-r2\\src\\watchlog.xn:6:19: error[XN2002]: `harbor.signal` has no item named `signals`\n6 |     for signal in harbor.signal.signals() {\n  |                   ^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 101.1,
+          "submitted": "use harbor.signal;\n\npub fn entries() -> String {\n    var out = \"\";\n    var first = true;\n    for signal in harbor.signal.signals() {\n        if first {\n            first = false;\n        } else {\n            out = out.concat(other: \";\");\n        }\n        out = out.concat(other: match signal {\n            Calm => \"calm\",\n            Gale(speed) => \"gale:\".concat(other: speed.to_text()),\n            Fog(density) => \"fog:\".concat(other: density),\n        });\n    }\n    out\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 3,
+          "diag_codes": [
+            "XN2007"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-02-opencode-deepseek-t5-none-on-r3\\src\\watchlog.xn:2:19: error[XN2007]: module `harbor.signal` is not `use`d in this file; add `use harbor.signal;`\n2 |     let signals = harbor.signal.sequence();\n  |                   ^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2007` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 121.7,
+          "submitted": "pub fn entries() -> String {\n    let signals = harbor.signal.sequence();\n    var out = \"\";\n    var i = 0;\n    while i < signals.len() {\n        if i > 0 {\n            out = out.concat(other: \";\");\n        }\n        let text = match signals.get(index: i) {\n            Calm => \"calm\",\n            Gale(speed) => \"gale:\".concat(other: speed.to_text()),\n            Fog(density) => \"fog:\".concat(other: density),\n        };\n        out = out.concat(other: text);\n        i = i + 1;\n    }\n    out\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 4,
+          "diag_codes": [
+            "XN2006"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-02-opencode-deepseek-t5-none-on-r4\\src\\watchlog.xn:13:13: error[XN2006]: `Option<harbor.signal.Signal>` has no variant named `Gale`\n13 |             Gale(speed) => \"gale:\".concat(other: speed.to_text()),\n   |             ^^^^\n  run `xenith explain XN2006` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-02-opencode-deepseek-t5-none-on-r4\\src\\watchlog.xn:14:13: error[XN2006]: `Option<harbor.signal.Signal>` has no variant named `Fog`\n14 |             Fog(density) => \"fog:\".concat(other: density),\n   |             ^^^\n  run `xenith explain XN2006` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 32.6,
+          "submitted": "use harbor.signal;\n\npub fn entries() -> String {\n    let signals = harbor.signal.sequence();\n    var out = \"\";\n    var i = 0;\n    while i < signals.len() {\n        if i > 0 {\n            out = out.concat(other: \";\");\n        }\n        let text = match signals.get(index: i) {\n            Calm => \"calm\",\n            Gale(speed) => \"gale:\".concat(other: speed.to_text()),\n            Fog(density) => \"fog:\".concat(other: density),\n        };\n        out = out.concat(other: text);\n        i = i + 1;\n    }\n    out\n}",
+          "teach_count": 0
+        }
+      ],
+      "task": "t5-02",
+      "tier": 5
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN1002",
+            "XN3001",
+            "XN2008"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-04-opencode-deepseek-t5-none-on-r1\\src\\cutlist.xn:9:27: error[XN1002]: expected `;`\n9 |         let plank = planks[i];\n  |                           ^\n  fix: insert `;`\n  run `xenith explain XN1002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-04-opencode-deepseek-t5-none-on-r1\\src\\cutlist.xn:10:36: error[XN3001]: expected `mill.stock.Plank`, found `List<mill.stock.Plank>`\n10 |         if mill.rules.keeps(plank: plank) {\n   |                                    ^^^^^\n  run `xenith explain XN3001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-04-opencode-deepseek-t5-none-on-r1\\src\\cutlist.xn:14:61: error[XN3001]: expected `mill.stock.Plank`, found `List<mill.stock.Plank>`\n14 |             out = out.concat(other: mill.rules.label(plank: plank));\n   |                                                             ^^^^^\n  run `xenith explain XN3001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-04-opencode-deepseek-t5-none-on-r1\\src\\main.xn:4:20: error[XN2008]: `cutlist.lines` is private to `cutlist`\n4 |     io.write(text: cutlist.lines())?;\n  |                    ^^^^^^^^^^^^^^^\n  run `xenith explain XN2008` for the rule\n",
+          "fix_count": 1,
+          "outcome": "diagnostics",
+          "seconds": 111.5,
+          "submitted": "use mill.stock;\nuse mill.rules;\n\nfn lines() -> String {\n    var out = \"\";\n    let planks = mill.stock.inventory();\n    var i = 0;\n    while i < planks.len() {\n        let plank = planks[i];\n        if mill.rules.keeps(plank: plank) {\n            if out != \"\" {\n                out = out.concat(other: \",\");\n            }\n            out = out.concat(other: mill.rules.label(plank: plank));\n        }\n        i = i + 1;\n    }\n    out\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 2,
+          "diag_codes": [
+            "XN1008"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-04-opencode-deepseek-t5-none-on-r2\\src\\cutlist.xn:7:5: error[XN1008]: `for` is not part of the language yet — iterate with `while` + `len()` + `get(index:)`\n7 |     for plank in planks {\n  |     ^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN1008` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 62.6,
+          "submitted": "use mill.stock;\nuse mill.rules;\n\npub fn lines() -> String {\n    var out = \"\";\n    let planks = mill.stock.inventory();\n    for plank in planks {\n        if mill.rules.keeps(plank: plank) {\n            if out != \"\" {\n                out = out.concat(other: \",\");\n            }\n            out = out.concat(other: mill.rules.label(plank: plank));\n        }\n    }\n    out\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 3,
+          "diag_codes": [
+            "XN3001"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-04-opencode-deepseek-t5-none-on-r3\\src\\cutlist.xn:10:36: error[XN3001]: expected `mill.stock.Plank`, found `Option<mill.stock.Plank>`\n10 |         if mill.rules.keeps(plank: plank) {\n   |                                    ^^^^^\n  run `xenith explain XN3001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-04-opencode-deepseek-t5-none-on-r3\\src\\cutlist.xn:14:61: error[XN3001]: expected `mill.stock.Plank`, found `Option<mill.stock.Plank>`\n14 |             out = out.concat(other: mill.rules.label(plank: plank));\n   |                                                             ^^^^^\n  run `xenith explain XN3001` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 24.1,
+          "submitted": "use mill.stock;\nuse mill.rules;\n\npub fn lines() -> String {\n    var out = \"\";\n    let planks = mill.stock.inventory();\n    var i = 0;\n    while i < planks.len() {\n        let plank = planks.get(index: i);\n        if mill.rules.keeps(plank: plank) {\n            if out != \"\" {\n                out = out.concat(other: \",\");\n            }\n            out = out.concat(other: mill.rules.label(plank: plank));\n        }\n        i = i + 1;\n    }\n    out\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 4,
+          "diag_codes": [
+            "XN2003"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t5-t5-04-opencode-deepseek-t5-none-on-r4\\src\\cutlist.xn:9:42: error[XN2003]: `Option<mill.stock.Plank>` has no method named `unwrap`\n  methods of Option<mill.stock.Plank>:\n      to_result(error: E) -> Result<mill.stock.Plank, E>\n9 |         let plank = planks.get(index: i).unwrap();\n  |                                          ^^^^^^\n  run `xenith explain XN2003` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 43.9,
+          "submitted": "use mill.stock;\nuse mill.rules;\n\npub fn lines() -> String {\n    var out = \"\";\n    let planks = mill.stock.inventory();\n    var i = 0;\n    while i < planks.len() {\n        let plank = planks.get(index: i).unwrap();\n        if mill.rules.keeps(plank: plank) {\n            if out != \"\" {\n                out = out.concat(other: \",\");\n            }\n            out = out.concat(other: mill.rules.label(plank: plank));\n        }\n        i = i + 1;\n    }\n    out\n}",
+          "teach_count": 1
+        }
+      ],
+      "task": "t5-04",
+      "tier": 5
+    }
+  ],
+  "totals": {
+    "pass_at_1": 0,
+    "passed": 3,
+    "tasks": 6
+  },
+  "unix_time": 1786467601
+}
