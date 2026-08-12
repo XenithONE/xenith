@@ -128,6 +128,17 @@ lifts green 6/14 → 10/14; the XN7008 temptation never fired in 252 runs (no
 model ever attempted a cross-boundary write — a null observation point); and
 zero greens bypassed the provided API.
 
+### Docs v2 (2026-08)
+
+[`field-guide.md`](field-guide.md) and [`api-table.md`](api-table.md) were frozen while the
+0011 (t5), 0012 (t5 v2) and 0014 (t6) campaigns ran, so every arm inside a campaign measured
+the same bytes. All of those campaigns are closed, and docs v2 brings the documents back to
+the truth of the shipped language: the closures and four `List` combinators of design/0014
+are now documented. The standing rule: a future campaign freezes whatever guide and API table
+are current at its own freeze commit — git history preserves exactly what each past campaign
+saw — and any comparison of docs arms that crosses the v2 boundary is comparing different
+documents, and must say so.
+
 ## Metrics
 
 - **pass@1** — first attempt passes the hidden expectation

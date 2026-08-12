@@ -12,8 +12,15 @@
 | `sorted` | `() -> List<T>` — requires `T: Ord`; returns a new, stably sorted `List`; `Float` is rejected at the bound |
 | `concat` | `(other: List<T>) -> List<T>` — returns a new `List` |
 | `join` | `(sep: String) -> String` — requires `T: Text` |
+| `map` | `(f: fn(T) -> U) -> List<U>` — returns a new `List`; traverses left to right |
+| `filter` | `(f: fn(T) -> Bool) -> List<T>` — keeps the elements where `f` returns `true`, in order |
+| `fold` | `(init: B, f: fn(B, T) -> B) -> B` — left fold; two arguments, so calls always name both |
+| `find` | `(f: fn(T) -> Bool) -> Option<T>` — short-circuits: `Some` of the first element where `f` is `true`, else `None` |
 
-Construction: `[1, 2, 3]`; the empty literal `[]` requires an expected type.
+Construction: `[1, 2, 3]`; the empty literal `[]` requires an expected type. The four
+closure-taking methods never write the receiver, and their `f` argument is always a closure
+written in place (`|x| expr` — a named `fn` is not a value): the canonical fold is
+`xs.fold(init: 0, f: |acc, x| acc + x)`.
 
 ### `Map<K: Eq + Hash, V>`
 

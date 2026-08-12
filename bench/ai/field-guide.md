@@ -166,6 +166,23 @@ The core method set:
 
 There is no `format!` and no string interpolation — build strings with `concat` and `to_text`.
 
+## Closures
+
+A closure `|x| expr` is legal **only as a call argument** for a `fn(..)`-typed parameter — never
+bound with `let`, returned, or stored; inline its body, or extract a named `fn`. Parameters are
+bare names (`|acc, x|`, `|_|`), never annotated — types come from the expected `fn` type — and
+`|x| { x + 1 }` is the same closure as `|x| x + 1`. A closure is a plan, not an action: its body
+cannot use a capability or call an effectful function, and `?`, `return`, `break`, `continue`
+cannot escape it. A closure copies the outer values it mentions when it is created; `var`
+bindings and capabilities cannot be captured — pass large values as parameters instead.
+
+Closures serve the four `List` combinators — `map`, `filter`, `fold`, `find` — which traverse
+left to right and return new values (`find` short-circuits). The closure is written in the call
+itself; a named `fn` is not a value (wrap it: `|x| double(x)`). `fold` takes two arguments, so
+both are named: `xs.fold(init: 0, f: |acc, x| acc + x)`. Effectful iteration never goes through
+a closure — write a `while` loop in the enclosing named `fn`, which declares the effects in
+`uses` and holds the capability: the closure returns data, the loop performs the effects.
+
 ## Holes
 
 `??` or `??name` is a legal expression or type: the program still compiles. Running a program
