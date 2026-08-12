@@ -1,0 +1,39 @@
+{
+  "condition": "t6-teach",
+  "model": "cursor",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 55.2
+        }
+      ],
+      "task": "t6-01",
+      "tier": 6
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 45.1
+        }
+      ],
+      "task": "t6-02",
+      "tier": 6
+    }
+  ],
+  "totals": {
+    "pass_at_1": 2,
+    "passed": 2,
+    "tasks": 2
+  },
+  "unix_time": 1786557744
+}

@@ -1,0 +1,48 @@
+{
+  "condition": "t6-teach",
+  "model": "opencode-deepseek",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN3008"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t6-01-opencode-deepseek-t6-teach-r1.xn:12:25: error[XN3008]: calls with two or more arguments name each one: `total: ..`\n  call shape: keep_if_big(total: Int, n: Int) -> Int\n12 |     total = keep_if_big(total, 4);\n   |                         ^^^^^\n  fix: insert `total:`\n  run `xenith explain XN3008` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t6-01-opencode-deepseek-t6-teach-r1.xn:12:32: error[XN3008]: calls with two or more arguments name each one: `n: ..`\n12 |     total = keep_if_big(total, 4);\n   |                                ^\n  fix: insert `n:`\n  run `xenith explain XN3008` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t6-01-opencode-deepseek-t6-teach-r1.xn:13:25: error[XN3008]: calls with two or more arguments name each one: `total: ..`\n  call shape: keep_if_big(total: Int, n: Int) -> Int\n13 |     total = keep_if_big(total, 11);\n   |                         ^^^^^\n  fix: insert `total:`\n  run `xenith explain XN3008` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t6-01-opencode-deepseek-t6-teach-r1.xn:13:32: error[XN3008]: calls with two or more arguments name each one: `n: ..`\n13 |     total = keep_if_big(total, 11);\n   |                                ^^\n  fix: insert `n:`\n  run `xenith explain XN3008` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t6-01-opencode-deepseek-t6-teach-r1.xn:14:25: error[XN3008]: calls with two or more arguments name each one: `total: ..`\n  call shape: keep_if_big(total: Int, n: Int) -> Int\n14 |     total = keep_if_big(total, 6);\n   |                         ^^^^^\n  fix: insert `total:`\n  run `xenith explain XN3008` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t6-01-opencode-deepseek-t6-teach-r1.xn:14:32: error[XN3008]: calls with two or more arguments name each one: `n: ..`\n14 |     total = keep_if_big(total, 6);\n   |                                ^\n  fix: insert `n:`\n  run `xenith explain XN3008` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t6-01-opencode-deepseek-t6-teach-r1.xn:15:25: error[XN3008]: calls with two or more arguments name each one: `total: ..`\n  call shape: keep_if_big(total: Int, n: Int) -> Int\n15 |     total = keep_if_big(total, 9);\n   |                         ^^^^^\n  fix: insert `total:`\n  run `xenith explain XN3008` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t6-01-opencode-deepseek-t6-teach-r1.xn:15:32: error[XN3008]: calls with two or more arguments name each one: `n: ..`\n15 |     total = keep_if_big(total, 9);\n   |                                ^\n  fix: insert `n:`\n  run `xenith explain XN3008` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t6-01-opencode-deepseek-t6-teach-r1.xn:16:25: error[XN3008]: calls with two or more arguments name each one: `total: ..`\n  call shape: keep_if_big(total: Int, n: Int) -> Int\n16 |     total = keep_if_big(total, 14);\n   |                         ^^^^^\n  fix: insert `total:`\n  run `xenith explain XN3008` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t6-01-opencode-deepseek-t6-teach-r1.xn:16:32: error[XN3008]: calls with two or more arguments name each one: `n: ..`\n16 |     total = keep_if_big(total, 14);\n   |                                ^^\n  fix: insert `n:`\n  run `xenith explain XN3008` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t6-01-opencode-deepseek-t6-teach-r1.xn:17:25: error[XN3008]: calls with two or more arguments name each one: `total: ..`\n17 |     total = keep_if_big(total, 3);\n   |                         ^^^^^\n  fix: insert `total:`\n  run `xenith explain XN3008` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t6-01-opencode-deepseek-t6-teach-r1.xn:17:32: error[XN3008]: calls with two or more arguments name each one: `n: ..`\n17 |     total = keep_if_big(total, 3);\n   |                                ^\n  fix: insert `n:`\n  run `xenith explain XN3008` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t6-01-opencode-deepseek-t6-teach-r1.xn:18:25: error[XN3008]: calls with two or more arguments name each one: `total: ..`\n18 |     total = keep_if_big(total, 8);\n   |                         ^^^^^\n  fix: insert `total:`\n  run `xenith explain XN3008` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t6-01-opencode-deepseek-t6-teach-r1.xn:18:32: error[XN3008]: calls with two or more arguments name each one: `n: ..`\n18 |     total = keep_if_big(total, 8);\n   |                                ^\n  fix: insert `n:`\n  run `xenith explain XN3008` for the rule\n",
+          "outcome": "diagnostics",
+          "seconds": 25.8
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 13.7
+        }
+      ],
+      "task": "t6-01",
+      "tier": 6
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 12.6
+        }
+      ],
+      "task": "t6-02",
+      "tier": 6
+    }
+  ],
+  "totals": {
+    "pass_at_1": 1,
+    "passed": 2,
+    "tasks": 2
+  },
+  "unix_time": 1786557635
+}

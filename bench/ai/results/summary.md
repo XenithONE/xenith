@@ -97,3 +97,22 @@ order as the 0011 pair; same cell format as above.
 | `opencode-nemotron` | 0 · 0/6 | 0 · 0/6 |
 | `cursor` | 1 · 3/6 (3.0) | 1 · 4/6 (2.2) |
 | **total** | **1 · 20/42** | **1 · 15/42** |
+
+## Closures (0014 t6)
+
+The design/0014 §6 pair: the v3-plain/v3-teach prompt assembly (no docs,
+diagnostic teaching off/on) over the two frozen tier-6 closure tasks —
+t6-01 pure transform, t6-02 Io temptation. Same cell format as above;
+XN4005/XN4006 misuse rates are read post-hoc from the recorded
+`diag_codes`.
+
+| model | t6-plain | t6-teach |
+| --- | --- | --- |
+| `codex` | 2 · 2/2 (1.0) | 2 · 2/2 (1.0) |
+| `grok` | 0 · 0/2 | 0 · 0/2 |
+| `agy` | 2 · 2/2 (1.0) | 2 · 2/2 (1.0) |
+| `opencode` | 1 · 2/2 (1.5) | 2 · 2/2 (1.0) |
+| `opencode-deepseek` | 2 · 2/2 (1.0) | 1 · 2/2 (1.5) |
+| `opencode-nemotron` | 1 · 1/2 (1.0) | 2 · 2/2 (1.0) |
+| `cursor` | 2 · 2/2 (1.0) | 2 · 2/2 (1.0) |
+| **total** | **10 · 11/14** | **11 · 12/14** |

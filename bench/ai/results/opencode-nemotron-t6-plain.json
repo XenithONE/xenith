@@ -1,0 +1,39 @@
+{
+  "condition": "t6-plain",
+  "model": "opencode-nemotron",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "model error: no reply within 300s",
+          "seconds": 301.4
+        }
+      ],
+      "task": "t6-01",
+      "tier": 6
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 165.7
+        }
+      ],
+      "task": "t6-02",
+      "tier": 6
+    }
+  ],
+  "totals": {
+    "pass_at_1": 1,
+    "passed": 1,
+    "tasks": 2
+  },
+  "unix_time": 1786558019
+}

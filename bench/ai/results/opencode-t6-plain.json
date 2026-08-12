@@ -1,0 +1,48 @@
+{
+  "condition": "t6-plain",
+  "model": "opencode",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 23.8
+        }
+      ],
+      "task": "t6-01",
+      "tier": 6
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN2003"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t6-02-opencode-t6-plain-r1.xn:2:47: error[XN2003]: `String` has no method named `length`\n2 |     io.write(text: \"ink=\".concat(other: \"ink\".length().to_text()).concat(other: \"\\n\"))?;\n  |                                               ^^^^^^\n  run `xenith explain XN2003` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t6-02-opencode-t6-plain-r1.xn:3:51: error[XN2003]: `String` has no method named `length`\n3 |     io.write(text: \"paper=\".concat(other: \"paper\".length().to_text()).concat(other: \"\\n\"))?;\n  |                                                   ^^^^^^\n  run `xenith explain XN2003` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench/ai/scratch\\t6-02-opencode-t6-plain-r1.xn:4:51: error[XN2003]: `String` has no method named `length`\n4 |     io.write(text: \"clips=\".concat(other: \"clips\".length().to_text()).concat(other: \"\\n\"))?;\n  |                                                   ^^^^^^\n  run `xenith explain XN2003` for the rule\n",
+          "outcome": "diagnostics",
+          "seconds": 17.7
+        },
+        {
+          "attempt": 2,
+          "outcome": "pass",
+          "seconds": 14.2
+        }
+      ],
+      "task": "t6-02",
+      "tier": 6
+    }
+  ],
+  "totals": {
+    "pass_at_1": 1,
+    "passed": 2,
+    "tasks": 2
+  },
+  "unix_time": 1786557601
+}
