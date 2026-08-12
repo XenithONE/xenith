@@ -710,16 +710,15 @@ impl<'a> Interp<'a> {
                 })
             }
 
-            ast::ExprKind::Lambda {
-                params,
-                is_async,
-                body,
-                ..
-            } => Ok(Value::Fn {
+            // Creation-time snapshot (design/0014 §2): the closure copies
+            // everything visible, once, here. The checker already guaranteed
+            // that what the body actually touches is CaptureSafe and not a
+            // `var`, so copying the superset is observationally identical.
+            ast::ExprKind::Lambda { params, body } => Ok(Value::Fn {
                 params: params.iter().map(|p| p.name.name.clone()).collect(),
                 body: Body::Expr(body),
                 captured: env.snapshot(),
-                is_async: *is_async,
+                is_async: false,
                 home: self.current,
             }),
 
@@ -1164,6 +1163,62 @@ impl<'a> Interp<'a> {
             }
             (Value::List(items), "len") => Ok(Value::Int(items.len() as i64)),
             (Value::List(items), "is_empty") => Ok(Value::Bool(items.is_empty())),
+            // ----- the design/0014 §4 combinators -----
+            //
+            // The only way a closure is ever invoked: by std, left to right,
+            // returning new values. The receiver is a copy and stays whole.
+            (Value::List(items), "map") => {
+                let Some(f) = evaluated.into_iter().next() else {
+                    return trap(span, "map takes a closure");
+                };
+                let mut out = Vec::with_capacity(items.len());
+                for item in items {
+                    out.push(self.apply(f.clone(), vec![item.clone()], span)?);
+                }
+                Ok(Value::List(out))
+            }
+            (Value::List(items), "filter") => {
+                let Some(f) = evaluated.into_iter().next() else {
+                    return trap(span, "filter takes a closure");
+                };
+                let mut out = Vec::new();
+                for item in items {
+                    match self.apply(f.clone(), vec![item.clone()], span)? {
+                        Value::Bool(true) => out.push(item.clone()),
+                        Value::Bool(false) => {}
+                        _ => return trap(span, "`filter` needs its closure to return a Bool"),
+                    }
+                }
+                Ok(Value::List(out))
+            }
+            (Value::List(items), "fold") => {
+                // Left fold: `fold(init: 0, f: |acc, x| ..)` — the named
+                // argument rule fixed the order at the call site.
+                let mut taken = evaluated.into_iter();
+                let (Some(init), Some(f)) = (taken.next(), taken.next()) else {
+                    return trap(span, "fold takes an initial value and a closure");
+                };
+                let mut acc = init;
+                for item in items {
+                    acc = self.apply(f.clone(), vec![acc, item.clone()], span)?;
+                }
+                Ok(acc)
+            }
+            (Value::List(items), "find") => {
+                // Short-circuits: elements after the first hit are never
+                // touched (design/0014 §4 — the contract, not an optimisation).
+                let Some(f) = evaluated.into_iter().next() else {
+                    return trap(span, "find takes a closure");
+                };
+                for item in items {
+                    match self.apply(f.clone(), vec![item.clone()], span)? {
+                        Value::Bool(true) => return Ok(self.option_of(Some(item.clone()))),
+                        Value::Bool(false) => {}
+                        _ => return trap(span, "`find` needs its closure to return a Bool"),
+                    }
+                }
+                Ok(self.option_of(None))
+            }
             (Value::List(items), "get") => {
                 let Some(Value::Int(index)) = evaluated.first() else {
                     return trap(span, "get takes an Int");

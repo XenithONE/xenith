@@ -22,8 +22,10 @@ const SAMPLES: &[&str] = &[
     "fn f(x: ??) -> ??ret { ??body }",
     "fn f(m: Map<String, List<Int>>) {}",
     "fn f(p: Player) { match p { Player { name, score: s } => unit, } }",
-    "fn f() { let g = move || 1; }",
-    "fn f() { let g = async move |x: Int| x; }",
+    "fn f(xs: List<Int>) -> List<Int> { xs.map(|x| x + 1) }",
+    "fn f(xs: List<Int>) -> Int { xs.fold(init: 0, f: |acc, x| acc + x) }",
+    "fn f(xs: List<Int>) -> Option<Int> { xs.find(|_| true) }",
+    "fn apply(f: fn(acc: Int, x: Int) -> Int) -> Int { 1 }",
     "fn f() -> Int { a.b().c?.d.await }",
     "/// Doc\nfn f() {}",
     "fn f() { // a comment\n let a = 1; }",
@@ -286,6 +288,33 @@ fn pub_renders_before_the_declaration_keyword() {
     name: String,
 }
 "
+    );
+}
+
+#[test]
+fn closures_format_canonically() {
+    // A single-expression body loses its braces (design/0014 §3) and no
+    // annotation is ever added; multi-statement bodies keep the block.
+    let output = formatted("fn f(xs: List<Int>) -> List<Int> { xs.map(|x| { x + 1 }) }");
+    assert!(output.contains("xs.map(|x| x + 1)"), "{output}");
+    let output =
+        formatted("fn f(xs: List<Int>) -> List<Int> { xs.filter(|x| { let y = x; y > 0 }) }");
+    assert!(
+        output.contains("xs.filter(|x| { let y = x; y > 0 })"),
+        "{output}"
+    );
+    let output = formatted("fn f(xs: List<Int>) -> Option<Int> { xs.find(|_| true) }");
+    assert!(output.contains("xs.find(|_| true)"), "{output}");
+}
+
+#[test]
+fn fn_type_parameter_names_survive_formatting() {
+    // The names are documentation and the formatter keeps them (design/0014
+    // §1); the checker owns rejecting the position.
+    let output = formatted("fn apply(f: fn(acc:Int,x:Int)->Int) -> Int { 1 }");
+    assert!(
+        output.contains("f: fn(acc: Int, x: Int) -> Int"),
+        "{output}"
     );
 }
 

@@ -49,6 +49,17 @@ fn printing(body: &str) -> String {
     )
 }
 
+/// [`printing`] for a `body` that is already a `String`.
+fn printing_text(body: &str) -> String {
+    format!(
+        "fn main(io: Io) -> Result<Unit, Error> uses {{Io.write}} {{\n\
+             let value = {body};\n\
+             io.write(text: value)?;\n\
+             return Ok(unit);\n\
+         }}"
+    )
+}
+
 // ---------------------------------------------------------------- evaluation
 
 #[test]
@@ -811,17 +822,135 @@ fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
     assert_eq!(stdout_of(source), "{a: 1, b: 2}");
 }
 
+// --------------------------------------------------- closures (design/0014)
+
+#[test]
+fn map_transforms_left_to_right() {
+    assert_eq!(
+        stdout_of(&printing_text("[1, 2, 3].map(|x| x * 2).join(sep: \",\")")),
+        "2,4,6"
+    );
+}
+
+#[test]
+fn filter_keeps_the_hits_in_order() {
+    assert_eq!(
+        stdout_of(&printing_text(
+            "[1, 2, 3, 4].filter(|x| x % 2 == 0).join(sep: \",\")"
+        )),
+        "2,4"
+    );
+}
+
+#[test]
+fn fold_is_a_left_fold() {
+    assert_eq!(
+        stdout_of(&printing("[1, 2, 3, 4].fold(init: 0, f: |acc, x| acc + x)")),
+        "10"
+    );
+    // Left-to-right, observable through string building: 1 then 2 then 3.
+    let source = "fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    \
+                      let text = [1, 2, 3].fold(init: \"\", f: |acc, x| acc.concat(other: x.to_text()));\n    \
+                      io.write(text: text)?;\n    return Ok(unit);\n}";
+    assert_eq!(stdout_of(source), "123");
+}
+
+#[test]
+fn find_returns_the_first_hit_and_short_circuits() {
+    let source = "fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    \
+                      match [1, 0, 2].find(|x| 10 / x > 4) {\n        \
+                          Some(hit) => io.write(text: hit.to_text())?,\n        \
+                          None => io.write(text: \"none\")?,\n    }\n    \
+                      return Ok(unit);\n}";
+    // The first element already matches; if `find` kept going, `10 / 0`
+    // would trap — short-circuiting is the contract, not an optimisation.
+    assert_eq!(stdout_of(source), "1");
+
+    let source = "fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    \
+                      match [1, 2].find(|x| x > 9) {\n        \
+                          Some(hit) => io.write(text: hit.to_text())?,\n        \
+                          None => io.write(text: \"none\")?,\n    }\n    \
+                      return Ok(unit);\n}";
+    assert_eq!(stdout_of(source), "none");
+}
+
+#[test]
+fn a_capture_is_a_creation_time_copy() {
+    assert_eq!(
+        stdout_of(&printing_text(
+            "{ let base = 10; [1, 2].map(|x| x + base).join(sep: \",\") }"
+        )),
+        "11,12"
+    );
+}
+
+#[test]
+fn a_discarded_parameter_still_consumes_its_argument() {
+    assert_eq!(
+        stdout_of(&printing_text("[1, 2, 3].map(|_| 7).join(sep: \",\")")),
+        "7,7,7"
+    );
+}
+
+#[test]
+fn nested_closures_run_inside_out() {
+    assert_eq!(
+        stdout_of(&printing_text(
+            "[[1, 2], [3]].map(|xs| xs.fold(init: 0, f: |acc, x| acc + x)).join(sep: \",\")"
+        )),
+        "3,3"
+    );
+}
+
+#[test]
+fn the_receiver_is_not_written_by_a_combinator() {
+    let source = "fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    \
+                      let xs = [1, 2, 3];\n    \
+                      let ys = xs.filter(|x| x > 1);\n    \
+                      io.write(text: xs.join(sep: \"\"))?;\n    \
+                      io.write(text: \"/\")?;\n    \
+                      io.write(text: ys.join(sep: \"\"))?;\n    \
+                      return Ok(unit);\n}";
+    assert_eq!(stdout_of(source), "123/23");
+}
+
+#[test]
+fn a_trap_inside_a_closure_carries_its_span() {
+    let message = trap_of(&printing_text("[1, 0].map(|x| 10 / x).join(sep: \",\")"));
+    assert!(message.contains("division by zero"), "{message}");
+}
+
+#[test]
+fn a_hole_inside_a_closure_body_traps_precisely() {
+    // Holes type-check clean and run until reached — inside a closure too.
+    let source = "fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    \
+                      let ys = [1].filter(|x| ??keep);\n    \
+                      io.write(text: ys.join(sep: \"\"))?;\n    return Ok(unit);\n}";
+    let parsed = parse(source);
+    assert!(parsed.diagnostics.is_empty());
+    let analysis = xenith_sema::analyze(&parsed.module);
+    assert!(
+        analysis.diagnostics.is_empty(),
+        "{:?}",
+        analysis.diagnostics
+    );
+    let (table, _) = def::collect(&parsed.module);
+    let outcome = run(&parsed.module, &table);
+    assert_eq!(outcome.exit, 101);
+    assert!(outcome.error.expect("trap").0.contains("??keep"));
+}
+
 // ------------------------------------------------- unshipped constructs
 
 #[test]
-fn a_lambda_is_refused_at_check_not_run() {
-    // 0008 §1: closures parse for recovery and are refused by the checker,
-    // so no program reaches the interpreter holding one.
-    let parsed = parse("fn main() -> Int {\n    let add = |n: Int| n + 1;\n    add(5)\n}");
+fn a_misplaced_closure_is_refused_at_check_not_run() {
+    // design/0014 §3: a closure is written only as a call argument, so a
+    // `let`-bound one never reaches the interpreter.
+    let parsed = parse("fn main() -> Int {\n    let add = |n| n + 1;\n    add(5)\n}");
     assert!(parsed.diagnostics.is_empty(), "the parser still accepts it");
     let analysis = xenith_sema::analyze(&parsed.module);
     assert!(
-        analysis.diagnostics.iter().any(|d| d.code.id() == "XN1008"),
+        analysis.diagnostics.iter().any(|d| d.code.id() == "XN1011"),
         "{:?}",
         analysis.diagnostics
     );

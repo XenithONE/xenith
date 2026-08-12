@@ -444,6 +444,86 @@ impl DefTable {
                         bounds: &[("T", Property::Text)],
                         mutates_receiver: false,
                     },
+                    // ----- the design/0014 §4 combinators -----
+                    //
+                    // All four traverse left to right and return new values;
+                    // the receiver is never written. Appended after the 0007
+                    // surface so the frozen first-six of the XN2003 catalogue
+                    // does not move.
+                    MethodSig {
+                        name: "map",
+                        own_generics: &["U"],
+                        params: vec![(
+                            "f",
+                            Type::Fn {
+                                params: vec![t()],
+                                ret: Box::new(Type::Param("U".into())),
+                                effects: EffectSet::empty(),
+                            },
+                        )],
+                        ret: Type::Named {
+                            def: self.list,
+                            args: vec![Type::Param("U".into())],
+                        },
+                        effects: EffectSet::empty(),
+                        bounds: &[],
+                        mutates_receiver: false,
+                    },
+                    MethodSig {
+                        name: "filter",
+                        own_generics: &[],
+                        params: vec![(
+                            "f",
+                            Type::Fn {
+                                params: vec![t()],
+                                ret: Box::new(Type::Bool),
+                                effects: EffectSet::empty(),
+                            },
+                        )],
+                        ret: list_t(),
+                        effects: EffectSet::empty(),
+                        bounds: &[],
+                        mutates_receiver: false,
+                    },
+                    MethodSig {
+                        // Left fold: `xs.fold(init: 0, f: |acc, x| acc + x)`.
+                        // Two parameters, so the named-argument rule applies
+                        // on its own (design/0014 §4).
+                        name: "fold",
+                        own_generics: &["B"],
+                        params: vec![
+                            ("init", Type::Param("B".into())),
+                            (
+                                "f",
+                                Type::Fn {
+                                    params: vec![Type::Param("B".into()), t()],
+                                    ret: Box::new(Type::Param("B".into())),
+                                    effects: EffectSet::empty(),
+                                },
+                            ),
+                        ],
+                        ret: Type::Param("B".into()),
+                        effects: EffectSet::empty(),
+                        bounds: &[],
+                        mutates_receiver: false,
+                    },
+                    MethodSig {
+                        // Short-circuits on the first hit.
+                        name: "find",
+                        own_generics: &[],
+                        params: vec![(
+                            "f",
+                            Type::Fn {
+                                params: vec![t()],
+                                ret: Box::new(Type::Bool),
+                                effects: EffectSet::empty(),
+                            },
+                        )],
+                        ret: option_t(),
+                        effects: EffectSet::empty(),
+                        bounds: &[],
+                        mutates_receiver: false,
+                    },
                 ]
             }
             // Map<K, V> — design/0007 §3. Every method demands `K: Eq + Hash`
@@ -608,6 +688,90 @@ impl DefTable {
                         self.components_satisfy(*def, args, property, bounds)
                     }
                     Property::Text => unreachable!("handled above"),
+                }
+            }
+        }
+    }
+
+    /// CaptureSafe, the inductive definition design/0014 §1 fixes: what a
+    /// closure may copy at creation.
+    ///
+    /// Primitives are safe; products, sums, `List`, `Map`, `Option` and
+    /// `Result` are safe when every component is; `fn(..)` types are safe.
+    /// Capability types (`Io`) are not; neither is anything that introduces
+    /// identity, shared mutation or a resource handle (`Shared`, `Task` —
+    /// the 0004 primitives are reserved non-CaptureSafe before they exist).
+    /// A type parameter is unsafe unless a bound promises otherwise, and no
+    /// such bound exists in the sealed property set yet, so in v1 every
+    /// unresolved parameter is unsafe.
+    pub fn is_capture_safe(&self, ty: &Type) -> bool {
+        self.capture_safe_inner(ty, &mut Vec::new())
+    }
+
+    fn capture_safe_inner(&self, ty: &Type, visiting: &mut Vec<DefId>) -> bool {
+        match ty {
+            Type::Int | Type::Float | Type::Bool | Type::Str | Type::Char | Type::Unit => true,
+            // Silence over poison and holes: a missing type is never the
+            // thing to report a capture violation about.
+            Type::Error | Type::Hole(_) => true,
+            // No `CaptureSafe` bound is spellable in v1, so an unresolved
+            // parameter has nothing to promise safety with.
+            Type::Param(_) => false,
+            Type::Fn { .. } => true,
+            Type::Named { def, args } => {
+                if *def == self.shared || *def == self.task {
+                    return false;
+                }
+                let info = self.def(*def);
+                match &info.kind {
+                    DefKind::Opaque => {
+                        if info.name == "Io" {
+                            return false; // the capability type
+                        }
+                        if info.name == "Error" {
+                            return true; // a plain value, no identity
+                        }
+                        // The containers: safe when their contents are.
+                        args.iter().all(|a| self.capture_safe_inner(a, visiting))
+                    }
+                    DefKind::Struct { fields } => {
+                        // Recursive shapes reach themselves through a
+                        // container; the cycle itself adds no unsafety.
+                        if visiting.contains(def) {
+                            return true;
+                        }
+                        visiting.push(*def);
+                        let bindings: Vec<(String, Type)> = info
+                            .generics
+                            .iter()
+                            .cloned()
+                            .zip(args.iter().cloned())
+                            .collect();
+                        let safe = fields.iter().all(|f| {
+                            self.capture_safe_inner(&f.ty.substitute(&bindings), visiting)
+                        });
+                        visiting.pop();
+                        safe
+                    }
+                    DefKind::Enum { variants } => {
+                        if visiting.contains(def) {
+                            return true;
+                        }
+                        visiting.push(*def);
+                        let bindings: Vec<(String, Type)> = info
+                            .generics
+                            .iter()
+                            .cloned()
+                            .zip(args.iter().cloned())
+                            .collect();
+                        let safe = variants.iter().all(|v| {
+                            v.payload.iter().all(|p| {
+                                self.capture_safe_inner(&p.substitute(&bindings), visiting)
+                            })
+                        });
+                        visiting.pop();
+                        safe
+                    }
                 }
             }
         }
@@ -1174,13 +1338,17 @@ pub fn lower_type(
         }
         ast::TypeKind::Error => Type::Error,
         ast::TypeKind::Fn { .. } => {
-            // Parsed for recovery, not shipped (design/0008 §1): function
-            // values do not exist (0007 D3), so no annotation may name their
-            // type until the closure-effects RFC lands.
+            // Parsed for recovery, not shipped in user code (design/0014 §3):
+            // `fn(..)` types appear only in std signatures, where the
+            // argument-position closure rule keeps them uncallable as values.
+            // A user position that could name one — a `let`, a parameter, a
+            // field — is a position that could call or store one.
             diagnostics.push(Diagnostic::error(
                 DiagCode::UnshippedConstruct,
                 ty.span,
-                "function types are not part of the language yet",
+                "function types appear only in std signatures for now; \
+                 higher-order user functions come later — use the std \
+                 combinators (`map`, `filter`, `fold`, `find`)",
             ));
             Type::Error
         }

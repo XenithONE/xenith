@@ -141,6 +141,17 @@ pub enum DiagCode {
     /// XN1008 — a construct the parser accepts for recovery but the shipped
     /// language does not include.
     UnshippedConstruct,
+    /// XN1009 — a closure parameter carries a type annotation.
+    ClosureAnnotation,
+    /// XN1010 — a Rust-shaped closure form: `move`, `async`, reference or
+    /// destructuring patterns in the parameter list.
+    ClosureRustForm,
+    /// XN1011 — a closure written somewhere other than a call argument
+    /// matching a `fn(..)` parameter.
+    ClosureOutsideCall,
+    /// XN1012 — `?`, `return`, `break` or `continue` trying to cross a
+    /// closure boundary.
+    ClosureEarlyExit,
 
     /// XN2001 — a type name that resolves to nothing.
     UnknownType,
@@ -188,6 +199,14 @@ pub enum DiagCode {
 
     /// XN4001 — a call performs an effect the enclosing function does not declare.
     EffectNotPermitted,
+    /// XN4005 — a closure captures a value whose type is not CaptureSafe.
+    CapabilityCapture,
+    /// XN4006 — a closure body performs a capability effect.
+    EffectInClosure,
+    /// XN4007 — a closure references the binding its own `let` is initializing.
+    ClosureSelfReference,
+    /// XN4008 — a closure captures a `var` binding.
+    CaptureOfVar,
 
     /// XN5001 — a `match` does not cover every possible value.
     NonExhaustiveMatch,
@@ -228,6 +247,10 @@ impl DiagCode {
         DiagCode::ExpectedPattern,
         DiagCode::ExpectedItem,
         DiagCode::UnshippedConstruct,
+        DiagCode::ClosureAnnotation,
+        DiagCode::ClosureRustForm,
+        DiagCode::ClosureOutsideCall,
+        DiagCode::ClosureEarlyExit,
         DiagCode::UnknownType,
         DiagCode::UnknownName,
         DiagCode::UnknownMethod,
@@ -250,6 +273,10 @@ impl DiagCode {
         DiagCode::PropertyNotSatisfied,
         DiagCode::InfiniteSizeType,
         DiagCode::EffectNotPermitted,
+        DiagCode::CapabilityCapture,
+        DiagCode::EffectInClosure,
+        DiagCode::ClosureSelfReference,
+        DiagCode::CaptureOfVar,
         DiagCode::NonExhaustiveMatch,
         DiagCode::InvalidModulePath,
         DiagCode::ModuleCaseCollision,
@@ -278,6 +305,10 @@ impl DiagCode {
             DiagCode::ExpectedPattern => "XN1006",
             DiagCode::ExpectedItem => "XN1007",
             DiagCode::UnshippedConstruct => "XN1008",
+            DiagCode::ClosureAnnotation => "XN1009",
+            DiagCode::ClosureRustForm => "XN1010",
+            DiagCode::ClosureOutsideCall => "XN1011",
+            DiagCode::ClosureEarlyExit => "XN1012",
             DiagCode::UnknownType => "XN2001",
             DiagCode::UnknownName => "XN2002",
             DiagCode::UnknownMethod => "XN2003",
@@ -300,6 +331,10 @@ impl DiagCode {
             DiagCode::PropertyNotSatisfied => "XN3010",
             DiagCode::InfiniteSizeType => "XN3011",
             DiagCode::EffectNotPermitted => "XN4001",
+            DiagCode::CapabilityCapture => "XN4005",
+            DiagCode::EffectInClosure => "XN4006",
+            DiagCode::ClosureSelfReference => "XN4007",
+            DiagCode::CaptureOfVar => "XN4008",
             DiagCode::NonExhaustiveMatch => "XN5001",
             DiagCode::InvalidModulePath => "XN7001",
             DiagCode::ModuleCaseCollision => "XN7002",
@@ -433,15 +468,63 @@ impl DiagCode {
             }
             DiagCode::UnshippedConstruct => {
                 "This construct is parsed but is not part of the shipped language.\n\n\
-                 The parser is total: it accepts closures, function types, `.await`, \
-                 `async fn` and `for` so that a broken or half-edited file still \
-                 yields a tree to repair from. Accepting the syntax is not shipping \
-                 the feature — each of these is gated on a future RFC (closure \
-                 effect rules for function values and `async`; an iteration RFC for \
-                 `for`), and passing them through half-checked would let an effect \
-                 escape its declaration.\n\n\
-                 Until then: write a named function instead of a closure, and \
-                 iterate with `while` + `len()` + `get(index:)`."
+                 The parser is total: it accepts `.await`, `async fn`, `for`, \
+                 function-type annotations and named functions used as values, so \
+                 that a broken or half-edited file still yields a tree to repair \
+                 from. Accepting the syntax is not shipping the feature — each of \
+                 these is gated on a future RFC, and passing them through \
+                 half-checked would let an effect escape its declaration.\n\n\
+                 Closures shipped with design/0014, but only as call arguments to \
+                 `fn(..)`-typed parameters (the std combinators `map`, `filter`, \
+                 `fold`, `find`). Function types still cannot be written in user \
+                 code, and a named function is still called, never passed: wrap the \
+                 call in a closure instead. Iterate with `while` + `len()` + \
+                 `get(index:)`."
+            }
+            DiagCode::ClosureAnnotation => {
+                "Closure parameters take no type annotation.\n\n\
+                 There is no `|x: Int|` form. A closure is written only as a call \
+                 argument, and the parameter types come from the `fn(..)` type of \
+                 the parameter it is passed to — `xs.map(f: fn(x: Int) -> U)` \
+                 already fixes what `x` is, so an annotation could only agree or \
+                 lie.\n\n\
+                 Write the bare name: `xs.map(|x| x + 1)`. The attached fix deletes \
+                 the annotation."
+            }
+            DiagCode::ClosureRustForm => {
+                "This closure uses a form from another language that Xenith does \
+                 not have.\n\n\
+                 There is no `move` (a closure always copies the values it uses at \
+                 creation — there is nothing else it could do), no `async` closure, \
+                 no reference patterns (`|&x|` — the closure receives a copy), no \
+                 `mut` parameters, and no destructuring in the parameter list.\n\n\
+                 A closure parameter is a plain name or `_`. Closures are plans: \
+                 effects run in the enclosing named fn's `while` loop, and the \
+                 closure returns data."
+            }
+            DiagCode::ClosureOutsideCall => {
+                "A closure can be written in exactly one place: as a call argument \
+                 for a parameter declared with a `fn(..)` type — in v1, the std \
+                 combinators `map`, `filter`, `fold` and `find`.\n\n\
+                 It cannot be bound with `let`, returned, stored in a container or \
+                 a field, or passed where a non-function type is expected. This is \
+                 what keeps \"call a function value\" out of the language: a \
+                 closure that cannot be stored cannot be called from somewhere its \
+                 effects were never checked.\n\n\
+                 Either inline the closure at the call that consumes it, or extract \
+                 a named fn and call that instead."
+            }
+            DiagCode::ClosureEarlyExit => {
+                "`?`, `return`, `break` and `continue` cannot cross a closure \
+                 boundary.\n\n\
+                 A closure body is an expression that produces a value for its \
+                 combinator — `map` collects it, `filter` and `find` test it, \
+                 `fold` threads it. There is no enclosing function to return from \
+                 and no enclosing loop to break: the combinator owns the \
+                 iteration.\n\n\
+                 Closures cannot early-return; failure-carrying iteration belongs \
+                 in a `while` loop of the enclosing named fn, where `?`, `break` \
+                 and `return` all mean what they say."
             }
             DiagCode::UnknownType => {
                 "This type name does not resolve to anything.\n\n\
@@ -657,6 +740,57 @@ impl DiagCode {
                  effectful call out to a caller that already holds the capability, \
                  and pass the result in as a value."
             }
+            DiagCode::CapabilityCapture => {
+                "A closure may capture only CaptureSafe values, and this one is \
+                 not.\n\n\
+                 CaptureSafe is decided by the type, inductively: primitives are \
+                 safe; structs, enums, `List`, `Map`, `Option` and `Result` are \
+                 safe when every component is; `fn(..)` types are safe. \
+                 Capabilities (`Io`), types with identity or shared mutation \
+                 (`Shared`), resource handles (`Task`), and type parameters with \
+                 no bound to promise otherwise are not — a capture is a copy \
+                 taken when the closure is created, and none of those have an \
+                 honest copy.\n\n\
+                 Closures are plans: effects run in the enclosing named fn's \
+                 `while` loop, and the closure returns data. Keep the capability \
+                 in the named fn and pass the closure the data it needs."
+            }
+            DiagCode::EffectInClosure => {
+                "A closure body performs no effects — its effect budget is the \
+                 empty set, implicitly and always.\n\n\
+                 That is the first pillar of design/0014: whatever route an \
+                 effect takes — a capability method called directly, a capability \
+                 arriving through a parameter, a call to a named fn whose `uses` \
+                 clause is non-empty, a generic that turns out effectful — the \
+                 body check refuses it. There is no clause to widen, because a \
+                 `fn(..)` type carries no effect set to widen it against.\n\n\
+                 Closures are plans: effects run in the enclosing named fn's \
+                 `while` loop, and the closure returns data. Compute in the \
+                 closure; print, read and send from the named fn that holds the \
+                 capability."
+            }
+            DiagCode::ClosureSelfReference => {
+                "This closure refers to the binding its own `let` is \
+                 initializing.\n\n\
+                 The closure is created while the binding still has no value, and \
+                 a capture is a copy taken at creation — there is nothing to \
+                 copy yet. The same rule refuses a closure reaching a binding \
+                 forward before its `let` runs: definite initialization, applied \
+                 to captures.\n\n\
+                 Recursion belongs in a named fn, which is resolved rather than \
+                 captured and needs no value to exist before it is called."
+            }
+            DiagCode::CaptureOfVar => {
+                "A closure cannot capture a `var` binding.\n\n\
+                 A capture is a copy taken once, when the closure is created. A \
+                 `var` exists to be reassigned, and updates after that snapshot \
+                 would never be visible inside the closure — the two meanings \
+                 contradict, so the capture is refused rather than silently \
+                 freezing a value that looks live.\n\n\
+                 Bind the current value to a `let` first and let the closure \
+                 capture that: `let snapshot = total;` makes the copy explicit \
+                 and the code honest about when it was taken."
+            }
             DiagCode::NonExhaustiveMatch => {
                 "This `match` does not cover every value its scrutinee can hold.\n\n\
                  Every possible value must land on some arm. A wildcard `_` or a \
@@ -797,6 +931,17 @@ impl Edit {
         }
     }
 }
+
+/// The one closure teach (design/0014 §1): every closure diagnostic that
+/// teaches converges on this sentence, appended as a teach note so
+/// `--diagnostic-teaching=off` strips exactly it.
+pub const CLOSURE_PLAN_TEACH: &str = "closures are plans — effects run in the \
+enclosing named fn's `while` loop, and the closure returns data";
+
+/// The early-exit teach (design/0014 §3): `?`/`return`/`break` in a closure
+/// body converge on this sentence instead.
+pub const CLOSURE_EXIT_TEACH: &str = "closures cannot early-return; \
+failure-carrying iteration belongs in a `while` loop";
 
 /// The most items one teaching block may carry (design/0009 §3): a finite
 /// contract, not a terminal-height guess.
@@ -1145,6 +1290,10 @@ mod tests {
                 | DiagCode::ExpectedPattern
                 | DiagCode::ExpectedItem
                 | DiagCode::UnshippedConstruct
+                | DiagCode::ClosureAnnotation
+                | DiagCode::ClosureRustForm
+                | DiagCode::ClosureOutsideCall
+                | DiagCode::ClosureEarlyExit
                 | DiagCode::UnknownType
                 | DiagCode::UnknownName
                 | DiagCode::UnknownMethod
@@ -1167,6 +1316,10 @@ mod tests {
                 | DiagCode::PropertyNotSatisfied
                 | DiagCode::InfiniteSizeType
                 | DiagCode::EffectNotPermitted
+                | DiagCode::CapabilityCapture
+                | DiagCode::EffectInClosure
+                | DiagCode::ClosureSelfReference
+                | DiagCode::CaptureOfVar
                 | DiagCode::NonExhaustiveMatch
                 | DiagCode::InvalidModulePath
                 | DiagCode::ModuleCaseCollision
@@ -1178,8 +1331,8 @@ mod tests {
                 | DiagCode::CrossModuleAssignment => seen += 1,
             }
         }
-        assert_eq!(seen, 45, "update DiagCode::ALL when adding a variant");
-        assert_eq!(DiagCode::ALL.len(), 45);
+        assert_eq!(seen, 53, "update DiagCode::ALL when adding a variant");
+        assert_eq!(DiagCode::ALL.len(), 53);
     }
 
     #[test]

@@ -202,13 +202,25 @@ fn an_unknown_property_in_a_bound_is_reported_at_the_signature() {
 }
 
 #[test]
-fn equality_on_functions_is_rejected() {
-    // Function-type annotations are unshipped (0008 §1), but a named
-    // function bound as a value still exists — and still compares as nothing.
+fn a_named_function_is_not_a_value() {
+    // design/0014 §5: no fn-value spelling for named fns. Binding one is
+    // refused where the reference happens; the poisoned binding stays
+    // silent downstream, so `f == f` adds nothing.
     let source = "fn double(n: Int) -> Int { n + n }\n\
                   fn g() -> Bool { let f = double; f == f }";
     let codes = codes_of(source);
-    assert_eq!(codes, ["XN3010"]);
+    assert_eq!(codes, ["XN1008"]);
+}
+
+#[test]
+fn a_named_function_cannot_ride_into_a_combinator() {
+    // The soundness hole the refusal closes: an effectful named fn passed
+    // as `f:` would run its effects outside every check. The reference
+    // itself is refused, before effects even come up; the undetermined `U`
+    // that follows is the ordinary poison cascade.
+    let source = "fn double(n: Int) -> Int { n + n }\n\
+                  fn g(xs: List<Int>) -> List<Int> { xs.map(f: double) }";
+    assert_eq!(codes_of(source), ["XN1008", "XN3005"]);
 }
 
 // ------------------------------------------------------------ option, result
@@ -758,14 +770,6 @@ fn none_in_check_position_takes_the_expected_type() {
 // ------------------------------------------------------- unshipped constructs
 
 #[test]
-fn closures_are_rejected_until_their_rfc() {
-    // 0007 D3: function values do not exist. The parser accepts the syntax
-    // for recovery; the checker refuses it (0008 §1).
-    let codes = codes_of("fn f() -> Int { let g = |x: Int| x; 1 }");
-    assert_eq!(codes, ["XN1008"]);
-}
-
-#[test]
 fn await_is_rejected_until_the_async_rfc() {
     let source = "fn g() -> Int { 1 }\nfn f() -> Int { g().await }";
     assert_eq!(codes_of(source), ["XN1008"]);
@@ -786,6 +790,9 @@ fn for_is_rejected_but_its_body_still_checks() {
 
 #[test]
 fn fn_type_annotations_are_rejected() {
+    // design/0014 §3 (task interpretation): fn types appear only in std
+    // signatures. A user fn taking a fn-typed parameter would call it, so
+    // every user-written position is refused — params, lets, fields alike.
     assert_eq!(
         codes_of("fn apply(f: fn(Int) -> Int) -> Int { 1 }"),
         ["XN1008"]
@@ -793,6 +800,305 @@ fn fn_type_annotations_are_rejected() {
     assert_eq!(
         codes_of("fn f() -> Int { let g: fn() -> Int = ??; 1 }"),
         ["XN1008"]
+    );
+    assert_eq!(
+        codes_of("struct Holder { callback: fn(Int) -> Int }"),
+        ["XN1008"]
+    );
+}
+
+// --------------------------------------------------- closures (design/0014)
+//
+// The compile-fail battery of 0014 §6: safety is an unconditional gate, not
+// an experiment. Each case pins the code that fires and, where the RFC
+// prescribes wording, the sentence.
+
+#[test]
+fn map_filter_fold_find_check_end_to_end() {
+    expect_clean(
+        "fn f(xs: List<Int>) -> List<Int> { xs.map(|x| x * 2) }\n\
+         fn g(xs: List<Int>) -> List<Int> { xs.filter(|x| x % 2 == 0) }\n\
+         fn h(xs: List<Int>) -> Int { xs.fold(init: 0, f: |acc, x| acc + x) }\n\
+         fn i(xs: List<Int>) -> Option<Int> { xs.find(|x| x > 1) }",
+    );
+}
+
+#[test]
+fn a_closure_body_pins_maps_result_type() {
+    // `map`'s `U` binds from the body: List<Int> -> List<String>.
+    expect_clean("fn f(xs: List<Int>) -> List<String> { xs.map(|x| x.to_text()) }");
+    // And a wrong claim about `U` is caught where the results meet.
+    assert_eq!(
+        codes_of("fn f(xs: List<Int>) -> List<Int> { xs.map(|x| x.to_text()) }"),
+        ["XN3001"]
+    );
+}
+
+#[test]
+fn closure_parameters_may_be_discarded_and_captures_may_be_safe() {
+    expect_clean("fn f(xs: List<Int>) -> List<Int> { xs.map(|_| 7) }");
+    // A `let` of a CaptureSafe type copies in at creation — legal.
+    expect_clean("fn f(xs: List<Int>) -> List<Int> { let base = 10; xs.map(|x| x + base) }");
+    // Nested closures re-snapshot; inner bodies see outer parameters.
+    expect_clean(
+        "fn f(xss: List<List<Int>>) -> List<Int> {\n\
+             xss.map(|xs| xs.fold(init: 0, f: |acc, x| acc + x))\n\
+         }",
+    );
+}
+
+#[test]
+fn a_capability_capture_is_refused_with_the_plan_teach() {
+    // Battery: capability capture (XN4005). `io` is free in the body and
+    // resolves to the enclosing fn's parameter — a capture, and `Io` has no
+    // honest snapshot.
+    let source = "fn f(io: Io, xs: List<Int>) -> List<Int> {\n\
+                      xs.map(|x| { let grab = io; x })\n\
+                  }";
+    let found = diagnostics_of(source);
+    assert_eq!(found.len(), 1, "{found:#?}");
+    let (code, message) = &found[0];
+    assert_eq!(code, "XN4005");
+    assert!(message.contains("CaptureSafe"), "{message}");
+    assert!(message.contains("closures are plans"), "{message}");
+}
+
+#[test]
+fn a_capability_arriving_through_a_parameter_still_cannot_act() {
+    // Battery: capability-parameter use (XN4006). Nothing is captured — the
+    // capability rides in as the element type — and pillar 1 still refuses
+    // the effect inside the body.
+    let source = "fn f(io: Io) -> List<Int> {\n\
+                      [io].map(|x| { x.write(text: \"hi\"); 1 })\n\
+                  }";
+    let found = diagnostics_of(source);
+    assert_eq!(found.len(), 1, "{found:#?}");
+    let (code, message) = &found[0];
+    assert_eq!(code, "XN4006");
+    assert!(
+        message.contains("a closure body performs no effects"),
+        "{message}"
+    );
+    assert!(message.contains("closures are plans"), "{message}");
+}
+
+#[test]
+fn an_effectful_named_fn_cannot_be_called_from_a_closure_body() {
+    // Battery: non-empty `uses` fn called in the body (XN4006). The named
+    // fn resolves — resolution is not capture — and its effect set is what
+    // the empty budget refuses.
+    let source = "fn shout(io: Io) -> Int uses {Io.write} { let r = io.write(text: \"x\"); 1 }\n\
+                  fn f(io: Io) -> List<Int> { [io].map(|x| shout(io: x)) }";
+    assert_eq!(codes_of(source), ["XN4006"]);
+}
+
+#[test]
+fn a_generic_cannot_launder_an_effect_into_a_closure() {
+    // Battery: generic laundering (XN4006 side). The callee's `uses` is
+    // declared on the signature, so the generic disguise changes nothing.
+    let source = "fn sneak<T>(x: T, io: Io) -> Int uses {Io.write} { let r = io.write(text: \"x\"); 1 }\n\
+                  fn f(io: Io, xs: List<Int>) -> List<Int> { [io].map(|cap| sneak(x: 1, io: cap)) }";
+    assert_eq!(codes_of(source), ["XN4006"]);
+}
+
+#[test]
+fn a_generic_cannot_launder_a_capability_into_a_capture() {
+    // Battery: generic laundering (XN4005 side). No `CaptureSafe` bound is
+    // spellable, so an unresolved `T` never captures — even when the caller
+    // would have instantiated it with `Int`.
+    let source = "fn wrap<T>(x: T, xs: List<Int>) -> List<Int> {\n\
+                      xs.map(|n| { let grab = x; n })\n\
+                  }";
+    assert_eq!(codes_of(source), ["XN4005"]);
+}
+
+#[test]
+fn shared_and_task_are_reserved_non_capture_safe() {
+    // design/0014 §1: the 0004 shared-mutable primitives are non-CaptureSafe
+    // before they exist, closing the future hole now.
+    let source = "fn f(cell: Shared<Int>, xs: List<Int>) -> List<Int> {\n\
+                      xs.map(|n| { let grab = cell; n })\n\
+                  }";
+    assert_eq!(codes_of(source), ["XN4005"]);
+}
+
+#[test]
+fn a_self_reference_inside_the_initializer_is_definite_initialization() {
+    // Battery: self-reference (XN4007), not XN2002 — the name exists one
+    // statement later, and "unknown" would misdirect.
+    let source = "fn f(xs: List<Int>) -> List<Int> {\n\
+                      let out = xs.map(|x| x + out.len());\n\
+                      out\n\
+                  }";
+    let found = diagnostics_of(source);
+    assert_eq!(found.len(), 1, "{found:#?}");
+    let (code, message) = &found[0];
+    assert_eq!(code, "XN4007");
+    assert!(
+        message.contains("recursion belongs in a named fn"),
+        "{message}"
+    );
+}
+
+#[test]
+fn a_var_capture_names_the_stale_snapshot_and_the_let_fix() {
+    // Battery: var capture (XN4008). The RFC fixes the message: updates
+    // after the snapshot are not visible; bind to a `let` first.
+    let source = "fn f(xs: List<Int>) -> List<Int> {\n\
+                      var total = 0;\n\
+                      xs.map(|x| x + total)\n\
+                  }";
+    let found = diagnostics_of(source);
+    assert_eq!(found.len(), 1, "{found:#?}");
+    let (code, message) = &found[0];
+    assert_eq!(code, "XN4008");
+    assert!(
+        message.contains("updates after that snapshot are not visible"),
+        "{message}"
+    );
+    assert!(
+        message.contains("bind the current value to a `let`"),
+        "{message}"
+    );
+}
+
+#[test]
+fn a_repeated_bad_capture_reports_once() {
+    // One bad capture, mentioned three times, is one diagnostic — the same
+    // no-avalanche discipline as poison types.
+    let source = "fn f(io: Io, xs: List<Int>) -> List<Int> {\n\
+                      xs.map(|x| { let a = io; let b = io; let c = io; x })\n\
+                  }";
+    assert_eq!(codes_of(source), ["XN4005"]);
+}
+
+#[test]
+fn a_let_position_closure_is_refused_with_the_extraction_advice() {
+    // Battery: let-position closure (XN1011).
+    let found = diagnostics_of("fn f() -> Int { let g = |x| x; 1 }");
+    let (code, message) = &found[0];
+    assert_eq!(code, "XN1011");
+    assert!(
+        message.contains("inline its body, or extract a named fn"),
+        "{message}"
+    );
+}
+
+#[test]
+fn return_field_and_container_positions_are_refused_too() {
+    // `return |x| x;` — checked against the return type, still XN1011.
+    assert_eq!(codes_of("fn f() -> Int { return |x| x; }"), ["XN1011"]);
+    // A container element.
+    assert_eq!(
+        codes_of("fn f() -> Int { let xs = [|x| x]; 1 }"),
+        ["XN1011"]
+    );
+    // A struct field.
+    assert_eq!(
+        codes_of("struct S { n: Int }\nfn f() -> S { S { n: |x| x } }"),
+        ["XN1011"]
+    );
+    // An argument whose parameter is not fn-typed.
+    assert_eq!(
+        codes_of("fn take(n: Int) -> Int { n }\nfn f() -> Int { take(n: |x| x) }"),
+        ["XN1011"]
+    );
+}
+
+#[test]
+fn question_mark_return_and_break_cannot_cross_the_boundary() {
+    // Battery: `?` in the body (XN1012), with the early-exit teach.
+    let source = "fn f(xs: List<Int>) -> Option<Int> {\n\
+                      let ys = xs.map(|x| xs.get(index: x)?);\n\
+                      ys.get(index: 0)\n\
+                  }";
+    let found = diagnostics_of(source);
+    let (code, message) = &found[0];
+    assert_eq!(code, "XN1012");
+    assert!(
+        message.contains("closures cannot early-return"),
+        "{message}"
+    );
+
+    assert_eq!(
+        codes_of("fn f(xs: List<Int>) -> List<Int> { xs.map(|x| { return x; x }) }"),
+        ["XN1012"]
+    );
+    assert_eq!(
+        codes_of("fn f(xs: List<Int>) -> List<Int> { xs.map(|x| { break; x }) }"),
+        ["XN1012"]
+    );
+    // A loop the closure itself contains keeps its `break`.
+    expect_clean(
+        "fn f(xs: List<Int>) -> List<Int> {\n\
+             xs.map(|x| { while true { break; } x })\n\
+         }",
+    );
+}
+
+#[test]
+fn a_closure_arity_mismatch_is_reported_against_the_fn_type() {
+    let found = diagnostics_of("fn f(xs: List<Int>) -> List<Int> { xs.map(|a, b| a) }");
+    let (code, message) = &found[0];
+    assert_eq!(code, "XN3002");
+    assert!(
+        message.contains("this closure takes 2 parameter(s)"),
+        "{message}"
+    );
+    assert_eq!(
+        codes_of("fn f(xs: List<Int>) -> List<Int> { xs.map(|| 1) }"),
+        ["XN3002"]
+    );
+}
+
+#[test]
+fn fold_requires_named_arguments_by_the_existing_rule() {
+    // Two parameters, so design/0002 §8 applies with no new machinery.
+    let source = "fn f(xs: List<Int>) -> Int { xs.fold(0, |acc, x| acc + x) }";
+    let codes = codes_of(source);
+    assert_eq!(codes, ["XN3008", "XN3008"], "{codes:?}");
+}
+
+#[test]
+fn goals_inside_a_closure_body_carry_the_empty_effect_budget() {
+    // A hole in a closure body is a goal like any other, but its permitted
+    // effects are the closure's — none — not the enclosing fn's. `filter`
+    // pushes a closed `Bool`, so the hole is a goal rather than an
+    // annotation demand.
+    let source = "fn f(io: Io, xs: List<Int>) -> List<Int> uses {Io.write} {\n\
+                      xs.filter(|x| ??gap)\n\
+                  }";
+    let parsed = parse(source);
+    let analysis = analyze(&parsed.module);
+    let goal = analysis
+        .goals
+        .iter()
+        .find(|g| g.name.as_deref() == Some("gap"))
+        .expect("the ??gap goal");
+    assert!(
+        goal.allowed_effects.is_empty(),
+        "{:?}",
+        goal.allowed_effects
+    );
+    assert!(
+        goal.in_scope.iter().any(|(name, _)| name == "x"),
+        "{:?}",
+        goal.in_scope
+    );
+}
+
+#[test]
+fn closure_teaching_strips_to_byte_identity() {
+    // The 0009 contract extended to the new notes: off-mode output is
+    // on-mode minus exactly the teaching.
+    let source = "fn f(io: Io) -> List<Int> { [io].map(|x| { x.write(text: \"hi\"); 1 }) }";
+    let parsed = parse(source);
+    let mut found = analyze(&parsed.module).diagnostics;
+    assert!(found[0].message.contains("closures are plans"));
+    found[0].strip_teaching();
+    assert_eq!(
+        found[0].message,
+        "this call uses {Io.write}, but a closure body performs no effects"
     );
 }
 
@@ -905,8 +1211,8 @@ fn struct_patterns_recurse_into_fields() {
 #[test]
 fn exhaustiveness_still_runs_when_an_arm_body_is_rejected() {
     // A rejected construct in one arm's body must not mask the missing arm.
-    let source = "fn f(b: Bool) -> Int { match b { true => { let g = |x: Int| x; 1 } } }";
-    assert_eq!(codes_of(source), ["XN1008", "XN5001"]);
+    let source = "fn f(b: Bool) -> Int { match b { true => { let g = |x| x; 1 } } }";
+    assert_eq!(codes_of(source), ["XN1011", "XN5001"]);
 }
 
 // ------------------------------------------------------------------- teaches
@@ -931,7 +1237,10 @@ fn xn2003_teaches_the_receivers_method_catalogue() {
     assert_eq!(teach.kind, TeachKind::AvailableMethods);
     assert_eq!(teach.type_name, "List<Int>");
     assert_eq!(teach.items.len(), 6, "the finite contract caps at six");
-    assert_eq!(teach.total_items, 10);
+    assert_eq!(
+        teach.total_items, 14,
+        "the 0007 surface plus the 0014 combinators"
+    );
     assert!(teach.truncated);
     assert_eq!(teach.items[0].signature, "len() -> Int");
     // Declaration order, not alphabetical.

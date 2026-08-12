@@ -180,9 +180,14 @@ pub enum TypeKind {
     },
     /// `()`
     Unit,
-    /// `fn(Int, Int) -> Int uses {Io.write}`
+    /// `fn(Int) -> Int`, `fn(acc: Int, x: Int) -> Int`.
+    ///
+    /// Parameter names are documentation (design/0014 §1: canonical when a
+    /// fn type takes two or more parameters). The `uses` clause is parsed
+    /// for recovery only — a fn type's effect set is always empty, so the
+    /// shipped syntax has nowhere to write one.
     Fn {
-        params: Vec<Type>,
+        params: Vec<FnTypeParam>,
         ret: Box<Type>,
         effects: Option<EffectSet>,
     },
@@ -191,6 +196,15 @@ pub enum TypeKind {
         name: Option<String>,
     },
     Error,
+}
+
+/// One parameter of a `fn(..)` type: an optional documentation name and the
+/// type itself.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FnTypeParam {
+    pub name: Option<Ident>,
+    pub ty: Type,
+    pub span: Span,
 }
 
 // ---------------------------------------------------------------- statements
@@ -325,15 +339,26 @@ pub enum ExprKind {
         fields: Vec<FieldInit>,
     },
 
-    /// `move || { .. }` / `async move |x: Int| { .. }`
+    /// `|x| expr` / `|acc, x| expr` / `|| expr` / `|_| expr`.
+    ///
+    /// Parameters are bare names — there is no annotation syntax; the types
+    /// come from the `fn(..)` parameter the closure is passed to. A body of
+    /// the form `{ expr }` parses as the expression itself, the same way
+    /// parentheses vanish, so `|x| { x + 1 }` and `|x| x + 1` are one tree
+    /// (design/0014 §3: one canonical spelling).
     Lambda {
-        params: Vec<Param>,
-        is_move: bool,
-        is_async: bool,
+        params: Vec<LambdaParam>,
         body: Box<Expr>,
     },
 
     Error,
+}
+
+/// One closure parameter: a plain name, or `_` (spelled with the name `"_"`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LambdaParam {
+    pub name: Ident,
+    pub span: Span,
 }
 
 /// One argument at a call site.
@@ -570,7 +595,13 @@ fn normalize_type(ty: &mut Type) {
             ret,
             effects,
         } => {
-            params.iter_mut().for_each(normalize_type);
+            for param in params {
+                param.span = Span::EMPTY;
+                if let Some(name) = &mut param.name {
+                    normalize_ident(name);
+                }
+                normalize_type(&mut param.ty);
+            }
             normalize_type(ret);
             if let Some(effects) = effects {
                 normalize_effects(effects);
@@ -686,11 +717,10 @@ fn normalize_expr(expr: &mut Expr) {
                 normalize_expr(&mut field.value);
             }
         }
-        ExprKind::Lambda { params, body, .. } => {
+        ExprKind::Lambda { params, body } => {
             for param in params {
                 param.span = Span::EMPTY;
                 normalize_ident(&mut param.name);
-                normalize_type(&mut param.ty);
             }
             normalize_expr(body);
         }

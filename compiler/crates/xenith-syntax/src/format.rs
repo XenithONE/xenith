@@ -734,15 +734,14 @@ fn render_type(ty: &Type) -> String {
             ret,
             effects,
         } => {
-            let mut text = format!(
-                "fn({}) -> {}",
-                params
-                    .iter()
-                    .map(render_type)
-                    .collect::<Vec<_>>()
-                    .join(", "),
-                render_type(ret)
-            );
+            let rendered: Vec<String> = params
+                .iter()
+                .map(|param| match &param.name {
+                    Some(name) => format!("{}: {}", name.name, render_type(&param.ty)),
+                    None => render_type(&param.ty),
+                })
+                .collect();
+            let mut text = format!("fn({}) -> {}", rendered.join(", "), render_type(ret));
             if let Some(effects) = effects {
                 text.push(' ');
                 text.push_str(&render_effects(effects));
@@ -891,19 +890,11 @@ fn render_expr(expr: &Expr, min_precedence: u8) -> String {
             )
         }
 
-        ExprKind::Lambda {
-            params,
-            is_move,
-            is_async,
-            body,
-        } => {
+        // The canonical closure: bare names, no annotations, and a
+        // single-expression body without braces — the parser already
+        // collapsed `{ expr }`, so rendering the body is enough.
+        ExprKind::Lambda { params, body } => {
             let mut text = String::new();
-            if *is_async {
-                text.push_str("async ");
-            }
-            if *is_move {
-                text.push_str("move ");
-            }
             if params.is_empty() {
                 text.push_str("||");
             } else {
@@ -911,7 +902,7 @@ fn render_expr(expr: &Expr, min_precedence: u8) -> String {
                 text.push_str(
                     &params
                         .iter()
-                        .map(|p| format!("{}: {}", p.name.name, render_type(&p.ty)))
+                        .map(|p| p.name.name.clone())
                         .collect::<Vec<_>>()
                         .join(", "),
                 );

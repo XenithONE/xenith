@@ -553,7 +553,25 @@ impl<'a> Parser<'a> {
                 let mut params = Vec::new();
                 if self.expect(TokenKind::LParen) {
                     while !self.at(TokenKind::RParen) && !self.at_end() {
-                        params.push(self.ty());
+                        // `fn(acc: Int, x: Int) -> Int` — the names are
+                        // documentation, canonical once a fn type takes two
+                        // or more parameters (design/0014 §1).
+                        let param_start = self.span();
+                        let name = if self.at(TokenKind::Ident)
+                            && self.peek_ahead(1) == TokenKind::Colon
+                        {
+                            let token = self.bump();
+                            self.bump(); // `:`
+                            Some(Ident::new(self.text(token.span), token.span))
+                        } else {
+                            None
+                        };
+                        let ty = self.ty();
+                        params.push(FnTypeParam {
+                            name,
+                            ty,
+                            span: param_start.to(self.prev_span()),
+                        });
                         if !self.eat(TokenKind::Comma) {
                             break;
                         }
@@ -1133,10 +1151,24 @@ impl<'a> Parser<'a> {
             }
             TokenKind::If => self.if_expr(),
             TokenKind::Match => self.match_expr(),
-            TokenKind::Move | TokenKind::Pipe | TokenKind::OrOr => self.lambda(false),
+            TokenKind::Pipe | TokenKind::OrOr => self.lambda(),
+            // Rust-shaped closure prefixes, recognised on purpose
+            // (design/0014 §3): the negative transfer is part of the product,
+            // so the refusal names the habit and the closure still parses.
+            TokenKind::Move => {
+                let token = self.bump();
+                self.closure_rust_form(
+                    token.span,
+                    "`move` does not exist in Xenith; a closure always copies \
+                     the values it uses when it is created",
+                );
+                self.lambda()
+            }
             TokenKind::Async => {
-                self.bump();
-                self.lambda(true)
+                let token = self.bump();
+                self.eat(TokenKind::Move); // `async move |x| ..` — one report.
+                self.closure_rust_form(token.span, "`async` closures do not exist in Xenith");
+                self.lambda()
             }
             TokenKind::Ident => {
                 // Exactly one segment. `Rank.Gold` and `player.score` are
@@ -1287,9 +1319,18 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn lambda(&mut self, is_async: bool) -> Expr {
+    /// One shared refusal for Rust-shaped closure forms (design/0014 §3):
+    /// the message names the specific habit, the teach converges on the one
+    /// sentence, and parsing continues so the tree survives.
+    fn closure_rust_form(&mut self, span: Span, message: impl Into<String>) {
+        self.diagnostics.push(
+            Diagnostic::error(DiagCode::ClosureRustForm, span, message)
+                .with_teach_note(format!("; {}", xenith_diag::CLOSURE_PLAN_TEACH)),
+        );
+    }
+
+    fn lambda(&mut self) -> Expr {
         let start = self.span();
-        let is_move = self.eat(TokenKind::Move);
         let mut params = Vec::new();
 
         if self.eat(TokenKind::OrOr) {
@@ -1297,14 +1338,106 @@ impl<'a> Parser<'a> {
         } else if self.expect(TokenKind::Pipe) {
             while !self.at(TokenKind::Pipe) && !self.at_end() {
                 let param_start = self.span();
-                let name = self.expect_ident();
-                self.expect(TokenKind::Colon);
-                let ty = self.ty();
-                params.push(Param {
-                    name,
-                    ty,
-                    span: param_start.to(self.prev_span()),
-                });
+                match self.peek() {
+                    TokenKind::Underscore => {
+                        let token = self.bump();
+                        params.push(LambdaParam {
+                            name: Ident::new("_", token.span),
+                            span: token.span,
+                        });
+                    }
+                    // `|&x|` — a reference pattern. Report once, drop the
+                    // `&`, and read the name it decorated.
+                    TokenKind::Amp | TokenKind::AndAnd => {
+                        let token = self.bump();
+                        self.closure_rust_form(
+                            token.span,
+                            "closure parameters are plain names; Xenith has no \
+                             reference patterns — the closure receives a copy",
+                        );
+                        continue;
+                    }
+                    // `|(a, b)|` — destructuring. Skip the balanced group and
+                    // keep the parameter slot so the arity stays honest.
+                    TokenKind::LParen => {
+                        let span = self.span();
+                        self.closure_rust_form(
+                            span,
+                            "closure parameters are plain names; destructure \
+                             inside the body with `let`",
+                        );
+                        let mut depth = 0usize;
+                        while !self.at_end() {
+                            match self.peek() {
+                                TokenKind::LParen => depth += 1,
+                                TokenKind::RParen => {
+                                    self.bump();
+                                    depth -= 1;
+                                    if depth == 0 {
+                                        break;
+                                    }
+                                    continue;
+                                }
+                                _ => {}
+                            }
+                            self.bump();
+                        }
+                        params.push(LambdaParam {
+                            name: Ident::new("", span),
+                            span: span.to(self.prev_span()),
+                        });
+                    }
+                    TokenKind::Ident => {
+                        let token = self.bump();
+                        let mut name = Ident::new(self.text(token.span), token.span);
+                        // `|mut x|` — mutability does not exist on closure
+                        // parameters; read the real name behind it.
+                        if name.name == "mut" && self.at(TokenKind::Ident) {
+                            self.closure_rust_form(
+                                token.span,
+                                "closure parameters are immutable; Xenith has no \
+                                 `mut` parameter form",
+                            );
+                            let real = self.bump();
+                            name = Ident::new(self.text(real.span), real.span);
+                        }
+                        // `|x: Int|` — annotation syntax does not exist
+                        // (design/0014 §3): the type comes from the `fn(..)`
+                        // parameter the closure is passed to. The fix deletes
+                        // exactly the annotation.
+                        if self.at(TokenKind::Colon) {
+                            let colon = self.span();
+                            self.bump();
+                            let ty = self.ty();
+                            let span = colon.to(ty.span);
+                            self.diagnostics.push(
+                                Diagnostic::error(
+                                    DiagCode::ClosureAnnotation,
+                                    span,
+                                    "closure parameters take no type annotation; the \
+                                     type comes from the `fn(..)` parameter the \
+                                     closure is passed to",
+                                )
+                                .with_fix(Fix::single("remove the annotation", Edit::delete(span))),
+                            );
+                        }
+                        params.push(LambdaParam {
+                            name,
+                            span: param_start.to(self.prev_span()),
+                        });
+                    }
+                    other => {
+                        self.error(
+                            DiagCode::ExpectedToken,
+                            self.span(),
+                            format!(
+                                "expected a closure parameter name or `_`, found {}",
+                                other.describe()
+                            ),
+                        );
+                        break;
+                    }
+                }
                 if !self.eat(TokenKind::Comma) {
                     break;
                 }
@@ -1313,12 +1446,23 @@ impl<'a> Parser<'a> {
         }
 
         let body = self.expr();
-        let span = start.to(body.span);
+        // `|x| { expr }` parses as `|x| expr`, the same way parentheses
+        // vanish: a block that is exactly one tail expression adds nothing,
+        // and collapsing it here fixes one canonical spelling for the
+        // formatter (design/0014 §3).
+        let body = match body.kind {
+            ExprKind::Block(block) if block.stmts.is_empty() && block.tail.is_some() => {
+                *block.tail.expect("checked above")
+            }
+            kind => Expr {
+                kind,
+                span: body.span,
+            },
+        };
+        let span = start.to(self.prev_span());
         Expr {
             kind: ExprKind::Lambda {
                 params,
-                is_move,
-                is_async,
                 body: Box::new(body),
             },
             span,

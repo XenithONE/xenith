@@ -1,5 +1,5 @@
 tests/fixtures/diag/xn2003_list.xn:2:8: error[XN2003]: `List<Int>` has no method named `size`
-  methods of List<Int> (6 of 10):
+  methods of List<Int> (6 of 14):
       len() -> Int
       is_empty() -> Bool
       push(item: Int) -> Unit

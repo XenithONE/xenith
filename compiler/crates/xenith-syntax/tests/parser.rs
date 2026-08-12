@@ -732,27 +732,159 @@ fn struct_patterns_support_shorthand_fields() {
 
 #[test]
 fn lambdas_parse_with_and_without_parameters() {
-    assert!(matches!(
-        expr_of("move || 1").kind,
-        ExprKind::Lambda {
-            is_move: true,
-            is_async: false,
-            ..
-        }
-    ));
-    assert!(matches!(
-        expr_of("async move |x: Int| x").kind,
-        ExprKind::Lambda {
-            is_move: true,
-            is_async: true,
-            ..
-        }
-    ));
-
-    let ExprKind::Lambda { params, .. } = expr_of("|a: Int, b: Int| a").kind else {
+    let ExprKind::Lambda { params, .. } = expr_of("g(|a, b| a)").kind.into_call_arg() else {
         panic!("expected a lambda");
     };
     assert_eq!(params.len(), 2);
+    assert_eq!(params[0].name.name, "a");
+
+    let ExprKind::Lambda { params, .. } = expr_of("g(|| 1)").kind.into_call_arg() else {
+        panic!("expected a lambda");
+    };
+    assert!(params.is_empty(), "`||` is an empty parameter list");
+
+    // `_` is a legal parameter: the closure discards that argument.
+    let ExprKind::Lambda { params, .. } = expr_of("g(|_| 7)").kind.into_call_arg() else {
+        panic!("expected a lambda");
+    };
+    assert_eq!(params[0].name.name, "_");
+}
+
+/// Unwrap `g(<lambda>)` down to the lambda's kind.
+trait IntoCallArg {
+    fn into_call_arg(self) -> ExprKind;
+}
+
+impl IntoCallArg for ExprKind {
+    fn into_call_arg(self) -> ExprKind {
+        let ExprKind::Call { args, .. } = self else {
+            panic!("expected a call");
+        };
+        args.into_iter().next().expect("one argument").value.kind
+    }
+}
+
+#[test]
+fn a_single_expression_block_body_collapses_like_parentheses() {
+    // `|x| { x + 1 }` and `|x| x + 1` are one tree (design/0014 §3): the
+    // formatter's canonical no-brace form falls out of the parse.
+    let mut with_braces = parse("fn f() { g(|x| { x + 1 }); }").module;
+    let mut without = parse("fn f() { g(|x| x + 1); }").module;
+    normalize_spans(&mut with_braces);
+    normalize_spans(&mut without);
+    assert_eq!(with_braces, without);
+
+    // A body with statements keeps its block.
+    let ExprKind::Lambda { body, .. } = expr_of("g(|x| { let y = x; y })").kind.into_call_arg()
+    else {
+        panic!("expected a lambda");
+    };
+    assert!(matches!(body.kind, ExprKind::Block(_)));
+}
+
+#[test]
+fn a_greedy_lambda_body_extends_to_the_argument_boundary() {
+    // `|x| x || y` — the body takes the whole expression; only a leading
+    // `|`/`||` starts a lambda.
+    let ExprKind::Lambda { body, .. } = expr_of("g(|x| x || y)").kind.into_call_arg() else {
+        panic!("expected a lambda");
+    };
+    assert!(matches!(
+        body.kind,
+        ExprKind::Binary {
+            op: BinaryOp::Or,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn closure_annotations_are_refused_with_a_deleting_fix() {
+    // `|x: Int|` — annotation syntax does not exist (design/0014 §3, §7).
+    let source = "fn f() { g(|x: Int| x); }";
+    let parsed = parse(source);
+    let diagnostic = &parsed.diagnostics[0];
+    assert_eq!(diagnostic.code, DiagCode::ClosureAnnotation);
+    let fix = diagnostic.fix.as_ref().expect("a deleting fix");
+    assert_eq!(fix.edits[0].replacement, "");
+    assert_eq!(fix.edits[0].span.slice(source), Some(": Int"));
+    // The lambda still parses, name intact, for the tree to survive.
+    let ItemKind::Fn(f) = &parsed.module.items[0].kind else {
+        panic!("expected a function");
+    };
+    let stmt = &f.body.as_ref().expect("body").stmts[0];
+    let StmtKind::Expr(expr) = &stmt.kind else {
+        panic!("expected an expression statement");
+    };
+    let ExprKind::Call { args, .. } = &expr.kind else {
+        panic!("expected a call");
+    };
+    let ExprKind::Lambda { params, .. } = &args[0].value.kind else {
+        panic!("expected a lambda");
+    };
+    assert_eq!(params[0].name.name, "x");
+}
+
+#[test]
+fn rust_closure_forms_are_recognised_and_share_the_teach() {
+    // design/0014 §3: the negative transfer is the product — each Rust
+    // habit is named at parse time and converges on the one sentence.
+    for source in [
+        "fn f() { g(move |x| x); }",
+        "fn f() { g(move || 1); }",
+        "fn f() { g(async |x| x); }",
+        "fn f() { g(async move |x| x); }",
+        "fn f() { g(|&x| x); }",
+        "fn f() { g(|mut x| x); }",
+        "fn f() { g(|(a, b)| a); }",
+    ] {
+        let parsed = parse(source);
+        let rustisms: Vec<_> = parsed
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == DiagCode::ClosureRustForm)
+            .collect();
+        assert_eq!(rustisms.len(), 1, "{source}: {:?}", parsed.diagnostics);
+        assert!(
+            rustisms[0].message.contains("closures are plans"),
+            "{source}: the teach must converge on the plan sentence: {}",
+            rustisms[0].message
+        );
+    }
+}
+
+#[test]
+fn rust_forms_still_yield_a_lambda_node_for_recovery() {
+    let parsed = parse("fn f() { g(move |x| x); }");
+    let ItemKind::Fn(f) = &parsed.module.items[0].kind else {
+        panic!("expected a function");
+    };
+    let StmtKind::Expr(expr) = &f.body.as_ref().expect("body").stmts[0].kind else {
+        panic!("expected an expression statement");
+    };
+    let ExprKind::Call { args, .. } = &expr.kind else {
+        panic!("expected a call");
+    };
+    assert!(matches!(args[0].value.kind, ExprKind::Lambda { .. }));
+}
+
+#[test]
+fn fn_types_parse_with_documentation_parameter_names() {
+    // `fn(acc: Int, x: Int) -> Int` — names are canonical for two or more
+    // parameters (design/0014 §1). The checker rejects the position; the
+    // parse is total and lossless.
+    let module = expect_clean("fn apply(f: fn(acc: Int, x: Int) -> Int) -> Int { 1 }");
+    let ItemKind::Fn(f) = &module.items[0].kind else {
+        panic!("expected a function");
+    };
+    let TypeKind::Fn { params, .. } = &f.params[0].ty.kind else {
+        panic!("expected a fn type");
+    };
+    assert_eq!(params.len(), 2);
+    assert_eq!(params[0].name.as_ref().expect("named").name, "acc");
+    assert_eq!(params[1].name.as_ref().expect("named").name, "x");
+    // The bare form still parses too.
+    expect_clean("fn apply(f: fn(Int) -> Int) -> Int { 1 }");
 }
 
 // ------------------------------------------------------------------ recovery

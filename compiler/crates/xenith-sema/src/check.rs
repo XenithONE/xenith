@@ -13,7 +13,8 @@
 //! *goal emission*.
 
 use xenith_diag::{
-    DiagCode, Diagnostic, Edit, Fix, MAX_SIGNATURE_BYTES, MAX_TEACH_ITEMS, Span, Teach, TeachItem,
+    CLOSURE_EXIT_TEACH, CLOSURE_PLAN_TEACH, DiagCode, Diagnostic, Edit, Fix, MAX_SIGNATURE_BYTES,
+    MAX_TEACH_ITEMS, Span, Teach, TeachItem,
 };
 use xenith_syntax::ast;
 
@@ -110,6 +111,9 @@ pub fn analyze_at(module: &ast::Module, offset: Option<u32>) -> (Analysis, Optio
             probe: &mut probe,
             teach_budget: &mut teach_budget,
             ctx: None,
+            closures: Vec::new(),
+            loop_depth: 0,
+            initializing: Vec::new(),
         };
         checker.check_fn();
     }
@@ -167,6 +171,9 @@ pub(crate) fn check_module_bodies(
             },
             teach_budget,
             ctx: Some(ctx),
+            closures: Vec::new(),
+            loop_depth: 0,
+            initializing: Vec::new(),
         };
         checker.check_fn();
     }
@@ -296,6 +303,22 @@ struct Binding {
     mutable: bool,
 }
 
+/// One closure body being checked (design/0014). The stack of these is what
+/// makes the two pillars positional: any scope below `boundary` is outside
+/// the closure, so referencing it is a capture, and a non-empty stack means
+/// the effect budget is the empty set.
+struct ClosureCtx {
+    /// Index of the closure's parameter scope in `Checker::scopes`; every
+    /// scope below it belongs to the enclosing function.
+    boundary: usize,
+    /// `Checker::loop_depth` at entry — a `break` at this depth would cross
+    /// the closure boundary.
+    entry_loop_depth: u32,
+    /// Capture names already diagnosed, so one bad capture reports once
+    /// however often the body mentions it.
+    reported: Vec<String>,
+}
+
 struct Checker<'a> {
     defs: &'a DefTable,
     sig: &'a FnSig,
@@ -311,6 +334,13 @@ struct Checker<'a> {
     /// The module being checked, in project mode. `None` is single-file
     /// mode, where nothing below changes behaviour.
     ctx: Option<&'a ModuleCtx>,
+    /// Closure bodies currently being checked, innermost last (design/0014).
+    closures: Vec<ClosureCtx>,
+    /// `while` nesting depth, for the closure early-exit rule.
+    loop_depth: u32,
+    /// Names the `let` currently being checked will bind — referencing one
+    /// from a closure is XN4007, definite initialization.
+    initializing: Vec<String>,
 }
 
 impl<'a> Checker<'a> {
@@ -336,6 +366,96 @@ impl<'a> Checker<'a> {
             .rev()
             .flat_map(|scope| scope.iter().rev())
             .find(|b| b.name == name)
+    }
+
+    /// [`Checker::lookup`], also answering *which* scope holds the binding —
+    /// the fact the capture rule turns on.
+    fn lookup_indexed(&self, name: &str) -> Option<(usize, &Binding)> {
+        for (index, scope) in self.scopes.iter().enumerate().rev() {
+            if let Some(binding) = scope.iter().rev().find(|b| b.name == name) {
+                return Some((index, binding));
+            }
+        }
+        None
+    }
+
+    /// Pillar 2 (design/0014 §1): a closure body referenced a binding from
+    /// outside the closure. Values capture by copy at creation, so the copy
+    /// must be honest: `var` bindings are refused outright (the snapshot
+    /// would go stale invisibly), and everything else must be CaptureSafe.
+    /// A violation poisons the reference so one bad capture reports once.
+    fn capture_check(&mut self, name: &str, ty: Type, mutable: bool, span: Span) -> Type {
+        let already = self
+            .closures
+            .last()
+            .expect("capture check outside a closure")
+            .reported
+            .iter()
+            .any(|n| n == name);
+        if mutable {
+            if !already {
+                self.remember_capture(name);
+                let message = format!(
+                    "`{name}` is a `var` binding and cannot be captured: a closure \
+                     copies its captures when it is created, so updates after that \
+                     snapshot are not visible — bind the current value to a `let` \
+                     first and capture that"
+                );
+                self.diagnostics
+                    .push(Diagnostic::error(DiagCode::CaptureOfVar, span, message));
+            }
+            return Type::Error;
+        }
+        if !self.defs.is_capture_safe(&ty) {
+            if !already {
+                self.remember_capture(name);
+                let rendered = self.render(&ty);
+                let message = format!(
+                    "a closure cannot capture `{name}`: `{rendered}` is not \
+                     CaptureSafe — capabilities, `Shared`, `Task` and unbounded \
+                     type parameters have no honest snapshot copy"
+                );
+                self.diagnostics.push(
+                    Diagnostic::error(DiagCode::CapabilityCapture, span, message)
+                        .with_teach_note(format!("; {CLOSURE_PLAN_TEACH}")),
+                );
+            }
+            return Type::Error;
+        }
+        ty
+    }
+
+    /// `?`, `return`, `break`, `continue` trying to cross a closure
+    /// boundary (design/0014 §3). One code, one converged teach.
+    fn closure_early_exit(&mut self, span: Span, spelled: &str) {
+        let message = format!("{spelled} cannot cross a closure boundary");
+        self.diagnostics.push(
+            Diagnostic::error(DiagCode::ClosureEarlyExit, span, message)
+                .with_teach_note(format!("; {CLOSURE_EXIT_TEACH}")),
+        );
+    }
+
+    fn remember_capture(&mut self, name: &str) {
+        self.closures
+            .last_mut()
+            .expect("capture check outside a closure")
+            .reported
+            .push(name.to_string());
+    }
+
+    /// The effect budget at the current position: the enclosing function's
+    /// declared set — or, inside a closure body, the empty set, implicitly
+    /// and always (pillar 1, design/0014 §1).
+    fn effect_budget(&self) -> EffectSet {
+        if self.closures.is_empty() {
+            self.sig.effects.clone()
+        } else {
+            EffectSet::empty()
+        }
+    }
+
+    fn allowed_effect_names(&self) -> Vec<String> {
+        self.effect_budget().iter().map(String::from).collect()
     }
 
     fn bind(&mut self, name: &str, ty: Type, mutable: bool) {
@@ -384,7 +504,7 @@ impl<'a> Checker<'a> {
                 ty: self.render(ty),
                 enclosing_function: self.sig.name.clone(),
                 in_scope: self.scope_snapshot(),
-                allowed_effects: self.sig.effects.iter().map(String::from).collect(),
+                allowed_effects: self.allowed_effect_names(),
             });
         }
     }
@@ -429,11 +549,12 @@ impl<'a> Checker<'a> {
                 .ctx
                 .map(|ctx| (ctx.prefix.as_str(), used_paths.as_slice())),
         };
+        let budget = self.effect_budget();
         let (candidates, blocked) = crate::candidates::candidates_for(
             self.defs,
             expected,
             &self.scope_types(),
-            &self.sig.effects,
+            &budget,
             &self.sig.generics,
             &view,
         );
@@ -444,7 +565,7 @@ impl<'a> Checker<'a> {
             expected: rendered,
             enclosing_function: self.sig.name.clone(),
             in_scope: self.scope_snapshot(),
-            allowed_effects: self.sig.effects.iter().map(String::from).collect(),
+            allowed_effects: self.allowed_effect_names(),
             candidates,
             blocked,
         };
@@ -466,7 +587,7 @@ impl<'a> Checker<'a> {
             expected,
             enclosing_function: self.sig.name.clone(),
             in_scope: self.scope_snapshot(),
-            allowed_effects: self.sig.effects.iter().map(String::from).collect(),
+            allowed_effects: self.allowed_effect_names(),
             candidates: Vec::new(),
             blocked: Vec::new(),
         };
@@ -489,7 +610,7 @@ impl<'a> Checker<'a> {
             }
             ast::TypeKind::Fn { params, ret, .. } => {
                 for param in params {
-                    self.type_goals_in(param);
+                    self.type_goals_in(&param.ty);
                 }
                 self.type_goals_in(ret);
             }
@@ -977,7 +1098,27 @@ impl<'a> Checker<'a> {
     /// Call-site effect discipline: what the callee performs must fit inside
     /// what this function declared. The fix edits this function's `uses`
     /// clause, because that is the one edit that is mechanically safe.
+    ///
+    /// Inside a closure body the budget is the implicit empty set (pillar 1,
+    /// design/0014 §1): every effectful call is refused, whatever route the
+    /// capability took — a method on a parameter, a named fn with a
+    /// non-empty `uses`, a generic that turned out effectful. No fix is
+    /// offered, because a `fn(..)` type has no clause to widen.
     fn require_effects(&mut self, needed: &EffectSet, span: Span) {
+        if !self.closures.is_empty() {
+            if !needed.is_empty() {
+                let listed: Vec<&str> = needed.iter().collect();
+                let message = format!(
+                    "this call uses {{{}}}, but a closure body performs no effects",
+                    listed.join(", ")
+                );
+                self.diagnostics.push(
+                    Diagnostic::error(DiagCode::EffectInClosure, span, message)
+                        .with_teach_note(format!("; {CLOSURE_PLAN_TEACH}")),
+                );
+            }
+            return;
+        }
         let missing = needed.missing_from(&self.sig.effects);
         if missing.is_empty() {
             return;
@@ -1088,6 +1229,12 @@ impl<'a> Checker<'a> {
                 mutable,
             } => {
                 let declared = ty.as_ref().map(|t| self.lower(t));
+                // While the initializer runs, its own names have no value
+                // yet. A closure created in it that mentions one is XN4007 —
+                // definite initialization (design/0014 §2).
+                let mut names = Vec::new();
+                pattern_names(pattern, &mut names);
+                let saved = std::mem::replace(&mut self.initializing, names);
                 let value_ty = match &declared {
                     Some(expected) => {
                         self.check(init, expected);
@@ -1102,6 +1249,7 @@ impl<'a> Checker<'a> {
                         ty
                     }
                 };
+                self.initializing = saved;
                 self.bind_pattern(pattern, &value_ty, *mutable);
             }
             ast::StmtKind::Expr(expr) => {
@@ -1109,6 +1257,15 @@ impl<'a> Checker<'a> {
                 let _ = self.synth(expr);
             }
             ast::StmtKind::Return(value) => {
+                if !self.closures.is_empty() {
+                    // A closure has no function to return from (design/0014
+                    // §3). The operand is still walked for its own problems.
+                    self.closure_early_exit(stmt.span, "`return`");
+                    if let Some(value) = value {
+                        let _ = self.synth(value);
+                    }
+                    return;
+                }
                 let ret = self.sig.ret.clone();
                 match value {
                     Some(value) => self.check(value, &ret),
@@ -1117,10 +1274,25 @@ impl<'a> Checker<'a> {
                     }
                 }
             }
-            ast::StmtKind::Break | ast::StmtKind::Continue => {}
+            ast::StmtKind::Break | ast::StmtKind::Continue => {
+                // Legal inside a loop the closure itself contains; crossing
+                // the closure boundary is not (design/0014 §3).
+                if let Some(closure) = self.closures.last() {
+                    if self.loop_depth == closure.entry_loop_depth {
+                        let spelled = if matches!(stmt.kind, ast::StmtKind::Break) {
+                            "`break`"
+                        } else {
+                            "`continue`"
+                        };
+                        self.closure_early_exit(stmt.span, spelled);
+                    }
+                }
+            }
             ast::StmtKind::While { cond, body } => {
                 self.check(cond, &Type::Bool);
+                self.loop_depth += 1;
                 self.check_block(body, &Type::Unit);
+                self.loop_depth -= 1;
             }
             ast::StmtKind::For {
                 pattern,
@@ -1200,6 +1372,32 @@ impl<'a> Checker<'a> {
             }
 
             ast::ExprKind::Block(block) => self.check_block(block, expected),
+
+            // A closure fits exactly one shape of expectation: a `fn(..)`
+            // type, which only argument positions push (design/0014 §3).
+            // Anything else concrete is the position rule, phrased for the
+            // type that was wanted; poison stays silent.
+            ast::ExprKind::Lambda { params, body } => match expected {
+                Type::Fn {
+                    params: param_types,
+                    ret,
+                    ..
+                } => {
+                    let param_types = param_types.clone();
+                    let ret = (**ret).clone();
+                    self.check_lambda(params, body, &param_types, &ret, expr.span, &mut Vec::new());
+                }
+                _ if expected.is_unknown() => {}
+                other => {
+                    let message = format!(
+                        "a closure cannot produce `{}`; a closure is written only \
+                         as a call argument for a `fn(..)` parameter — inline its \
+                         body, or extract a named fn",
+                        self.render(other)
+                    );
+                    self.error(DiagCode::ClosureOutsideCall, expr.span, message);
+                }
+            },
 
             // A list literal seeds its elements from the expected type:
             // `let xs: List<Int> = [];` is complete with no annotation on the
@@ -1463,15 +1661,18 @@ impl<'a> Checker<'a> {
                 self.struct_lit(path, fields, expr.span, None)
             }
 
-            // Parsed for recovery, not shipped (design/0008 §1): a lambda's
-            // effect set cannot be stated honestly until closure effect rules
-            // land, and a dishonest one lets a captured capability escape as
-            // a pure value. One diagnostic; the body is not descended into.
+            // A closure with no `fn(..)` expectation has nowhere to take its
+            // parameter types from — and nowhere legal to be (design/0014
+            // §3: argument position only; no `let`, no `return`, no fields,
+            // no containers). One diagnostic; the body is not descended
+            // into, because without parameter types every name in it would
+            // cascade.
             ast::ExprKind::Lambda { .. } => {
                 self.error(
-                    DiagCode::UnshippedConstruct,
+                    DiagCode::ClosureOutsideCall,
                     expr.span,
-                    "closures are not part of the language yet; use a named function",
+                    "a closure is written only as a call argument for a `fn(..)` \
+                     parameter; inline its body, or extract a named fn",
                 );
                 Type::Error
             }
@@ -1507,36 +1708,35 @@ impl<'a> Checker<'a> {
             return Type::Error; // parser recovery
         }
 
-        if let Some(binding) = self.lookup(name) {
-            return binding.ty.clone();
+        if let Some((depth, binding)) = self.lookup_indexed(name) {
+            let ty = binding.ty.clone();
+            let mutable = binding.mutable;
+            // A reference reaching below the innermost closure boundary is a
+            // capture (design/0014 §1, free-variable rule (a): values copy
+            // at creation — so the copy must be honest).
+            if let Some(closure) = self.closures.last() {
+                if depth < closure.boundary {
+                    return self.capture_check(name, ty, mutable, span);
+                }
+            }
+            return ty;
         }
 
-        // A module function used as a value.
+        // A module function used as a value. Named functions are resolved,
+        // never captured or passed (design/0014 §1 rule (b), §5: no fn-value
+        // spelling for named fns) — an effectful one riding into `map` would
+        // run outside every effect check.
         if let Some(key) = self.fn_key(name) {
-            let sig = self.defs.fn_named(&key).expect("key just resolved");
-            if !sig.generics.is_empty() {
-                self.error(
-                    DiagCode::AnnotationRequired,
-                    span,
-                    format!(
-                        "generic function `{name}` can only be called directly; \
-                         wrap it in a lambda to pass it as a value"
-                    ),
-                );
-                return Type::Error;
-            }
-            return Type::Fn {
-                params: sig.params.iter().map(|(_, t)| t.clone()).collect(),
-                ret: Box::new(if sig.is_async {
-                    Type::Named {
-                        def: self.defs.task,
-                        args: vec![sig.ret.clone()],
-                    }
-                } else {
-                    sig.ret.clone()
-                }),
-                effects: sig.effects.clone(),
-            };
+            let shown = self.display_fn(&key);
+            self.error(
+                DiagCode::UnshippedConstruct,
+                span,
+                format!(
+                    "`{shown}` is a function, not a value; call it, or wrap the \
+                     call in a closure"
+                ),
+            );
+            return Type::Error;
         }
 
         // Unqualified prelude variants: Some / None / Ok / Err. With no
@@ -1559,6 +1759,23 @@ impl<'a> Checker<'a> {
                 DiagCode::WrongArgumentCount,
                 span,
                 format!("`{name}` is a constructor and must be applied: `{name}(..)`"),
+            );
+            return Type::Error;
+        }
+
+        // Definite initialization (design/0014 §2): the closure is created
+        // while this very `let` is still computing its value, so there is
+        // nothing to capture yet. A dedicated rule, not XN2002 — the name
+        // will exist one statement later, and "unknown" would misdirect.
+        if !self.closures.is_empty() && self.initializing.iter().any(|n| n == name) {
+            let message = format!(
+                "`{name}` is the binding this `let` is initializing; it has no \
+                 value for the closure to capture yet — recursion belongs in a \
+                 named fn"
+            );
+            self.diagnostics.push(
+                Diagnostic::error(DiagCode::ClosureSelfReference, span, message)
+                    .with_teach_note(format!("; {CLOSURE_PLAN_TEACH}")),
             );
             return Type::Error;
         }
@@ -1648,30 +1865,18 @@ impl<'a> Checker<'a> {
                     match self.qualified_ref(&segments, span) {
                         QualifiedLookup::NotModule => {}
                         QualifiedLookup::Fn(key) => {
-                            let sig = self.defs.fn_named(&key).expect("resolved");
-                            if !sig.generics.is_empty() {
-                                self.error(
-                                    DiagCode::AnnotationRequired,
-                                    span,
-                                    format!(
-                                        "generic function `{key}` can only be called directly; \
-                                         wrap it in a lambda to pass it as a value"
-                                    ),
-                                );
-                                return Type::Error;
-                            }
-                            return Type::Fn {
-                                params: sig.params.iter().map(|(_, t)| t.clone()).collect(),
-                                ret: Box::new(if sig.is_async {
-                                    Type::Named {
-                                        def: self.defs.task,
-                                        args: vec![sig.ret.clone()],
-                                    }
-                                } else {
-                                    sig.ret.clone()
-                                }),
-                                effects: sig.effects.clone(),
-                            };
+                            // Named functions are resolved, never passed
+                            // (design/0014 §5) — same refusal as the bare
+                            // spelling.
+                            self.error(
+                                DiagCode::UnshippedConstruct,
+                                span,
+                                format!(
+                                    "`{key}` is a function, not a value; call it, or \
+                                     wrap the call in a closure"
+                                ),
+                            );
+                            return Type::Error;
                         }
                         QualifiedLookup::Variant(def, variant) => {
                             let ident = ast::Ident::new(variant, name.span);
@@ -1951,6 +2156,13 @@ impl<'a> Checker<'a> {
     }
 
     fn try_op(&mut self, inner: &ast::Expr, span: Span) -> Type {
+        if !self.closures.is_empty() {
+            // `?` is an early return, and a closure has no caller of its own
+            // to return to (design/0014 §3). The operand is still walked.
+            let _ = self.synth(inner);
+            self.closure_early_exit(span, "`?`");
+            return Type::Error;
+        }
         let ty = self.synth(inner);
         match &ty {
             Type::Error | Type::Hole(_) => Type::Error,
@@ -2126,6 +2338,36 @@ impl<'a> Checker<'a> {
             };
 
             let concrete = param_ty.substitute(bindings);
+
+            // A closure argument for a `fn(..)` parameter — the one legal
+            // closure position (design/0014 §3). This must run before the
+            // closed/open split: `map`'s `fn(T) -> U` is open in `U`, and
+            // the closure's body is exactly what pins it down.
+            if let (
+                ast::ExprKind::Lambda {
+                    params: lambda_params,
+                    body,
+                },
+                Type::Fn {
+                    params: fn_params,
+                    ret,
+                    ..
+                },
+            ) = (&arg.value.kind, &concrete)
+            {
+                let fn_params = fn_params.clone();
+                let ret = (**ret).clone();
+                self.check_lambda(
+                    lambda_params,
+                    body,
+                    &fn_params,
+                    &ret,
+                    arg.value.span,
+                    bindings,
+                );
+                continue;
+            }
+
             if type_is_closed(&concrete) {
                 self.check(&arg.value, &concrete);
             } else {
@@ -2142,6 +2384,81 @@ impl<'a> Checker<'a> {
                 }
             }
         }
+    }
+
+    /// Check one closure against the `fn(..)` type of the parameter it is
+    /// passed to — the whole of closure checking (design/0014).
+    ///
+    /// Parameter types are read from the fn type (there is no annotation
+    /// syntax to disagree with). The body is checked against the declared
+    /// return when it is closed; when it is an unbound generic — `map`'s `U`
+    /// — the body's synthesised type binds it through `bindings`. The two
+    /// pillars ride the ordinary traversal: [`ClosureCtx`] on the stack
+    /// makes [`Checker::require_effects`] refuse every effect and
+    /// [`Checker::capture_check`] police every reference below the boundary.
+    fn check_lambda(
+        &mut self,
+        params: &[ast::LambdaParam],
+        body: &ast::Expr,
+        param_types: &[Type],
+        ret: &Type,
+        span: Span,
+        bindings: &mut Vec<(String, Type)>,
+    ) {
+        if params.len() != param_types.len() {
+            let message = format!(
+                "this closure takes {} parameter(s), but the `fn` type here takes {}",
+                params.len(),
+                param_types.len()
+            );
+            self.error(DiagCode::WrongArgumentCount, span, message);
+        }
+
+        self.scopes.push(Vec::new());
+        for (index, param) in params.iter().enumerate() {
+            if param.name.name == "_" || param.name.name.is_empty() {
+                continue; // discarded, or parser recovery
+            }
+            let ty = param_types
+                .get(index)
+                .map(|t| t.substitute(bindings))
+                .filter(type_is_closed)
+                .unwrap_or(Type::Error);
+            self.scopes.last_mut().expect("just pushed").push(Binding {
+                name: param.name.name.clone(),
+                ty,
+                mutable: false,
+            });
+        }
+        self.closures.push(ClosureCtx {
+            boundary: self.scopes.len() - 1,
+            entry_loop_depth: self.loop_depth,
+            reported: Vec::new(),
+        });
+
+        let ret_concrete = ret.substitute(bindings);
+        if type_is_closed(&ret_concrete) {
+            self.check(body, &ret_concrete);
+        } else {
+            let actual = self.synth(body);
+            if actual.is_unknown() {
+                // The body is poison — a capture violation, an effect refusal
+                // — and pins nothing. Bind what it would have pinned to
+                // poison too, so "cannot determine `U`" is not stacked on a
+                // mistake already reported.
+                bind_open_params(&ret_concrete, bindings);
+            } else if !Self::match_types(&ret_concrete, &actual, bindings) {
+                let message = format!(
+                    "expected `{}`, found `{}`",
+                    self.render(&ret_concrete),
+                    self.render(&actual)
+                );
+                self.error(DiagCode::TypeMismatch, body.span, message);
+            }
+        }
+
+        self.closures.pop();
+        self.scopes.pop();
     }
 
     fn call(
@@ -3082,6 +3399,56 @@ fn edit_distance(a: &str, b: &str) -> usize {
         std::mem::swap(&mut prev, &mut current);
     }
     prev[b.len()]
+}
+
+/// Bind every still-open `Type::Param` in `ty` to poison. Used when a
+/// closure body failed: the generics it would have pinned must not each earn
+/// their own "cannot determine" on top of the reported mistake.
+fn bind_open_params(ty: &Type, bindings: &mut Vec<(String, Type)>) {
+    match ty {
+        Type::Param(name) => {
+            if !bindings.iter().any(|(n, _)| n == name) {
+                bindings.push((name.clone(), Type::Error));
+            }
+        }
+        Type::Named { args, .. } => args.iter().for_each(|a| bind_open_params(a, bindings)),
+        Type::Fn { params, ret, .. } => {
+            params.iter().for_each(|p| bind_open_params(p, bindings));
+            bind_open_params(ret, bindings);
+        }
+        _ => {}
+    }
+}
+
+/// Every name a pattern will bind, for the definite-initialization rule
+/// (design/0014 §2): these are the names a closure inside the initializer
+/// must not reach for.
+fn pattern_names(pattern: &ast::Pattern, out: &mut Vec<String>) {
+    match &pattern.kind {
+        ast::PatternKind::Binding(ident) => out.push(ident.name.clone()),
+        ast::PatternKind::Variant { elements, .. } => {
+            for element in elements {
+                pattern_names(element, out);
+            }
+        }
+        ast::PatternKind::Struct { fields, .. } => {
+            for field in fields {
+                match &field.pattern {
+                    Some(pattern) => pattern_names(pattern, out),
+                    None => out.push(field.name.name.clone()),
+                }
+            }
+        }
+        ast::PatternKind::Or(alternatives) => {
+            for alternative in alternatives {
+                pattern_names(alternative, out);
+            }
+        }
+        ast::PatternKind::Wildcard
+        | ast::PatternKind::Literal(_)
+        | ast::PatternKind::Path(_)
+        | ast::PatternKind::Error => {}
+    }
 }
 
 /// A type with no unbound `Type::Param` left in it.
