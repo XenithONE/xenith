@@ -633,6 +633,9 @@ pub fn shuffle_command(paths: &Paths) -> ExitCode {
 
 /// The task order this model × arm cell follows, read from the committed
 /// table — the runner follows the data file, not the function that made it.
+/// The row lookup goes through `shuffle_arm`, so the 0012 t5v2 pair replays
+/// its 0011 counterpart's rows instead of demanding new ones in a frozen
+/// file.
 fn ordered_task_names(
     table: &str,
     model: Model,
@@ -649,7 +652,7 @@ fn ordered_task_names(
         let (Some(m), Some(t), Some(c)) = (parts.next(), parts.next(), parts.next()) else {
             return Err(format!("{SHUFFLE_FILE}: malformed row `{line}`"));
         };
-        if m == model.name() && c == condition.name() {
+        if m == model.name() && c == condition.shuffle_arm() {
             order.push(t.to_string());
         }
     }
@@ -1192,6 +1195,17 @@ mod tests {
                 prompt(Condition::T5NoneOn, graft),
                 prompt(Condition::T5NoneOff, graft)
             );
+            // The 0012 §2 pair: byte-identical to each other and to the
+            // 0011 none pair — "zero prompt changes" is the operational
+            // check that keeps t5v2 attributable to the compiler alone.
+            assert_eq!(
+                prompt(Condition::T5V2NoneOn, graft),
+                prompt(Condition::T5V2NoneOff, graft)
+            );
+            assert_eq!(
+                prompt(Condition::T5V2NoneOn, graft),
+                prompt(Condition::T5NoneOn, graft)
+            );
         }
     }
 
@@ -1238,7 +1252,7 @@ mod tests {
 
     #[test]
     fn the_calling_contract_appears_in_every_t5a_arm_and_no_t5b_arm() {
-        for condition in Condition::T5 {
+        for condition in Condition::T5.into_iter().chain(Condition::T5V2) {
             assert!(
                 prompt(condition, true).contains("use manifest;"),
                 "{} lacks the frozen main",
@@ -1254,7 +1268,7 @@ mod tests {
 
     #[test]
     fn every_t5_prompt_ends_with_the_contract_and_names_the_target() {
-        for condition in Condition::T5 {
+        for condition in Condition::T5.into_iter().chain(Condition::T5V2) {
             for graft in [true, false] {
                 let text = prompt(condition, graft);
                 assert!(text.ends_with(T5_CONTRACT), "{}", condition.name());
@@ -1351,6 +1365,17 @@ mod tests {
         let mut sorted = order.clone();
         sorted.sort();
         assert_eq!(sorted, names, "every task exactly once");
+        // The 0012 t5v2 pair replays the frozen none rows — same order,
+        // no new rows demanded of a frozen table.
+        let replayed =
+            ordered_task_names(&table, Model::Codex, Condition::T5V2NoneOn, &tasks).unwrap();
+        let none = ordered_task_names(&table, Model::Codex, Condition::T5NoneOn, &tasks).unwrap();
+        assert_eq!(replayed, none);
+        let replayed_off =
+            ordered_task_names(&table, Model::Codex, Condition::T5V2NoneOff, &tasks).unwrap();
+        let none_off =
+            ordered_task_names(&table, Model::Codex, Condition::T5NoneOff, &tasks).unwrap();
+        assert_eq!(replayed_off, none_off);
         // A truncated table is refused rather than silently reordered.
         let truncated: String = table
             .lines()

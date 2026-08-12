@@ -164,6 +164,15 @@ enum Condition {
     T5NoneOn,
     #[value(name = "t5-none-off")]
     T5NoneOff,
+    // The 0012 §2 re-measurement: the tier-5 `none` pair run again after the
+    // module-call teach landed (P1). Behaviour is identical to the 0011 pair
+    // — same docs form, same tasks, same prompts, same round cap — only the
+    // condition names differ, so the runs land in their own ledger files and
+    // 0011's t5-none results stay frozen and comparable.
+    #[value(name = "t5v2-none-on")]
+    T5V2NoneOn,
+    #[value(name = "t5v2-none-off")]
+    T5V2NoneOff,
 }
 
 impl Condition {
@@ -191,6 +200,11 @@ impl Condition {
         Condition::T5NoneOn,
         Condition::T5NoneOff,
     ];
+    /// The 0012 §2 arms: the `none` pair re-run against the module-call
+    /// teaching compiler. Deliberately not part of [`Condition::T5`] — that
+    /// array generates the frozen 0011 shuffle table and summary section,
+    /// both of which must not move.
+    const T5V2: [Condition; 2] = [Condition::T5V2NoneOn, Condition::T5V2NoneOff];
 
     fn name(self) -> &'static str {
         match self {
@@ -211,6 +225,20 @@ impl Condition {
             Condition::T5ApiOff => "t5-api-off",
             Condition::T5NoneOn => "t5-none-on",
             Condition::T5NoneOff => "t5-none-off",
+            Condition::T5V2NoneOn => "t5v2-none-on",
+            Condition::T5V2NoneOff => "t5v2-none-off",
+        }
+    }
+
+    /// The arm name this condition follows in the frozen tier-5 run-order
+    /// table. The table is a 0011 artifact and stays byte-frozen (§5), so
+    /// the 0012 re-measurement replays the `none` rows under its own name —
+    /// the compiler changed, the schedule did not.
+    fn shuffle_arm(self) -> &'static str {
+        match self {
+            Condition::T5V2NoneOn => Condition::T5NoneOn.name(),
+            Condition::T5V2NoneOff => Condition::T5NoneOff.name(),
+            other => other.name(),
         }
     }
 
@@ -221,7 +249,10 @@ impl Condition {
         match self {
             Condition::T5GuideOn | Condition::T5GuideOff => Some(t5::T5Docs::Guide),
             Condition::T5ApiOn | Condition::T5ApiOff => Some(t5::T5Docs::Api),
-            Condition::T5NoneOn | Condition::T5NoneOff => Some(t5::T5Docs::None),
+            Condition::T5NoneOn
+            | Condition::T5NoneOff
+            | Condition::T5V2NoneOn
+            | Condition::T5V2NoneOff => Some(t5::T5Docs::None),
             _ => None,
         }
     }
@@ -271,6 +302,7 @@ impl Condition {
                 | Condition::T5GuideOff
                 | Condition::T5ApiOff
                 | Condition::T5NoneOff
+                | Condition::T5V2NoneOff
         )
     }
 
@@ -363,6 +395,20 @@ fn summarize(paths: &Paths) -> ExitCode {
         );
         table.push_str(&t5_block);
         table.push_str(&t5::summary_extras(paths));
+    }
+
+    // The 0012 §2 re-measurement of the `none` pair, rendered only once a
+    // t5v2 result file exists — its absence means the campaign has not run.
+    let (t5v2_block, measured) = matrix_block(paths, &Condition::T5V2);
+    if measured {
+        table.push_str(
+            "\n## Module-call teaching (0012 t5v2)\n\n\
+             The design/0012 §2 arms: the tier-5 `none` pair re-run with the\n\
+             module-call teach in the compiler (`t5v2-none-off` differs from 0011's\n\
+             `t5-none-off` only by compiler version). Same tasks, prompts and run\n\
+             order as the 0011 pair; same cell format as above.\n\n",
+        );
+        table.push_str(&t5v2_block);
     }
 
     let out = paths.results.join("summary.md");
@@ -1247,7 +1293,9 @@ fn first_prompt(guide: &str, api_table: &str, task: &Task, condition: Condition)
         | Condition::T5ApiOn
         | Condition::T5ApiOff
         | Condition::T5NoneOn
-        | Condition::T5NoneOff => {
+        | Condition::T5NoneOff
+        | Condition::T5V2NoneOn
+        | Condition::T5V2NoneOff => {
             unreachable!("tier-5 prompts are assembled by t5::first_prompt")
         }
     }
@@ -1550,6 +1598,7 @@ mod tests {
             .chain(Condition::SEPARATION)
             .chain(Condition::V3)
             .chain(Condition::T5)
+            .chain(Condition::T5V2)
         {
             let value = condition.to_possible_value().expect("hidden variant");
             assert_eq!(value.get_name(), condition.name());
@@ -1570,6 +1619,38 @@ mod tests {
                 "t5-none-off"
             ]
         );
+    }
+
+    #[test]
+    fn t5v2_conditions_mirror_the_t5_none_pair_exactly() {
+        // 0012 §2: the re-measurement arms differ from 0011's none pair in
+        // name — and therefore in ledger file — and in nothing else.
+        let names: Vec<&str> = Condition::T5V2.iter().map(|c| c.name()).collect();
+        assert_eq!(names, ["t5v2-none-on", "t5v2-none-off"]);
+        use t5::T5Docs;
+        assert!(matches!(
+            Condition::T5V2NoneOn.t5_docs(),
+            Some(T5Docs::None)
+        ));
+        assert!(matches!(
+            Condition::T5V2NoneOff.t5_docs(),
+            Some(T5Docs::None)
+        ));
+        assert!(Condition::T5V2NoneOn.teaching());
+        assert!(!Condition::T5V2NoneOff.teaching());
+        for condition in Condition::T5V2 {
+            assert!(condition.is_t5(), "{}", condition.name());
+            assert!(!condition.has_api_table(), "{}", condition.name());
+            assert!(!condition.feeds_goals(), "{}", condition.name());
+            assert!(!condition.records_feedback(), "{}", condition.name());
+        }
+        // The frozen 0011 run-order table carries no t5v2 rows: the pair
+        // replays the none rows, and every 0011 arm still follows its own.
+        assert_eq!(Condition::T5V2NoneOn.shuffle_arm(), "t5-none-on");
+        assert_eq!(Condition::T5V2NoneOff.shuffle_arm(), "t5-none-off");
+        for condition in Condition::T5 {
+            assert_eq!(condition.shuffle_arm(), condition.name());
+        }
     }
 
     #[test]
