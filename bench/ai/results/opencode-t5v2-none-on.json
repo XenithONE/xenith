@@ -1,0 +1,348 @@
+{
+  "condition": "t5v2-none-on",
+  "model": "opencode",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN2009",
+            "XN1008",
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-05-opencode-t5v2-none-on-r1\\src\\main.xn:1:1: error[XN2009]: `use galley.menu;` is never used in this file\n1 | use galley.menu;\n  | ^^^^^^^^^^^^^^^^\n  run `xenith explain XN2009` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-05-opencode-t5v2-none-on-r1\\src\\main.xn:2:1: error[XN2009]: `use galley.kitchen;` is never used in this file\n2 | use galley.kitchen;\n  | ^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2009` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-05-opencode-t5v2-none-on-r1\\src\\main.xn:6:5: error[XN1008]: `for` is not part of the language yet — iterate with `while` + `len()` + `get(index:)`\n6 |     for dish in menu.board() {\n  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN1008` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-05-opencode-t5v2-none-on-r1\\src\\main.xn:6:17: error[XN2002]: nothing named `menu` is in scope\n6 |     for dish in menu.board() {\n  |                 ^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-05-opencode-t5v2-none-on-r1\\src\\main.xn:10:9: error[XN2002]: nothing named `kitchen` is in scope\n10 |         kitchen.serve(io: io, dish: dish)?;\n   |         ^^^^^^^\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 41.2,
+          "submitted": "use galley.menu;\nuse galley.kitchen;\n\nfn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    var first = true;\n    for dish in menu.board() {\n        if !first {\n            io.write(text: \";\")?;\n        }\n        kitchen.serve(io: io, dish: dish)?;\n        first = false;\n    }\n    return Ok(unit);\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 2,
+          "diag_codes": [
+            "XN2007",
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-05-opencode-t5v2-none-on-r2\\src\\main.xn:1:5: error[XN2007]: `galley.menu.board` is not a module in this project\n1 | use galley.menu.board;\n  |     ^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-05-opencode-t5v2-none-on-r2\\src\\main.xn:2:5: error[XN2007]: `galley.kitchen.serve` is not a module in this project\n2 | use galley.kitchen.serve;\n  |     ^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-05-opencode-t5v2-none-on-r2\\src\\main.xn:5:18: error[XN2002]: nothing named `board` is in scope; `use galley.menu;` would provide it\n5 |     let dishes = board();\n  |                  ^^^^^\n  fix: insert `use galley.menu;`\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-05-opencode-t5v2-none-on-r2\\src\\main.xn:11:9: error[XN2002]: nothing named `serve` is in scope; `use galley.kitchen;` would provide it\n11 |         serve(io: io, dish: dishes.get(index: index)?)?;\n   |         ^^^^^\n  fix: insert `use galley.kitchen;`\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 2,
+          "outcome": "diagnostics",
+          "seconds": 16.1,
+          "submitted": "use galley.menu.board;\nuse galley.kitchen.serve;\n\nfn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    let dishes = board();\n    var index = 0;\n    while index < dishes.len() {\n        if index > 0 {\n            io.write(text: \";\")?;\n        }\n        serve(io: io, dish: dishes.get(index: index)?)?;\n        index = index + 1;\n    }\n    return Ok(unit);\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 3,
+          "diag_codes": [
+            "XN2009",
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-05-opencode-t5v2-none-on-r3\\src\\main.xn:1:1: error[XN2009]: `use galley.menu;` is never used in this file\n1 | use galley.menu;\n  | ^^^^^^^^^^^^^^^^\n  run `xenith explain XN2009` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-05-opencode-t5v2-none-on-r3\\src\\main.xn:2:1: error[XN2009]: `use galley.kitchen;` is never used in this file\n2 | use galley.kitchen;\n  | ^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2009` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-05-opencode-t5v2-none-on-r3\\src\\main.xn:5:18: error[XN2002]: nothing named `board` is in scope; `use galley.menu;` would provide it\n5 |     let dishes = board();\n  |                  ^^^^^\n  fix: insert `use galley.menu;`\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-05-opencode-t5v2-none-on-r3\\src\\main.xn:11:9: error[XN2002]: nothing named `serve` is in scope; `use galley.kitchen;` would provide it\n11 |         serve(io: io, dish: dishes.get(index: index)?)?;\n   |         ^^^^^\n  fix: insert `use galley.kitchen;`\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 2,
+          "outcome": "diagnostics",
+          "seconds": 16.1,
+          "submitted": "use galley.menu;\nuse galley.kitchen;\n\nfn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    let dishes = board();\n    var index = 0;\n    while index < dishes.len() {\n        if index > 0 {\n            io.write(text: \";\")?;\n        }\n        serve(io: io, dish: dishes.get(index: index)?)?;\n        index = index + 1;\n    }\n    return Ok(unit);\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 4,
+          "diag_codes": [
+            "XN3001"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-05-opencode-t5v2-none-on-r4\\src\\main.xn:11:44: error[XN3001]: `?` on an `Option` needs `main.main` to return `Option<_>`; it returns `Result<Unit, Error>`\n11 |         galley.kitchen.serve(io: io, dish: dishes.get(index: index)?)?;\n   |                                            ^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN3001` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 26.5,
+          "submitted": "use galley.menu;\nuse galley.kitchen;\n\nfn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    let dishes = galley.menu.board();\n    var index = 0;\n    while index < dishes.len() {\n        if index > 0 {\n            io.write(text: \";\")?;\n        }\n        galley.kitchen.serve(io: io, dish: dishes.get(index: index)?)?;\n        index = index + 1;\n    }\n    return Ok(unit);\n}",
+          "teach_count": 0
+        }
+      ],
+      "task": "t5-05",
+      "tier": 5
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN2008",
+            "XN2009",
+            "XN1008",
+            "XN2002",
+            "XN2001"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-02-opencode-t5v2-none-on-r1\\src\\main.xn:4:20: error[XN2008]: `watchlog.entries` is private to `watchlog`\n4 |     io.write(text: watchlog.entries())?;\n  |                    ^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2008` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-02-opencode-t5v2-none-on-r1\\src\\watchlog.xn:1:1: error[XN2009]: `use harbor.signal;` is never used in this file\n1 | use harbor.signal;\n  | ^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2009` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-02-opencode-t5v2-none-on-r1\\src\\watchlog.xn:7:5: error[XN1008]: `for` is not part of the language yet — iterate with `while` + `len()` + `get(index:)`\n7 |     for item in signal.today() {\n  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN1008` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-02-opencode-t5v2-none-on-r1\\src\\watchlog.xn:7:17: error[XN2002]: nothing named `signal` is in scope\n7 |     for item in signal.today() {\n  |                 ^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-02-opencode-t5v2-none-on-r1\\src\\watchlog.xn:9:13: error[XN2001]: `Signal` does not name a type\n9 |             Signal.Calm => \"calm\",\n  |             ^^^^^^\n  run `xenith explain XN2001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-02-opencode-t5v2-none-on-r1\\src\\watchlog.xn:9:13: error[XN2001]: `Signal` does not name a type\n9 |             Signal.Calm => \"calm\",\n  |             ^^^^^^\n  run `xenith explain XN2001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-02-opencode-t5v2-none-on-r1\\src\\watchlog.xn:10:13: error[XN2001]: `Signal` does not name a type\n10 |             Signal.Gale(speed) => \"gale:\".concat(other: speed.to_text()),\n   |             ^^^^^^\n  run `xenith explain XN2001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-02-opencode-t5v2-none-on-r1\\src\\watchlog.xn:10:57: error[XN2002]: nothing named `speed` is in scope\n10 |             Signal.Gale(speed) => \"gale:\".concat(other: speed.to_text()),\n   |                                                         ^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-02-opencode-t5v2-none-on-r1\\src\\watchlog.xn:11:13: error[XN2001]: `Signal` does not name a type\n11 |             Signal.Fog(density) => \"fog:\".concat(other: density),\n   |             ^^^^^^\n  run `xenith explain XN2001` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-02-opencode-t5v2-none-on-r1\\src\\watchlog.xn:11:57: error[XN2002]: nothing named `density` is in scope\n11 |             Signal.Fog(density) => \"fog:\".concat(other: density),\n   |                                                         ^^^^^^^\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 31.2,
+          "submitted": "use harbor.signal;\n\nfn entries() -> String {\n    var result = \"\";\n    var separator = \"\";\n\n    for item in signal.today() {\n        let rendered = match item {\n            Signal.Calm => \"calm\",\n            Signal.Gale(speed) => \"gale:\".concat(other: speed.to_text()),\n            Signal.Fog(density) => \"fog:\".concat(other: density),\n        };\n        result = result.concat(other: separator).concat(other: rendered);\n        separator = \";\";\n    }\n\n    result\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 2,
+          "diag_codes": [
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-02-opencode-t5v2-none-on-r2\\src\\watchlog.xn:4:19: error[XN2002]: `harbor.signal` has no item named `today`\n4 |     let signals = harbor.signal.today();\n  |                   ^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 38.6,
+          "submitted": "use harbor.signal;\n\npub fn entries() -> String {\n    let signals = harbor.signal.today();\n    var result = \"\";\n    var separator = \"\";\n    var i = 0;\n\n    while i < signals.len() {\n        let rendered = match signals.get(index: i) {\n            Some(item) => match item {\n                harbor.signal.Signal.Calm => \"calm\",\n                harbor.signal.Signal.Gale(speed) => \"gale:\".concat(other: speed.to_text()),\n                harbor.signal.Signal.Fog(density) => \"fog:\".concat(other: density),\n            },\n            None => \"\",\n        };\n        result = result.concat(other: separator).concat(other: rendered);\n        separator = \";\";\n        i = i + 1;\n    }\n\n    result\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 3,
+          "diag_codes": [
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-02-opencode-t5v2-none-on-r3\\src\\watchlog.xn:4:19: error[XN2002]: `harbor.signal` has no item named `day`\n4 |     let signals = harbor.signal.day();\n  |                   ^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 28.7,
+          "submitted": "use harbor.signal;\n\npub fn entries() -> String {\n    let signals = harbor.signal.day();\n    var result = \"\";\n    var separator = \"\";\n    var i = 0;\n\n    while i < signals.len() {\n        let rendered = match signals.get(index: i) {\n            Some(item) => match item {\n                harbor.signal.Signal.Calm => \"calm\",\n                harbor.signal.Signal.Gale(speed) => \"gale:\".concat(other: speed.to_text()),\n                harbor.signal.Signal.Fog(density) => \"fog:\".concat(other: density),\n            },\n            None => \"\",\n        };\n        result = result.concat(other: separator).concat(other: rendered);\n        separator = \";\";\n        i = i + 1;\n    }\n\n    result\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 4,
+          "outcome": "pass",
+          "seconds": 22.6,
+          "submitted": "use harbor.signal;\n\npub fn entries() -> String {\n    let signals = harbor.signal.sequence();\n    var result = \"\";\n    var separator = \"\";\n    var i = 0;\n\n    while i < signals.len() {\n        let rendered = match signals.get(index: i) {\n            Some(item) => match item {\n                harbor.signal.Signal.Calm => \"calm\",\n                harbor.signal.Signal.Gale(speed) => \"gale:\".concat(other: speed.to_text()),\n                harbor.signal.Signal.Fog(density) => \"fog:\".concat(other: density),\n            },\n            None => \"\",\n        };\n        result = result.concat(other: separator).concat(other: rendered);\n        separator = \";\";\n        i = i + 1;\n    }\n\n    result\n}"
+        }
+      ],
+      "task": "t5-02",
+      "tier": 5
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN2009",
+            "XN1008",
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-06-opencode-t5v2-none-on-r1\\src\\main.xn:1:1: error[XN2009]: `use stable.herd;` is never used in this file\n1 | use stable.herd;\n  | ^^^^^^^^^^^^^^^^\n  run `xenith explain XN2009` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-06-opencode-t5v2-none-on-r1\\src\\main.xn:2:1: error[XN2009]: `use stable.ledger;` is never used in this file\n2 | use stable.ledger;\n  | ^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2009` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-06-opencode-t5v2-none-on-r1\\src\\main.xn:8:5: error[XN1008]: `for` is not part of the language yet — iterate with `while` + `len()` + `get(index:)`\n8 |     for pony in herd.lineup() {\n  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN1008` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-06-opencode-t5v2-none-on-r1\\src\\main.xn:8:17: error[XN2002]: nothing named `herd` is in scope\n8 |     for pony in herd.lineup() {\n  |                 ^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-06-opencode-t5v2-none-on-r1\\src\\main.xn:9:19: error[XN2002]: nothing named `herd` is in scope\n9 |         let fed = herd.feed(pony: pony, scoops: 3);\n  |                   ^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-06-opencode-t5v2-none-on-r1\\src\\main.xn:10:21: error[XN2002]: nothing named `ledger` is in scope\n10 |         let entry = ledger.render(pony: fed);\n   |                     ^^^^^^\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 33.7,
+          "submitted": "use stable.herd;\nuse stable.ledger;\n\nfn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    var output = \"\";\n    var first = true;\n\n    for pony in herd.lineup() {\n        let fed = herd.feed(pony: pony, scoops: 3);\n        let entry = ledger.render(pony: fed);\n        if first {\n            output = entry;\n            first = false;\n        } else {\n            output = output.concat(other: \",\").concat(other: entry);\n        }\n    }\n\n    io.write(text: output)?;\n    return Ok(unit);\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 2,
+          "diag_codes": [
+            "XN2009",
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-06-opencode-t5v2-none-on-r2\\src\\main.xn:1:1: error[XN2009]: `use stable.herd;` is never used in this file\n1 | use stable.herd;\n  | ^^^^^^^^^^^^^^^^\n  run `xenith explain XN2009` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-06-opencode-t5v2-none-on-r2\\src\\main.xn:2:1: error[XN2009]: `use stable.ledger;` is never used in this file\n2 | use stable.ledger;\n  | ^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2009` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-06-opencode-t5v2-none-on-r2\\src\\main.xn:5:18: error[XN2002]: nothing named `lineup` is in scope; `use stable.herd;` would provide it\n5 |     let ponies = lineup();\n  |                  ^^^^^^\n  fix: insert `use stable.herd;`\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-06-opencode-t5v2-none-on-r2\\src\\main.xn:11:19: error[XN2002]: nothing named `feed` is in scope; `use stable.herd;` would provide it\n11 |         let fed = feed(pony: pony, scoops: 3);\n   |                   ^^^^\n  fix: insert `use stable.herd;`\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-06-opencode-t5v2-none-on-r2\\src\\main.xn:12:21: error[XN2002]: nothing named `render` is in scope\n12 |         let entry = render(fed);\n   |                     ^^^^^^\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 2,
+          "outcome": "diagnostics",
+          "seconds": 29.8,
+          "submitted": "use stable.herd;\nuse stable.ledger;\n\nfn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    let ponies = lineup();\n    var output = \"\";\n    var i = 0;\n\n    while i < ponies.len() {\n        let pony = ponies.get(index: i);\n        let fed = feed(pony: pony, scoops: 3);\n        let entry = render(fed);\n\n        if i == 0 {\n            output = entry;\n        } else {\n            output = output.concat(other: \",\").concat(other: entry);\n        }\n\n        i = i + 1;\n    }\n\n    io.write(text: output)?;\n    return Ok(unit);\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 3,
+          "diag_codes": [
+            "XN2009",
+            "XN1002",
+            "XN1007",
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-06-opencode-t5v2-none-on-r3\\src\\main.xn:1:1: error[XN2009]: `use stable.herd;` is never used in this file\n1 | use stable.herd.{lineup, feed};\n  | ^^^^^^^^^^^^^^^\n  run `xenith explain XN2009` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-06-opencode-t5v2-none-on-r3\\src\\main.xn:1:16: error[XN1002]: expected `;`\n1 | use stable.herd.{lineup, feed};\n  |                ^\n  fix: insert `;`\n  run `xenith explain XN1002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-06-opencode-t5v2-none-on-r3\\src\\main.xn:1:16: error[XN1007]: expected a declaration, found `.`\n1 | use stable.herd.{lineup, feed};\n  |                ^\n  run `xenith explain XN1007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-06-opencode-t5v2-none-on-r3\\src\\main.xn:2:1: error[XN2009]: `use stable.ledger;` is never used in this file\n2 | use stable.ledger.{render};\n  | ^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2009` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-06-opencode-t5v2-none-on-r3\\src\\main.xn:2:18: error[XN1002]: expected `;`\n2 | use stable.ledger.{render};\n  |                  ^\n  fix: insert `;`\n  run `xenith explain XN1002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-06-opencode-t5v2-none-on-r3\\src\\main.xn:2:18: error[XN1007]: expected a declaration, found `.`\n2 | use stable.ledger.{render};\n  |                  ^\n  run `xenith explain XN1007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-06-opencode-t5v2-none-on-r3\\src\\main.xn:5:18: error[XN2002]: nothing named `lineup` is in scope; `use stable.herd;` would provide it\n5 |     let ponies = lineup();\n  |                  ^^^^^^\n  fix: insert `use stable.herd;`\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-06-opencode-t5v2-none-on-r3\\src\\main.xn:11:19: error[XN2002]: nothing named `feed` is in scope; `use stable.herd;` would provide it\n11 |         let fed = feed(pony: pony, scoops: 3);\n   |                   ^^^^\n  fix: insert `use stable.herd;`\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-06-opencode-t5v2-none-on-r3\\src\\main.xn:12:21: error[XN2002]: nothing named `render` is in scope\n12 |         let entry = render(fed);\n   |                     ^^^^^^\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 4,
+          "outcome": "diagnostics",
+          "seconds": 27.2,
+          "submitted": "use stable.herd.{lineup, feed};\nuse stable.ledger.{render};\n\nfn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    let ponies = lineup();\n    var output = \"\";\n    var i = 0;\n\n    while i < ponies.len() {\n        let pony = ponies.get(index: i);\n        let fed = feed(pony: pony, scoops: 3);\n        let entry = render(fed);\n\n        if i == 0 {\n            output = entry;\n        } else {\n            output = output.concat(other: \",\").concat(other: entry);\n        }\n\n        i = i + 1;\n    }\n\n    io.write(text: output)?;\n    return Ok(unit);\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 4,
+          "diag_codes": [
+            "XN2009",
+            "XN1002",
+            "XN1007",
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-06-opencode-t5v2-none-on-r4\\src\\main.xn:1:1: error[XN2009]: `use stable.herd;` is never used in this file\n1 | use stable.herd::{lineup, feed};\n  | ^^^^^^^^^^^^^^^\n  run `xenith explain XN2009` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-06-opencode-t5v2-none-on-r4\\src\\main.xn:1:16: error[XN1002]: expected `;`\n1 | use stable.herd::{lineup, feed};\n  |                ^\n  fix: insert `;`\n  run `xenith explain XN1002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-06-opencode-t5v2-none-on-r4\\src\\main.xn:1:16: error[XN1007]: expected a declaration, found `:`\n1 | use stable.herd::{lineup, feed};\n  |                ^\n  run `xenith explain XN1007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-06-opencode-t5v2-none-on-r4\\src\\main.xn:2:1: error[XN2009]: `use stable.ledger;` is never used in this file\n2 | use stable.ledger::{render};\n  | ^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2009` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-06-opencode-t5v2-none-on-r4\\src\\main.xn:2:18: error[XN1002]: expected `;`\n2 | use stable.ledger::{render};\n  |                  ^\n  fix: insert `;`\n  run `xenith explain XN1002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-06-opencode-t5v2-none-on-r4\\src\\main.xn:2:18: error[XN1007]: expected a declaration, found `:`\n2 | use stable.ledger::{render};\n  |                  ^\n  run `xenith explain XN1007` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-06-opencode-t5v2-none-on-r4\\src\\main.xn:5:18: error[XN2002]: nothing named `lineup` is in scope; `use stable.herd;` would provide it\n5 |     let ponies = lineup();\n  |                  ^^^^^^\n  fix: insert `use stable.herd;`\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-06-opencode-t5v2-none-on-r4\\src\\main.xn:11:19: error[XN2002]: nothing named `feed` is in scope; `use stable.herd;` would provide it\n11 |         let fed = feed(pony: pony, scoops: 3);\n   |                   ^^^^\n  fix: insert `use stable.herd;`\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-06-opencode-t5v2-none-on-r4\\src\\main.xn:12:21: error[XN2002]: nothing named `render` is in scope\n12 |         let entry = render(fed);\n   |                     ^^^^^^\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 4,
+          "outcome": "diagnostics",
+          "seconds": 33.3,
+          "submitted": "use stable.herd::{lineup, feed};\nuse stable.ledger::{render};\n\nfn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    let ponies = lineup();\n    var output = \"\";\n    var i = 0;\n\n    while i < ponies.len() {\n        let pony = ponies.get(index: i);\n        let fed = feed(pony: pony, scoops: 3);\n        let entry = render(fed);\n\n        if i == 0 {\n            output = entry;\n        } else {\n            output = output.concat(other: \",\").concat(other: entry);\n        }\n\n        i = i + 1;\n    }\n\n    io.write(text: output)?;\n    return Ok(unit);\n}",
+          "teach_count": 0
+        }
+      ],
+      "task": "t5-06",
+      "tier": 5
+    },
+    {
+      "pass_at_1": false,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN2008",
+            "XN1008"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-03-opencode-t5v2-none-on-r1\\src\\main.xn:4:5: error[XN2008]: `tally.publish` is private to `tally`\n4 |     tally.publish(io: io)?;\n  |     ^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2008` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-03-opencode-t5v2-none-on-r1\\src\\tally.xn:5:5: error[XN1008]: `for` is not part of the language yet — iterate with `while` + `len()` + `get(index:)`\n5 |     for frame in relay.feed.frames() {\n  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN1008` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 22.1,
+          "submitted": "use relay.feed;\n\nfn publish(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    var total = 0;\n    for frame in relay.feed.frames() {\n        let value = match relay.feed.decode(frame) {\n            Ok(value) => value,\n            Err(_) => 0,\n        };\n        total = total + value;\n    }\n    relay.feed.emit(io: io, total: total)?;\n    return Ok(unit);\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 2,
+          "diag_codes": [
+            "XN3001"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-03-opencode-t5v2-none-on-r2\\src\\tally.xn:8:45: error[XN3001]: expected `String`, found `Option<String>`\n8 |         let value = match relay.feed.decode(frames.get(index: i)) {\n  |                                             ^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN3001` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 14.7,
+          "submitted": "use relay.feed;\n\npub fn publish(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    let frames = relay.feed.frames();\n    var total = 0;\n    var i = 0;\n    while i < frames.len() {\n        let value = match relay.feed.decode(frames.get(index: i)) {\n            Ok(value) => value,\n            Err(_) => 0,\n        };\n        total = total + value;\n        i = i + 1;\n    }\n    relay.feed.emit(io: io, total: total)?;\n    return Ok(unit);\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 3,
+          "outcome": "pass",
+          "seconds": 18.2,
+          "submitted": "use relay.feed;\n\npub fn publish(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    let frames = relay.feed.frames();\n    var total = 0;\n    var i = 0;\n    while i < frames.len() {\n        let value = match frames.get(index: i) {\n            Some(frame) => match relay.feed.decode(frame) {\n                Ok(value) => value,\n                Err(_) => 0,\n            },\n            None => 0,\n        };\n        total = total + value;\n        i = i + 1;\n    }\n    relay.feed.emit(io: io, total: total)?;\n    return Ok(unit);\n}"
+        }
+      ],
+      "task": "t5-03",
+      "tier": 5
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN2009",
+            "XN1008",
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-04-opencode-t5v2-none-on-r1\\src\\cutlist.xn:1:1: error[XN2009]: `use mill.stock;` is never used in this file\n1 | use mill.stock;\n  | ^^^^^^^^^^^^^^^\n  run `xenith explain XN2009` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-04-opencode-t5v2-none-on-r1\\src\\cutlist.xn:2:1: error[XN2009]: `use mill.rules;` is never used in this file\n2 | use mill.rules;\n  | ^^^^^^^^^^^^^^^\n  run `xenith explain XN2009` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-04-opencode-t5v2-none-on-r1\\src\\cutlist.xn:8:5: error[XN1008]: `for` is not part of the language yet — iterate with `while` + `len()` + `get(index:)`\n8 |     for plank in stock.inventory() {\n  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN1008` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-04-opencode-t5v2-none-on-r1\\src\\cutlist.xn:8:18: error[XN2002]: nothing named `stock` is in scope\n8 |     for plank in stock.inventory() {\n  |                  ^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-04-opencode-t5v2-none-on-r1\\src\\cutlist.xn:9:12: error[XN2002]: nothing named `rules` is in scope\n9 |         if rules.keep(plank: plank) {\n  |            ^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-04-opencode-t5v2-none-on-r1\\src\\cutlist.xn:11:26: error[XN2002]: nothing named `rules` is in scope\n11 |                 result = rules.label(plank: plank);\n   |                          ^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-04-opencode-t5v2-none-on-r1\\src\\cutlist.xn:14:66: error[XN2002]: nothing named `rules` is in scope\n14 |                 result = result.concat(other: \",\").concat(other: rules.label(plank: plank));\n   |                                                                  ^^^^^\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 30.1,
+          "submitted": "use mill.stock;\nuse mill.rules;\n\npub fn lines() -> String {\n    var result = \"\";\n    var first = true;\n\n    for plank in stock.inventory() {\n        if rules.keep(plank: plank) {\n            if first {\n                result = rules.label(plank: plank);\n                first = false;\n            } else {\n                result = result.concat(other: \",\").concat(other: rules.label(plank: plank));\n            }\n        }\n    }\n\n    result\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 2,
+          "diag_codes": [
+            "XN2002",
+            "XN3001"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-04-opencode-t5v2-none-on-r2\\src\\cutlist.xn:13:12: error[XN2002]: `mill.rules` has no item named `keep`\n13 |         if mill.rules.keep(plank: plank) {\n   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-04-opencode-t5v2-none-on-r2\\src\\cutlist.xn:14:49: error[XN3001]: expected `mill.stock.Plank`, found `Option<mill.stock.Plank>`\n14 |             let label = mill.rules.label(plank: plank);\n   |                                                 ^^^^^\n  run `xenith explain XN3001` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 31.8,
+          "submitted": "use mill.stock;\nuse mill.rules;\n\npub fn lines() -> String {\n    let inventory = mill.stock.inventory();\n    var result = \"\";\n    var first = true;\n    var i = 0;\n\n    while i < inventory.len() {\n        let plank = inventory.get(index: i);\n\n        if mill.rules.keep(plank: plank) {\n            let label = mill.rules.label(plank: plank);\n\n            if first {\n                result = label;\n                first = false;\n            } else {\n                result = result.concat(other: \",\").concat(other: label);\n            }\n        }\n\n        i = i + 1;\n    }\n\n    result\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 3,
+          "diag_codes": [
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-04-opencode-t5v2-none-on-r3\\src\\cutlist.xn:13:20: error[XN2002]: `mill.rules` has no item named `should_keep`\n13 |                 if mill.rules.should_keep(plank: plank) {\n   |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 25.3,
+          "submitted": "use mill.stock;\nuse mill.rules;\n\npub fn lines() -> String {\n    let inventory = mill.stock.inventory();\n    var result = \"\";\n    var first = true;\n    var i = 0;\n\n    while i < inventory.len() {\n        match inventory.get(index: i) {\n            Some(plank) => {\n                if mill.rules.should_keep(plank: plank) {\n                    let label = mill.rules.label(plank: plank);\n                    if first {\n                        result = label;\n                        first = false;\n                    } else {\n                        result = result.concat(other: \",\").concat(other: label);\n                    }\n                }\n            }\n            None => {}\n        };\n        i = i + 1;\n    }\n\n    result\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 4,
+          "diag_codes": [
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-04-opencode-t5v2-none-on-r4\\src\\cutlist.xn:13:20: error[XN2002]: `mill.rules` has no item named `is_kept`\n13 |                 if mill.rules.is_kept(plank: plank) {\n   |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 24.0,
+          "submitted": "use mill.stock;\nuse mill.rules;\n\npub fn lines() -> String {\n    let inventory = mill.stock.inventory();\n    var result = \"\";\n    var first = true;\n    var i = 0;\n\n    while i < inventory.len() {\n        match inventory.get(index: i) {\n            Some(plank) => {\n                if mill.rules.is_kept(plank: plank) {\n                    let label = mill.rules.label(plank: plank);\n                    if first {\n                        result = label;\n                        first = false;\n                    } else {\n                        result = result.concat(other: \",\").concat(other: label);\n                    }\n                }\n            }\n            None => {}\n        };\n        i = i + 1;\n    }\n\n    result\n}",
+          "teach_count": 0
+        }
+      ],
+      "task": "t5-04",
+      "tier": 5
+    },
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "diag_codes": [
+            "XN2008",
+            "XN2009",
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-01-opencode-t5v2-none-on-r1\\src\\main.xn:4:20: error[XN2008]: `manifest.report` is private to `manifest`\n4 |     io.write(text: manifest.report())?;\n  |                    ^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2008` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-01-opencode-t5v2-none-on-r1\\src\\manifest.xn:1:1: error[XN2009]: `use depot.locker;` is never used in this file\n1 | use depot.locker;\n  | ^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2009` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-01-opencode-t5v2-none-on-r1\\src\\manifest.xn:4:14: error[XN2002]: nothing named `locker` is in scope\n4 |     var ax = locker.empty(label: \"ax\");\n  |              ^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-01-opencode-t5v2-none-on-r1\\src\\manifest.xn:8:15: error[XN2002]: nothing named `locker` is in scope\n8 |     var bay = locker.empty(label: \"bay\");\n  |               ^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-01-opencode-t5v2-none-on-r1\\src\\manifest.xn:12:15: error[XN2002]: nothing named `locker` is in scope\n12 |     var cod = locker.empty(label: \"cod\");\n   |               ^^^^^^\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 28.1,
+          "submitted": "use depot.locker;\n\nfn report() -> String {\n    var ax = locker.empty(label: \"ax\");\n    ax.stow(weight: 12);\n    ax.stow(weight: 9);\n\n    var bay = locker.empty(label: \"bay\");\n    bay.stow(weight: 30);\n    bay.stow(weight: 25);\n\n    var cod = locker.empty(label: \"cod\");\n    cod.stow(weight: 5);\n\n    ax.render().concat(other: \",\").concat(other: bay.render()).concat(other: \",\").concat(other: cod.render())\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 2,
+          "diag_codes": [
+            "XN2002"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-01-opencode-t5v2-none-on-r2\\src\\manifest.xn:4:14: error[XN2002]: `depot.locker` has no item named `empty`\n4 |     var ax = depot.locker.empty(label: \"ax\");\n  |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-01-opencode-t5v2-none-on-r2\\src\\manifest.xn:8:15: error[XN2002]: `depot.locker` has no item named `empty`\n8 |     var bay = depot.locker.empty(label: \"bay\");\n  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-01-opencode-t5v2-none-on-r2\\src\\manifest.xn:12:15: error[XN2002]: `depot.locker` has no item named `empty`\n12 |     var cod = depot.locker.empty(label: \"cod\");\n   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2002` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 23.1,
+          "submitted": "use depot.locker;\n\npub fn report() -> String {\n    var ax = depot.locker.empty(label: \"ax\");\n    ax.stow(weight: 12);\n    ax.stow(weight: 9);\n\n    var bay = depot.locker.empty(label: \"bay\");\n    bay.stow(weight: 30);\n    bay.stow(weight: 25);\n\n    var cod = depot.locker.empty(label: \"cod\");\n    cod.stow(weight: 5);\n\n    ax.render().concat(other: \",\").concat(other: bay.render()).concat(other: \",\").concat(other: cod.render())\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 3,
+          "diag_codes": [
+            "XN2006"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-01-opencode-t5v2-none-on-r3\\src\\manifest.xn:4:14: error[XN2006]: `depot.locker.Locker` has no variant named `new`\n4 |     var ax = depot.locker.Locker.new(label: \"ax\");\n  |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2006` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-01-opencode-t5v2-none-on-r3\\src\\manifest.xn:8:15: error[XN2006]: `depot.locker.Locker` has no variant named `new`\n8 |     var bay = depot.locker.Locker.new(label: \"bay\");\n  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2006` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-01-opencode-t5v2-none-on-r3\\src\\manifest.xn:12:15: error[XN2006]: `depot.locker.Locker` has no variant named `new`\n12 |     var cod = depot.locker.Locker.new(label: \"cod\");\n   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN2006` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 28.4,
+          "submitted": "use depot.locker;\n\npub fn report() -> String {\n    var ax = depot.locker.Locker.new(label: \"ax\");\n    ax.stow(weight: 12);\n    ax.stow(weight: 9);\n\n    var bay = depot.locker.Locker.new(label: \"bay\");\n    bay.stow(weight: 30);\n    bay.stow(weight: 25);\n\n    var cod = depot.locker.Locker.new(label: \"cod\");\n    cod.stow(weight: 5);\n\n    ax.render().concat(other: \",\").concat(other: bay.render()).concat(other: \",\").concat(other: cod.render())\n}",
+          "teach_count": 0
+        },
+        {
+          "attempt": 4,
+          "diag_codes": [
+            "XN3004"
+          ],
+          "feedback_text": "C:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-01-opencode-t5v2-none-on-r4\\src\\manifest.xn:4:14: error[XN3004]: `depot.locker.Locker` is a type; construct it with `{ .. }`\n4 |     var ax = depot.locker.Locker(label: \"ax\");\n  |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN3004` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-01-opencode-t5v2-none-on-r4\\src\\manifest.xn:8:15: error[XN3004]: `depot.locker.Locker` is a type; construct it with `{ .. }`\n8 |     var bay = depot.locker.Locker(label: \"bay\");\n  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN3004` for the rule\nC:\\Users\\spkf8\\Desktop\\Project\\xenith\\bench\\ai\\scratch\\t5-t5-01-opencode-t5v2-none-on-r4\\src\\manifest.xn:12:15: error[XN3004]: `depot.locker.Locker` is a type; construct it with `{ .. }`\n12 |     var cod = depot.locker.Locker(label: \"cod\");\n   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  run `xenith explain XN3004` for the rule\n",
+          "fix_count": 0,
+          "outcome": "diagnostics",
+          "seconds": 32.8,
+          "submitted": "use depot.locker;\n\npub fn report() -> String {\n    var ax = depot.locker.Locker(label: \"ax\");\n    ax.stow(weight: 12);\n    ax.stow(weight: 9);\n\n    var bay = depot.locker.Locker(label: \"bay\");\n    bay.stow(weight: 30);\n    bay.stow(weight: 25);\n\n    var cod = depot.locker.Locker(label: \"cod\");\n    cod.stow(weight: 5);\n\n    ax.render().concat(other: \",\").concat(other: bay.render()).concat(other: \",\").concat(other: cod.render())\n}",
+          "teach_count": 0
+        }
+      ],
+      "task": "t5-01",
+      "tier": 5
+    }
+  ],
+  "totals": {
+    "pass_at_1": 0,
+    "passed": 2,
+    "tasks": 6
+  },
+  "unix_time": 1786495270
+}

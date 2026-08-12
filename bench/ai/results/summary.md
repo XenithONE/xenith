@@ -79,3 +79,21 @@ exactly N rounds (censored = never green within the cap):
 
 Green-but-never-references-a-provided-module (0011 §6, from the final submitted
 file text): none observed.
+
+## Module-call teaching (0012 t5v2)
+
+The design/0012 §2 arms: the tier-5 `none` pair re-run with the
+module-call teach in the compiler (`t5v2-none-off` differs from 0011's
+`t5-none-off` only by compiler version). Same tasks, prompts and run
+order as the 0011 pair; same cell format as above.
+
+| model | t5v2-none-on | t5v2-none-off |
+| --- | --- | --- |
+| `codex` | 0 · 3/6 (3.7) | 0 · 2/6 (3.5) |
+| `grok` | 0 · 5/6 (2.2) | 0 · 4/6 (2.0) |
+| `agy` | 0 · 3/6 (3.3) | 0 · 3/6 (3.3) |
+| `opencode` | 0 · 2/6 (3.5) | 0 · 1/6 (3.0) |
+| `opencode-deepseek` | 0 · 4/6 (3.8) | 0 · 1/6 (4.0) |
+| `opencode-nemotron` | 0 · 0/6 | 0 · 0/6 |
+| `cursor` | 1 · 3/6 (3.0) | 1 · 4/6 (2.2) |
+| **total** | **1 · 20/42** | **1 · 15/42** |
