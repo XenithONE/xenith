@@ -38,9 +38,11 @@ use crate::{
 pub const DUMP_FILE: &str = "api-dump.txt";
 /// The frozen run-order table inside `tasks-t5/`.
 pub const SHUFFLE_FILE: &str = "shuffle-order.tsv";
-/// Recorded in every dump so a stale artifact names the generator that made
-/// it (design/0011 §7).
-const DUMP_VERSION: &str = "xenith-bench api-dump v1";
+/// The dump hash — re-exported from the shared model so the shuffle table
+/// and the dumps keep hashing identically. The dump's version header lives
+/// with the model too ([`xenith_driver::api::BENCH_DUMP_VERSION`]); the name
+/// is frozen with the dumps (design/0011 §7, shared since design/0013 §2).
+pub use xenith_driver::api::fnv1a64;
 
 /// The docs slot of a tier-5 arm: the one factor besides teaching.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -187,196 +189,16 @@ fn normalise(text: &str) -> String {
 
 /// The deterministic public-surface dump of a project's provided modules
 /// (design/0011 §7): pub fn full signatures, pub struct/enum full
-/// definitions, effect sets — rendered from the compiler's own syntax tree,
-/// never hand-written. The entry module `main` is excluded: it is the
-/// calling contract, not a provided library surface.
+/// definitions, effect sets — rendered from the compiler's own model of the
+/// surface, never hand-written. Since design/0013 §2 this is the shared
+/// ApiSurface model's bench renderer; the characterization test below pins
+/// every frozen dump to a byte-identical regeneration through it. The entry
+/// module `main` is excluded by the renderer: it is the calling contract,
+/// not a provided library surface.
 pub fn api_dump(root: &Path) -> Result<String, String> {
     let project = xenith_driver::project::load(root)?;
-    if let Some((rel, diagnostic)) = project.layout.first() {
-        return Err(format!("{rel}: {}", diagnostic.message));
-    }
-    let mut sections = Vec::new();
-    for file in &project.files {
-        if file.module == "main" {
-            continue;
-        }
-        if file.parsed.has_errors() {
-            return Err(format!(
-                "src/{}: does not parse; refusing to dump a guessed surface",
-                file.rel
-            ));
-        }
-        sections.push(module_section(
-            &file.module,
-            &file.source,
-            &file.parsed.module,
-        ));
-    }
-    let body = sections.join("\n");
-    let hash = fnv1a64(&body);
-    Ok(format!(
-        "# {DUMP_VERSION}\n# hash: fnv1a64:{hash:016x}\n\n{body}"
-    ))
-}
-
-/// One module's section. Items are grouped by kind (types first, then
-/// consts, then functions) and name-sorted inside each group, so the dump is
-/// a pure function of the surface rather than of source order.
-fn module_section(module: &str, source: &str, ast: &xenith_syntax::ast::Module) -> String {
-    use xenith_syntax::ast::ItemKind;
-
-    let mut structs = Vec::new();
-    let mut enums = Vec::new();
-    let mut consts = Vec::new();
-    let mut fns = Vec::new();
-    for item in &ast.items {
-        match &item.kind {
-            ItemKind::Struct(s) if s.is_pub => structs.push(render_struct(source, s)),
-            ItemKind::Enum(e) if e.is_pub => enums.push(render_enum(source, e)),
-            ItemKind::Const(c) if c.is_pub => consts.push(render_const(source, c)),
-            ItemKind::Fn(f) if f.is_pub => fns.push(render_fn(source, f)),
-            _ => {}
-        }
-    }
-
-    let mut out = format!("module {module}\n");
-    let mut any = false;
-    for group in [&mut structs, &mut enums, &mut consts, &mut fns] {
-        group.sort();
-        for item in group {
-            any = true;
-            out.push('\n');
-            out.push_str(item);
-            out.push('\n');
-        }
-    }
-    if !any {
-        out.push_str("\n(no public items)\n");
-    }
-    out
-}
-
-fn render_fn(source: &str, f: &xenith_syntax::ast::FnItem) -> String {
-    let mut out = format!("pub fn {}{}(", f.name.name, render_generics(&f.generics));
-    for (i, param) in f.params.iter().enumerate() {
-        if i > 0 {
-            out.push_str(", ");
-        }
-        out.push_str(&param.name.name);
-        out.push_str(": ");
-        out.push_str(type_text(source, &param.ty));
-    }
-    out.push(')');
-    if let Some(ret) = &f.return_type {
-        out.push_str(" -> ");
-        out.push_str(type_text(source, ret));
-    }
-    if let Some(effects) = &f.effects {
-        out.push_str(" uses {");
-        for (i, path) in effects.effects.iter().enumerate() {
-            if i > 0 {
-                out.push_str(", ");
-            }
-            out.push_str(&path_text(path));
-        }
-        out.push('}');
-    }
-    out
-}
-
-fn render_struct(source: &str, s: &xenith_syntax::ast::StructItem) -> String {
-    let mut out = format!(
-        "pub struct {}{} {{\n",
-        s.name.name,
-        render_generics(&s.generics)
-    );
-    for field in &s.fields {
-        out.push_str("    ");
-        if field.mutable {
-            out.push_str("var ");
-        }
-        out.push_str(&field.name.name);
-        out.push_str(": ");
-        out.push_str(type_text(source, &field.ty));
-        out.push_str(",\n");
-    }
-    out.push('}');
-    out
-}
-
-fn render_enum(source: &str, e: &xenith_syntax::ast::EnumItem) -> String {
-    let mut out = format!(
-        "pub enum {}{} {{\n",
-        e.name.name,
-        render_generics(&e.generics)
-    );
-    for variant in &e.variants {
-        out.push_str("    ");
-        out.push_str(&variant.name.name);
-        if !variant.payload.is_empty() {
-            out.push('(');
-            for (i, ty) in variant.payload.iter().enumerate() {
-                if i > 0 {
-                    out.push_str(", ");
-                }
-                out.push_str(type_text(source, ty));
-            }
-            out.push(')');
-        }
-        out.push_str(",\n");
-    }
-    out.push('}');
-    out
-}
-
-/// The value expression stays out: the dump describes a surface, and a
-/// const's value is implementation.
-fn render_const(source: &str, c: &xenith_syntax::ast::ConstItem) -> String {
-    format!("pub const {}: {}", c.name.name, type_text(source, &c.ty))
-}
-
-fn render_generics(generics: &[xenith_syntax::ast::GenericParam]) -> String {
-    if generics.is_empty() {
-        return String::new();
-    }
-    let mut out = String::from("<");
-    for (i, generic) in generics.iter().enumerate() {
-        if i > 0 {
-            out.push_str(", ");
-        }
-        out.push_str(&generic.name.name);
-        if !generic.bounds.is_empty() {
-            out.push_str(": ");
-            let bounds: Vec<&str> = generic.bounds.iter().map(|b| b.name.as_str()).collect();
-            out.push_str(&bounds.join(" + "));
-        }
-    }
-    out.push('>');
-    out
-}
-
-/// Types render as their exact source spelling: the sources are frozen, so
-/// the slice is as deterministic as a re-print and cannot drift from what a
-/// solution must actually write.
-fn type_text<'a>(source: &'a str, ty: &xenith_syntax::ast::Type) -> &'a str {
-    ty.span.slice(source).unwrap_or("<unprintable>")
-}
-
-fn path_text(path: &xenith_syntax::ast::Path) -> String {
-    let segments: Vec<&str> = path.segments.iter().map(|s| s.name.as_str()).collect();
-    segments.join(".")
-}
-
-/// FNV-1a 64. Not cryptographic and not meant to be: the hash line exists so
-/// a stale or hand-edited dump is *detected*, and the byte comparison in
-/// verify is the actual gate.
-pub fn fnv1a64(text: &str) -> u64 {
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for byte in text.as_bytes() {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
-    }
-    hash
+    let surface = xenith_driver::api::surface(&project)?;
+    Ok(xenith_driver::api::render_bench_dump(&surface))
 }
 
 pub fn api_dump_command(project: &Path, out: Option<&Path>) -> ExitCode {
@@ -1143,6 +965,8 @@ pub fn summary_extras(paths: &Paths) -> String {
 mod tests {
     use super::*;
 
+    use xenith_driver::api::BENCH_DUMP_VERSION as DUMP_VERSION;
+
     #[test]
     fn wrong_output_feedback_carries_own_stdout_and_never_the_oracle() {
         let text = wrong_output_feedback("ada: 7");
@@ -1469,6 +1293,35 @@ mod tests {
                     task.name
                 );
             }
+        }
+    }
+
+    #[test]
+    fn every_frozen_dump_regenerates_byte_identical_through_the_shared_model() {
+        // The characterization gate of design/0013 §2: the six frozen
+        // bench/ai/tasks-t5/*/api-dump.txt artifacts, regenerated through
+        // the shared ApiSurface model, byte for byte. The frozen files are
+        // read only — a mismatch is a bug in the model or the renderer,
+        // never a reason to touch the artifacts.
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repository root")
+            .to_path_buf();
+        let tasks = load_t5_tasks(&root.join("bench/ai/tasks-t5")).unwrap();
+        assert_eq!(tasks.len(), 6, "the 0011 campaign froze six tasks");
+        for task in &tasks {
+            assert!(
+                !task.api_dump.is_empty(),
+                "{} has no frozen dump to characterize",
+                task.name
+            );
+            let regenerated = api_dump(&task.skeleton).unwrap();
+            assert_eq!(
+                task.api_dump, regenerated,
+                "{}: the shared model does not reproduce the frozen dump",
+                task.name
+            );
         }
     }
 

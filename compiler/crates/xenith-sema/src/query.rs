@@ -27,6 +27,13 @@ pub fn type_at(module: &ast::Module, offset: u32) -> Option<Probe> {
     analyze_at(module, Some(offset)).1
 }
 
+/// [`type_at`] for one module checked inside its project: the probe rides
+/// project analysis, so cross-module names resolve and render fully
+/// qualified (design/0013 §1). `target` indexes `units`.
+pub fn project_type_at(units: &[crate::ModuleUnit], target: usize, offset: u32) -> Option<Probe> {
+    crate::project::analyze_project_at(units, Some((target, offset))).1
+}
+
 /// One way to obtain the queried type.
 #[derive(Clone, Debug)]
 pub struct Producer {
@@ -45,8 +52,96 @@ pub struct Producer {
 /// names the asker used.
 pub fn producers(module: &ast::Module, type_text: &str) -> Result<Vec<Producer>, String> {
     let (table, _) = def::collect(module);
-    let target = parse_type(type_text, &table)?;
+    let target = parse_type(type_text, &table, None)?;
+    Ok(collect_producers(&table, &target, None))
+}
 
+/// [`producers`] for one module inside its project. The candidate space is
+/// the file's scope and nothing more — its own items, the pub items of the
+/// modules it `use`s, and the prelude (design/0010 §6: the default query
+/// never enumerates the project). The type text may spell qualified names
+/// the way the file would (`game.player.Player`), `use` rules included.
+pub fn project_producers(
+    units: &[crate::ModuleUnit],
+    target: usize,
+    type_text: &str,
+) -> Result<Vec<Producer>, String> {
+    // Phase one of project analysis, minus the diagnostics — resolution here
+    // must agree with `analyze_project`, which owns reporting.
+    let module_set: std::collections::HashSet<&str> =
+        units.iter().map(|u| u.path.as_str()).collect();
+    let all_uses: Vec<Vec<String>> = units
+        .iter()
+        .map(|unit| {
+            let mut seen: Vec<String> = Vec::new();
+            for item in &unit.module.items {
+                let ast::ItemKind::Use(use_item) = &item.kind else {
+                    continue;
+                };
+                let path = use_item
+                    .path
+                    .segments
+                    .iter()
+                    .map(|s| s.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(".");
+                if !seen.contains(&path) && module_set.contains(path.as_str()) {
+                    seen.push(path);
+                }
+            }
+            seen.sort();
+            seen
+        })
+        .collect();
+
+    let mut order: Vec<usize> = (0..units.len()).collect();
+    order.sort_by(|a, b| units[*a].path.cmp(&units[*b].path));
+    let sorted: Vec<def::CollectUnit> = order
+        .iter()
+        .map(|&i| def::CollectUnit {
+            prefix: &units[i].path,
+            module: units[i].module,
+            uses: &all_uses[i],
+            used: None,
+        })
+        .collect();
+    let (table, _) = def::collect_units(&sorted);
+
+    let resolve = def::ResolveCtx {
+        prefix: &units[target].path,
+        uses: &all_uses[target],
+        used: None,
+    };
+    let lowered = parse_type(type_text, &table, Some(&resolve))?;
+    let scope = Scope {
+        prefix: &units[target].path,
+        uses: &all_uses[target],
+    };
+    Ok(collect_producers(&table, &lowered, Some(scope)))
+}
+
+/// The querying file's view of the project: what may appear in an answer.
+struct Scope<'a> {
+    prefix: &'a str,
+    uses: &'a [String],
+}
+
+impl Scope<'_> {
+    /// Whether a qualified table name is visible from the querying module:
+    /// its own items always, a used module's items only when pub, prelude
+    /// (unqualified) names always. Everything else stays out of the answer
+    /// (design/0010 §6).
+    fn admits(&self, name: &str, is_pub: bool) -> bool {
+        match name.rsplit_once('.') {
+            None => true,
+            Some((owner, _)) => {
+                owner == self.prefix || (is_pub && self.uses.iter().any(|u| u == owner))
+            }
+        }
+    }
+}
+
+fn collect_producers(table: &DefTable, target: &Type, scope: Option<Scope>) -> Vec<Producer> {
     let render = |ty: &Type| -> String {
         let name_of = |id| table.name_of(id);
         TypeName {
@@ -68,8 +163,13 @@ pub fn producers(module: &ast::Module, type_text: &str) -> Result<Vec<Producer>,
         } else {
             sig.ret.clone()
         };
+        if let Some(scope) = &scope {
+            if !scope.admits(&sig.name, sig.is_pub) {
+                continue;
+            }
+        }
         let mut bindings: Vec<(String, Type)> = Vec::new();
-        if !return_matches(&ret, &target, &mut bindings) {
+        if !return_matches(&ret, target, &mut bindings) {
             continue;
         }
         let params: Vec<String> = sig
@@ -95,7 +195,7 @@ pub fn producers(module: &ast::Module, type_text: &str) -> Result<Vec<Producer>,
     }
 
     // ----- constructors of the type itself -----
-    if let Type::Named { def, args } = &target {
+    if let Type::Named { def, args } = target {
         let info = table.def(*def);
         let bindings: Vec<(String, Type)> = info
             .generics
@@ -179,7 +279,7 @@ pub fn producers(module: &ast::Module, type_text: &str) -> Result<Vec<Producer>,
     for receiver in heads {
         for method in table.methods_of(&receiver) {
             let mut bindings: Vec<(String, Type)> = Vec::new();
-            if !return_matches(&method.ret, &target, &mut bindings) {
+            if !return_matches(&method.ret, target, &mut bindings) {
                 continue;
             }
             let shown_receiver = render(&receiver.substitute(&bindings));
@@ -207,14 +307,20 @@ pub fn producers(module: &ast::Module, type_text: &str) -> Result<Vec<Producer>,
     }
 
     found.sort_by(|a, b| a.kind.cmp(b.kind).then(a.symbol.cmp(&b.symbol)));
-    Ok(found)
+    found
 }
 
 /// Parse a type the way source spells it, against the module's definitions.
 ///
 /// Reuses the real parser by wrapping the text as a parameter annotation, so
-/// query syntax and language syntax can never drift apart.
-fn parse_type(type_text: &str, table: &DefTable) -> Result<Type, String> {
+/// query syntax and language syntax can never drift apart. In project mode
+/// `resolve` carries the asking module's prefix and `use` list, so qualified
+/// spellings obey the same visibility rules as source.
+fn parse_type(
+    type_text: &str,
+    table: &DefTable,
+    resolve: Option<&def::ResolveCtx>,
+) -> Result<Type, String> {
     let wrapped = format!("fn __query(x: {type_text}) {{}}");
     let parsed = parse(&wrapped);
     if !parsed.diagnostics.is_empty() {
@@ -228,7 +334,7 @@ fn parse_type(type_text: &str, table: &DefTable) -> Result<Type, String> {
     };
 
     let mut diagnostics = Vec::new();
-    let lowered = def::lower_type(&param.ty, table, &[], &mut diagnostics, None);
+    let lowered = def::lower_type(&param.ty, table, &[], &mut diagnostics, resolve);
     if !diagnostics.is_empty() || lowered == Type::Error {
         return Err(format!(
             "`{type_text}` names something this module does not declare"

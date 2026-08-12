@@ -19,6 +19,6 @@ pub mod ty;
 pub use candidates::Candidate;
 pub use check::{Analysis, Goal, Probe, analyze, analyze_at};
 pub use def::{DefTable, Property};
-pub use project::{ModuleUnit, ProjectAnalysis, analyze_project};
-pub use query::{Producer, producers, type_at};
+pub use project::{ModuleUnit, ProjectAnalysis, analyze_project, analyze_project_at};
+pub use query::{Producer, producers, project_producers, project_type_at, type_at};
 pub use ty::{DefId, EffectSet, HoleId, Type, TypeName};

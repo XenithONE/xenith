@@ -324,6 +324,7 @@ dependencies = [
  "serde_json",
  "xenith-diag",
  "xenith-driver",
+ "xenith-mcp",
  "xenith-sema",
  "xenith-syntax",
  "xenith-vm",

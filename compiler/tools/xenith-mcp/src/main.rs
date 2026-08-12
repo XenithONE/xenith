@@ -3,20 +3,22 @@
 //! Nothing but protocol goes to stdout. Anything worth saying to a human —
 //! which should be rare — goes to stderr.
 //!
-//! One flag: `--workspace-root <dir>` names the directory the file-taking
-//! tools are confined to. It defaults to the working directory at startup,
-//! which is what an MCP client configured with a project directory gives us.
+//! Two flags: `--workspace-root <dir>` names the directory the file-taking
+//! tools are confined to — it defaults to the working directory at startup,
+//! which is what an MCP client configured with a project directory gives us —
+//! and `--experimental-api-surface` exposes the unstable `api_surface` tool,
+//! which stays off the default list deliberately (design/0013 §2).
 
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use serde_json::{Value, json};
-use xenith_mcp::server::handle_message;
+use xenith_mcp::server::{ServerOptions, handle_message_with};
 
 fn main() -> ExitCode {
-    let workspace_root = match workspace_root_from_args() {
-        Ok(root) => root,
+    let (workspace_root, options) = match configuration_from_args() {
+        Ok(configuration) => configuration,
         Err(message) => {
             eprintln!("xenith-mcp: {message}");
             return ExitCode::FAILURE;
@@ -37,7 +39,7 @@ fn main() -> ExitCode {
         }
 
         let reply = match serde_json::from_str::<Value>(&line) {
-            Ok(message) => handle_message(&message, &workspace_root),
+            Ok(message) => handle_message_with(&message, &workspace_root, &options),
             Err(_) => Some(json!({
                 "jsonrpc": "2.0",
                 "id": Value::Null,
@@ -54,14 +56,20 @@ fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// Parse `--workspace-root <dir>` (or `--workspace-root=<dir>`) and validate
-/// it early: a root that does not resolve to a directory would otherwise
-/// surface as a baffling per-call error. The path handed to the server stays
-/// as given — containment canonicalizes both sides on every call.
-fn workspace_root_from_args() -> Result<PathBuf, String> {
+/// Parse `--workspace-root <dir>` (or `--workspace-root=<dir>`) and
+/// `--experimental-api-surface`, validating the root early: a root that does
+/// not resolve to a directory would otherwise surface as a baffling per-call
+/// error. The path handed to the server stays as given — containment
+/// canonicalizes both sides on every call.
+fn configuration_from_args() -> Result<(PathBuf, ServerOptions), String> {
     let mut root: Option<PathBuf> = None;
+    let mut options = ServerOptions::default();
     let mut args = std::env::args().skip(1);
     while let Some(argument) = args.next() {
+        if argument == "--experimental-api-surface" {
+            options.experimental_api_surface = true;
+            continue;
+        }
         let value = if argument == "--workspace-root" {
             args.next()
                 .ok_or_else(|| "--workspace-root takes a directory".to_string())?
@@ -69,7 +77,8 @@ fn workspace_root_from_args() -> Result<PathBuf, String> {
             value.to_string()
         } else {
             return Err(format!(
-                "unexpected argument `{argument}`; usage: xenith-mcp [--workspace-root <dir>]"
+                "unexpected argument `{argument}`; usage: \
+                 xenith-mcp [--workspace-root <dir>] [--experimental-api-surface]"
             ));
         };
         root = Some(PathBuf::from(value));
@@ -89,5 +98,5 @@ fn workspace_root_from_args() -> Result<PathBuf, String> {
             root.display()
         ));
     }
-    Ok(root)
+    Ok((root, options))
 }

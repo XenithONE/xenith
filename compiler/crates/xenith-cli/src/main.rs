@@ -92,6 +92,24 @@ enum Command {
         #[arg(long = "diagnostic-teaching", value_enum, default_value_t = Teaching::On)]
         diagnostic_teaching: Teaching,
     },
+    /// Print a project's public API surface: per module, the pub functions,
+    /// structs, enums and consts with their effect sets, in deterministic
+    /// order.
+    ///
+    /// The answer describes what callers may write — an API map, not wiring:
+    /// it does not place `use` lines or connect modules. Scope with
+    /// `--module` when the full surface would be too much to read.
+    Api {
+        /// The project: its root directory, or any path inside it.
+        project: PathBuf,
+        /// Restrict to one module and its submodules, dotted
+        /// ("game.player"). An unknown module is an error.
+        #[arg(long)]
+        module: Option<String>,
+        /// Emit the machine-readable form (carries `api_schema_version`).
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// Whether diagnostics carry their teaching blocks (design/0009 §3).
@@ -150,21 +168,76 @@ fn main() -> ExitCode {
             path,
             diagnostic_teaching,
         } => run(&path, diagnostic_teaching),
+        Command::Api {
+            project,
+            module,
+            json,
+        } => api(&project, module.as_deref(), json),
     }
+}
+
+/// `xenith api` (design/0013 §2): the ApiSurface model rendered as text or
+/// JSON, optionally scoped to one module subtree.
+fn api(project_path: &Path, module: Option<&str>, json: bool) -> ExitCode {
+    let project = match xenith_driver::project::project_at(project_path, None) {
+        Ok(project) => project,
+        Err(error) => {
+            eprintln!("{error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let surface = match xenith_driver::api::surface(&project) {
+        Ok(surface) => surface,
+        Err(error) => {
+            eprintln!("{error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let scoped = match module {
+        Some(module) => match surface.scoped(module) {
+            Some(scoped) => scoped,
+            None => {
+                let known: Vec<&str> = surface.modules.iter().map(|m| m.path.as_str()).collect();
+                eprintln!(
+                    "no module `{module}` in the project at `{}` — modules: {}",
+                    project.root.display(),
+                    known.join(", ")
+                );
+                return ExitCode::FAILURE;
+            }
+        },
+        None => surface,
+    };
+    if json {
+        let rendered = xenith_driver::api::render_json(&scoped);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&rendered).unwrap_or_default()
+        );
+    } else {
+        print!("{}", xenith_driver::api::render_text(&scoped));
+    }
+    ExitCode::SUCCESS
 }
 
 fn run(path: &Path, teaching: Teaching) -> ExitCode {
     // A file inside a project runs as the project (design/0010 §2): the
-    // entry is `src/main.xn`, whichever file was named.
-    if let Some(root) = xenith_driver::project::discover(path) {
-        if xenith_driver::project::in_sources(&root, path) {
-            return run_project(&root, teaching);
+    // entry is `src/main.xn`, whichever file was named. The one pipeline
+    // decides which (design/0013 §1).
+    let request = xenith_driver::project::ProjectRequest {
+        path,
+        mode: xenith_driver::project::ModeRequest::Auto,
+        containment: None,
+    };
+    let source = match xenith_driver::project::snapshot(&request) {
+        Ok(xenith_driver::project::ProjectSnapshot::Project { project, .. }) => {
+            return run_project(&project, teaching);
         }
-    }
-
-    let mut failed = false;
-    let Some(source) = read(path, &mut failed) else {
-        return ExitCode::from(2);
+        Ok(xenith_driver::project::ProjectSnapshot::SingleFile { source, .. }) => source,
+        Err(error) => {
+            eprintln!("{error}");
+            return ExitCode::from(2);
+        }
     };
 
     // Running a program with diagnostics would be executing guesses.
@@ -207,31 +280,31 @@ fn check(paths: &[PathBuf], json: bool, teaching: Teaching) -> ExitCode {
     let mut roots_done: Vec<PathBuf> = Vec::new();
 
     for path in paths {
-        // A path inside a project checks the whole project, once.
-        if let Some(root) = xenith_driver::project::discover(path) {
-            if xenith_driver::project::in_sources(&root, path) {
-                if roots_done.contains(&root) {
+        // A path inside a project checks the whole project, once. The one
+        // pipeline decides which mode a path gets (design/0013 §1).
+        let request = xenith_driver::project::ProjectRequest {
+            path,
+            mode: xenith_driver::project::ModeRequest::Auto,
+            containment: None,
+        };
+        match xenith_driver::project::snapshot(&request) {
+            Ok(xenith_driver::project::ProjectSnapshot::Project { project, .. }) => {
+                if roots_done.contains(&project.root) {
                     continue;
                 }
-                roots_done.push(root.clone());
-                match xenith_driver::project::load(&root) {
-                    Ok(project) => {
-                        findings.extend(project_findings(&project, teaching));
-                    }
-                    Err(error) => {
-                        eprintln!("{error}");
-                        failed = true;
-                    }
-                }
-                continue;
+                roots_done.push(project.root.clone());
+                findings.extend(project_findings(&project, teaching));
+            }
+            Ok(xenith_driver::project::ProjectSnapshot::SingleFile { source, .. }) => {
+                let mut analysis = xenith_driver::analyze_source(&source);
+                strip_teaches(&mut analysis.diagnostics, teaching);
+                findings.push((path.clone(), source, analysis.diagnostics));
+            }
+            Err(error) => {
+                eprintln!("{error}");
+                failed = true;
             }
         }
-        let Some(source) = read(path, &mut failed) else {
-            continue;
-        };
-        let mut analysis = xenith_driver::analyze_source(&source);
-        strip_teaches(&mut analysis.diagnostics, teaching);
-        findings.push((path.clone(), source, analysis.diagnostics));
     }
 
     let has_errors = findings
@@ -477,7 +550,7 @@ fn project_findings(
     project: &xenith_driver::project::Project,
     teaching: Teaching,
 ) -> Vec<(PathBuf, String, Vec<Diagnostic>)> {
-    let (mut per_file, _) = xenith_driver::project::analyze(project);
+    let mut per_file = xenith_driver::project::analyze(project).diagnostics;
     let mut findings = Vec::new();
     for (rel, diagnostic) in &project.layout {
         findings.push((
@@ -499,15 +572,8 @@ fn project_findings(
 
 /// Check, then execute a whole project. Refusal mirrors the single-file
 /// rule: any diagnostic anywhere means nothing runs.
-fn run_project(root: &Path, teaching: Teaching) -> ExitCode {
-    let project = match xenith_driver::project::load(root) {
-        Ok(project) => project,
-        Err(error) => {
-            eprintln!("{error}");
-            return ExitCode::from(2);
-        }
-    };
-    let findings = project_findings(&project, teaching);
+fn run_project(project: &xenith_driver::project::Project, teaching: Teaching) -> ExitCode {
+    let findings = project_findings(project, teaching);
     let mut any = false;
     for (path, source, diagnostics) in &findings {
         let index = LineIndex::new(source);
@@ -517,11 +583,14 @@ fn run_project(root: &Path, teaching: Teaching) -> ExitCode {
         }
     }
     if any {
-        eprintln!("{}: not run — fix the diagnostics first", root.display());
+        eprintln!(
+            "{}: not run — fix the diagnostics first",
+            project.root.display()
+        );
         return ExitCode::from(2);
     }
 
-    let (_, table) = xenith_driver::project::analyze(&project);
+    let table = xenith_driver::project::analyze(project).table;
     let modules: Vec<(String, &xenith_syntax::ast::Module)> = project
         .files
         .iter()
@@ -534,7 +603,7 @@ fn run_project(root: &Path, teaching: Teaching) -> ExitCode {
     let _ = std::io::stdout().flush();
 
     if let Some((message, _)) = outcome.error {
-        eprintln!("{}: runtime error: {message}", root.display());
+        eprintln!("{}: runtime error: {message}", project.root.display());
     }
     ExitCode::from(u8::try_from(outcome.exit).unwrap_or(101))
 }

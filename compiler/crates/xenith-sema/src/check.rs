@@ -118,19 +118,32 @@ pub fn analyze_at(module: &ast::Module, offset: Option<u32>) -> (Analysis, Optio
     (Analysis { diagnostics, goals }, probe)
 }
 
+/// A probe riding one module's body check: the offset asked about, and where
+/// the answer lands. Project mode's `type_at` (design/0013 §1).
+pub(crate) struct BodyProbe<'a> {
+    pub offset: u32,
+    pub out: &'a mut Option<Probe>,
+}
+
 /// Body checking for one project module: the walk `analyze` does, with the
-/// module context wired in and goals discarded — project-mode goals are a
-/// later slice (design/0010 §7).
+/// module context wired in. Goals land in `goals`, sorted by span like the
+/// single-file path — project-mode goals are how a confined server answers
+/// `goals` honestly instead of falling back to one file (design/0013 §1).
 pub(crate) fn check_module_bodies(
     table: &DefTable,
     module: &ast::Module,
     ctx: &ModuleCtx,
     teach_budget: &mut TeachBudget,
     diagnostics: &mut Vec<Diagnostic>,
+    goals: &mut Vec<Goal>,
+    probe: Option<BodyProbe>,
 ) {
-    let mut goals = Vec::new();
     let mut next_hole = 0u32;
-    let mut probe = None;
+    let (probe_offset, mut probe_out) = match probe {
+        Some(probe) => (Some(probe.offset), Some(probe.out)),
+        None => (None, None),
+    };
+    let mut unprobed = None;
     for item in &module.items {
         let ast::ItemKind::Fn(f) = &item.kind else {
             continue;
@@ -145,15 +158,19 @@ pub(crate) fn check_module_bodies(
             fn_ast: f,
             scopes: vec![Vec::new()],
             diagnostics,
-            goals: &mut goals,
+            goals,
             next_hole: &mut next_hole,
-            probe_offset: None,
-            probe: &mut probe,
+            probe_offset,
+            probe: match &mut probe_out {
+                Some(out) => out,
+                None => &mut unprobed,
+            },
             teach_budget,
             ctx: Some(ctx),
         };
         checker.check_fn();
     }
+    goals.sort_by_key(|g| g.span.start);
 }
 
 /// The most teaching blocks one check run may attach, first come first

@@ -13,7 +13,7 @@ use std::collections::{HashMap, HashSet};
 use xenith_diag::{DiagCode, Diagnostic, Span};
 use xenith_syntax::ast;
 
-use crate::check::{self, ModuleCtx, TeachBudget};
+use crate::check::{self, Goal, ModuleCtx, Probe, TeachBudget};
 use crate::def::{self, CollectUnit, DefTable};
 
 /// One parsed module handed to project analysis. The loader has already
@@ -23,14 +23,27 @@ pub struct ModuleUnit<'a> {
     pub module: &'a ast::Module,
 }
 
-/// The result: diagnostics per input unit, in the input's order, plus the
-/// shared table the interpreter executes against.
+/// The result: diagnostics and hole goals per input unit, in the input's
+/// order, plus the shared table the interpreter executes against.
 pub struct ProjectAnalysis {
     pub diagnostics: Vec<Vec<Diagnostic>>,
+    pub goals: Vec<Vec<Goal>>,
     pub table: DefTable,
 }
 
 pub fn analyze_project(units: &[ModuleUnit]) -> ProjectAnalysis {
+    analyze_project_at(units, None).0
+}
+
+/// As [`analyze_project`], additionally capturing the checker's state at an
+/// offset inside one unit: `probe_at` is `(unit index, byte offset)`. This is
+/// `type_at` answered with the whole project's declarations in view, so a
+/// cross-module type renders qualified instead of failing to resolve
+/// (design/0013 §1).
+pub fn analyze_project_at(
+    units: &[ModuleUnit],
+    probe_at: Option<(usize, u32)>,
+) -> (ProjectAnalysis, Option<Probe>) {
     let mut out: Vec<Vec<Diagnostic>> = units.iter().map(|_| Vec::new()).collect();
 
     // Dictionary order of module paths decides every cross-module sequence.
@@ -146,6 +159,8 @@ pub fn analyze_project(units: &[ModuleUnit]) -> ProjectAnalysis {
     }
 
     // ----- phase two: bodies, dictionary order, one teach budget per run -----
+    let mut goals: Vec<Vec<Goal>> = units.iter().map(|_| Vec::new()).collect();
+    let mut probe: Option<Probe> = None;
     let mut teach_budget = TeachBudget::new();
     for &i in &order {
         let ctx = ModuleCtx {
@@ -160,12 +175,21 @@ pub fn analyze_project(units: &[ModuleUnit]) -> ProjectAnalysis {
                 .map(|item| item.span.start)
                 .unwrap_or(0),
         };
+        let body_probe = match probe_at {
+            Some((target, offset)) if target == i => Some(check::BodyProbe {
+                offset,
+                out: &mut probe,
+            }),
+            _ => None,
+        };
         check::check_module_bodies(
             &table,
             units[i].module,
             &ctx,
             &mut teach_budget,
             &mut out[i],
+            &mut goals[i],
+            body_probe,
         );
 
         // The `use` list is the file's exact dependency list; an entry
@@ -182,8 +206,12 @@ pub fn analyze_project(units: &[ModuleUnit]) -> ProjectAnalysis {
         }
     }
 
-    ProjectAnalysis {
-        diagnostics: out,
-        table,
-    }
+    (
+        ProjectAnalysis {
+            diagnostics: out,
+            goals,
+            table,
+        },
+        probe,
+    )
 }

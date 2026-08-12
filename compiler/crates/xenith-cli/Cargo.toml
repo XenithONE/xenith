@@ -21,3 +21,9 @@ xenith-vm = { workspace = true }
 clap = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+
+[dev-dependencies]
+# The design/0013 §1 equivalence tests drive the MCP server in-process and
+# compare its normalized diagnostics against this binary's JSON output —
+# one truth, two surfaces, checked from the CLI side where the binary lives.
+xenith-mcp = { path = "../../tools/xenith-mcp" }

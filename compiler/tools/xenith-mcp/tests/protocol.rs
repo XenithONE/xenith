@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
-use xenith_mcp::server::handle_message;
+use xenith_mcp::server::{ServerOptions, handle_message, handle_message_with};
 
 fn request(id: u64, method: &str, params: Value) -> Value {
     json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params })
@@ -401,6 +401,437 @@ fn an_out_of_range_line_or_column_is_rejected() {
 }
 
 // -------------------------------------------------------------- atomic writes
+
+// ---------------------------------------------------------- project mode
+//
+// The design/0013 §1 contract: `mode` on check/run/goals/type_at/producers,
+// auto = project when a manifest governs the file, explicit errors for every
+// discovery failure, responses that say which mode actually ran, and
+// requested-file-first ordering.
+
+/// A scratch project: manifest plus the given `src/`-relative files.
+fn scratch_project(name: &str, files: &[(&str, &str)]) -> PathBuf {
+    let root = std::env::temp_dir().join(format!("xenith-mcp-proj-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("src")).expect("writable temp dir");
+    std::fs::write(root.join("xenith.toml"), "name = \"mcp-proj\"\n").expect("manifest");
+    for (rel, content) in files {
+        let mut path = root.join("src");
+        for part in rel.split('/') {
+            path.push(part);
+        }
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("tree");
+        }
+        std::fs::write(&path, content).expect("file");
+    }
+    root
+}
+
+/// The player module most of these projects share.
+const PLAYER: &str = "pub struct Player {\n    score: Int,\n}\n\n\
+                      pub fn fresh() -> Player {\n    Player { score: 7 }\n}\n";
+
+#[test]
+fn check_auto_inside_a_project_reports_every_file_requested_first() {
+    let root = scratch_project(
+        "check-auto",
+        &[
+            (
+                "main.xn",
+                "use game.player;\n\nfn main() -> Int {\n    game.player.fresh().score\n}\n",
+            ),
+            ("game/player.xn", PLAYER),
+        ],
+    );
+    // The *dependency* is requested, so it must lead the file list even
+    // though `src/main.xn` sorts first lexicographically.
+    let (is_error, text) = call_in(&root, "check", json!({ "path": "src/game/player.xn" }));
+    assert!(!is_error, "{text}");
+    let parsed: Value = serde_json::from_str(&text).expect("payload is JSON");
+    assert_eq!(parsed["schema_version"], 1);
+    assert_eq!(parsed["analysis_mode"], "project");
+    assert_eq!(parsed["project_root"], ".");
+    assert_eq!(parsed["requested"], "src/game/player.xn");
+    let features: Vec<&str> = parsed["features"]
+        .as_array()
+        .expect("features")
+        .iter()
+        .map(|f| f.as_str().expect("feature"))
+        .collect();
+    assert!(features.contains(&"project_mode_v1"), "{features:?}");
+    let files: Vec<&str> = parsed["files"]
+        .as_array()
+        .expect("files")
+        .iter()
+        .map(|f| f["file"].as_str().expect("file"))
+        .collect();
+    assert_eq!(files, ["src/game/player.xn", "src/main.xn"]);
+    for file in parsed["files"].as_array().expect("files") {
+        assert_eq!(file["diagnostics"], json!([]), "{file}");
+    }
+}
+
+#[test]
+fn check_in_project_mode_carries_cross_file_diagnostics() {
+    let root = scratch_project(
+        "check-diag",
+        &[
+            (
+                "main.xn",
+                "use game.player;\n\nfn main() -> Int {\n    game.player.missing()\n}\n",
+            ),
+            ("game/player.xn", PLAYER),
+        ],
+    );
+    let (is_error, text) = call_in(&root, "check", json!({ "path": "src/main.xn" }));
+    assert!(!is_error, "{text}");
+    let parsed: Value = serde_json::from_str(&text).expect("payload is JSON");
+    assert_eq!(parsed["files"][0]["file"], "src/main.xn");
+    let diagnostic = &parsed["files"][0]["diagnostics"][0];
+    assert_eq!(diagnostic["severity"], "error");
+    assert!(diagnostic["line"].is_u64(), "{diagnostic}");
+}
+
+#[test]
+fn single_file_mode_is_honored_inside_a_project() {
+    let root = scratch_project(
+        "check-single",
+        &[
+            ("main.xn", "fn main() -> Int {\n    1\n}\n"),
+            ("game/player.xn", PLAYER),
+        ],
+    );
+    let (is_error, text) = call_in(
+        &root,
+        "check",
+        json!({ "path": "src/main.xn", "mode": "single_file" }),
+    );
+    assert!(!is_error, "{text}");
+    let parsed: Value = serde_json::from_str(&text).expect("payload is JSON");
+    assert_eq!(parsed["analysis_mode"], "single_file");
+    assert_eq!(parsed["file"], "src/main.xn");
+    assert!(parsed["diagnostics"].is_array(), "{text}");
+    assert!(parsed.get("files").is_none(), "single-file keeps its shape");
+}
+
+#[test]
+fn demanded_project_mode_without_a_manifest_is_a_tool_error() {
+    let root = scratch_root("no-manifest");
+    std::fs::write(root.join("lone.xn"), "fn f() -> Int {\n    1\n}\n").expect("writable root");
+    let (is_error, text) = call_in(
+        &root,
+        "check",
+        json!({ "path": "lone.xn", "mode": "project" }),
+    );
+    assert!(is_error, "{text}");
+    assert!(text.contains("no `xenith.toml`"), "{text}");
+}
+
+#[test]
+fn an_invalid_mode_is_a_tool_error() {
+    let root = scratch_root("bad-mode");
+    std::fs::write(root.join("f.xn"), "fn f() -> Int {\n    1\n}\n").expect("writable root");
+    let (is_error, text) = call_in(&root, "check", json!({ "path": "f.xn", "mode": "psychic" }));
+    assert!(is_error);
+    assert!(text.contains("`mode` must be"), "{text}");
+}
+
+#[test]
+fn an_invalid_layout_is_a_tool_error_never_a_fallback() {
+    let root = scratch_project(
+        "bad-layout",
+        &[
+            ("main.xn", "fn main() -> Int {\n    1\n}\n"),
+            ("player-v2.xn", "pub fn p() -> Int {\n    1\n}\n"),
+        ],
+    );
+    let (is_error, text) = call_in(&root, "check", json!({ "path": "src/main.xn" }));
+    assert!(
+        is_error,
+        "an invalid layout must not check quietly:\n{text}"
+    );
+    assert!(text.contains("invalid layout"), "{text}");
+    assert!(text.contains("player-v2"), "{text}");
+    // The sanctioned way to look at one file under a broken layout.
+    let (is_error, text) = call_in(
+        &root,
+        "check",
+        json!({ "path": "src/main.xn", "mode": "single_file" }),
+    );
+    assert!(!is_error, "{text}");
+}
+
+#[test]
+fn a_project_reaching_above_the_workspace_root_is_refused() {
+    // The manifest sits *above* the workspace root: discovery finds it,
+    // containment refuses it — and no silent single-file answer happens
+    // (design/0013 §1).
+    let project = scratch_project(
+        "above-root",
+        &[("main.xn", "fn main() -> Int {\n    1\n}\n")],
+    );
+    let boundary = project.join("src");
+    let (is_error, text) = call_in(&boundary, "check", json!({ "path": "main.xn" }));
+    assert!(is_error, "{text}");
+    assert!(text.contains("outside the workspace root"), "{text}");
+}
+
+#[test]
+fn run_executes_the_whole_project_from_any_member_file() {
+    let root = scratch_project(
+        "run-proj",
+        &[
+            (
+                "main.xn",
+                "use game.dep;\n\nfn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    \
+                 io.write(text: game.dep.tag())?;\n    return Ok(unit);\n}\n",
+            ),
+            (
+                "game/dep.xn",
+                "pub fn tag() -> String {\n    \"from dep\"\n}\n",
+            ),
+        ],
+    );
+    // Naming the dependency still runs the project's `src/main.xn`.
+    let (is_error, text) = call_in(&root, "run", json!({ "path": "src/game/dep.xn" }));
+    assert!(!is_error, "{text}");
+    let parsed: Value = serde_json::from_str(&text).expect("payload is JSON");
+    assert_eq!(parsed["analysis_mode"], "project");
+    assert_eq!(parsed["project_root"], ".");
+    assert_eq!(parsed["exit_code"], 0);
+    assert_eq!(parsed["stdout"], "from dep");
+}
+
+#[test]
+fn run_refuses_a_project_with_diagnostics_anywhere() {
+    let root = scratch_project(
+        "run-refuse",
+        &[
+            ("main.xn", "fn main() -> Int {\n    1\n}\n"),
+            ("game/dep.xn", "pub fn broken() -> Int {\n    true\n}\n"),
+        ],
+    );
+    let (is_error, text) = call_in(&root, "run", json!({ "path": "src/main.xn" }));
+    assert!(!is_error, "{text}");
+    let parsed: Value = serde_json::from_str(&text).expect("payload is JSON");
+    assert_eq!(parsed["exit_code"], 2);
+    assert_eq!(parsed["analysis_mode"], "project");
+    assert!(
+        parsed["error"]
+            .as_str()
+            .expect("error")
+            .contains("the project has diagnostics"),
+        "{text}"
+    );
+}
+
+#[test]
+fn goals_in_project_mode_lists_the_requested_files_holes_first() {
+    let root = scratch_project(
+        "goals-proj",
+        &[
+            ("main.xn", "fn main() -> Int {\n    ??main_hole\n}\n"),
+            (
+                "game/dep.xn",
+                "pub fn depth() -> Int {\n    ??dep_hole\n}\n",
+            ),
+        ],
+    );
+    let (is_error, text) = call_in(&root, "goals", json!({ "path": "src/main.xn" }));
+    assert!(!is_error, "{text}");
+    let parsed: Value = serde_json::from_str(&text).expect("payload is JSON");
+    let entries = parsed.as_array().expect("goals stay an array");
+    assert_eq!(entries.len(), 2, "{text}");
+    assert_eq!(entries[0]["hole"], "main_hole", "requested file first");
+    assert_eq!(entries[0]["file"], "src/main.xn");
+    assert_eq!(entries[0]["analysis_mode"], "project");
+    assert_eq!(entries[0]["project_root"], ".");
+    assert_eq!(entries[1]["hole"], "dep_hole");
+    assert_eq!(entries[1]["file"], "src/game/dep.xn");
+}
+
+#[test]
+fn goals_in_single_file_mode_declares_itself() {
+    let path = scratch("goals-mode", "fn f() -> Int {\n    ??body\n}\n");
+    let (is_error, text) = call("goals", json!({ "path": path }));
+    assert!(!is_error, "{text}");
+    let parsed: Value = serde_json::from_str(&text).expect("payload is JSON");
+    assert_eq!(parsed[0]["analysis_mode"], "single_file");
+    assert!(parsed[0].get("project_root").is_none());
+}
+
+#[test]
+fn type_at_in_project_mode_answers_with_qualified_cross_module_types() {
+    let root = scratch_project(
+        "typeat-proj",
+        &[
+            (
+                "main.xn",
+                "use game.player;\n\nfn main() -> Int {\n    let hero = game.player.fresh();\n    \
+                 hero.score\n}\n",
+            ),
+            ("game/player.xn", PLAYER),
+        ],
+    );
+    let (is_error, text) = call_in(
+        &root,
+        "type_at",
+        json!({ "path": "src/main.xn", "line": 4, "column": 9 }),
+    );
+    assert!(!is_error, "{text}");
+    let parsed: Value = serde_json::from_str(&text).expect("payload is JSON");
+    assert_eq!(parsed["analysis_mode"], "project");
+    assert_eq!(parsed["project_root"], ".");
+    assert_eq!(
+        parsed["type"], "game.player.Player",
+        "the project's declarations are in view: {text}"
+    );
+}
+
+#[test]
+fn producers_in_project_mode_answers_from_the_used_modules_pub_surface() {
+    let root = scratch_project(
+        "producers-proj",
+        &[
+            (
+                "main.xn",
+                "use game.player;\n\nfn main() -> Int {\n    game.player.fresh().score\n}\n",
+            ),
+            ("game/player.xn", PLAYER),
+        ],
+    );
+    let (is_error, text) = call_in(
+        &root,
+        "producers",
+        json!({ "path": "src/main.xn", "type": "game.player.Player" }),
+    );
+    assert!(!is_error, "{text}");
+    let parsed: Value = serde_json::from_str(&text).expect("payload is JSON");
+    let entries = parsed.as_array().expect("array");
+    let symbols: Vec<&str> = entries
+        .iter()
+        .map(|p| p["symbol"].as_str().expect("symbol"))
+        .collect();
+    assert!(symbols.contains(&"game.player.fresh"), "{symbols:?}");
+    assert!(symbols.contains(&"game.player.Player"), "{symbols:?}");
+    for entry in entries {
+        assert_eq!(entry["analysis_mode"], "project", "{entry}");
+        assert_eq!(entry["project_root"], ".", "{entry}");
+    }
+
+    // The same question in single-file mode cannot even name the type —
+    // the difference between the modes is real, and declared.
+    let (is_error, text) = call_in(
+        &root,
+        "producers",
+        json!({ "path": "src/main.xn", "type": "game.player.Player", "mode": "single_file" }),
+    );
+    assert!(is_error, "{text}");
+}
+
+// ------------------------------------------------------ experimental surface
+
+#[test]
+fn api_surface_is_absent_by_default_and_present_behind_the_flag() {
+    // Absent from the default list — asserted exactly by
+    // `the_tool_list_names_all_six_with_schemas` — and unknown to call.
+    let (_, text) = {
+        let reply = handle(&request(
+            9,
+            "tools/call",
+            json!({ "name": "api_surface", "arguments": {} }),
+        ))
+        .expect("response");
+        (
+            reply["error"]["code"].clone(),
+            reply["error"]["message"].as_str().unwrap_or("").to_string(),
+        )
+    };
+    assert!(text.contains("no tool named"), "{text}");
+
+    // Behind the flag: listed, described with the 0011 wiring caveat, and
+    // callable.
+    let options = ServerOptions {
+        experimental_api_surface: true,
+    };
+    let root = scratch_project(
+        "api-surface",
+        &[
+            ("main.xn", "fn main() -> Int {\n    1\n}\n"),
+            ("game/player.xn", PLAYER),
+        ],
+    );
+    let listed = handle_message_with(&request(10, "tools/list", json!({})), &root, &options)
+        .expect("response");
+    let tools = listed["result"]["tools"].as_array().expect("array");
+    let surface = tools
+        .iter()
+        .find(|t| t["name"] == "api_surface")
+        .expect("the flag exposes the tool");
+    let description = surface["description"].as_str().expect("description");
+    assert!(
+        description.contains("not a substitute for wiring"),
+        "{description}"
+    );
+    assert!(description.contains("0/28"), "{description}");
+
+    let reply = handle_message_with(
+        &request(
+            11,
+            "tools/call",
+            json!({ "name": "api_surface", "arguments": { "module": "game.player" } }),
+        ),
+        &root,
+        &options,
+    )
+    .expect("response");
+    let result = &reply["result"];
+    assert_eq!(result["isError"], false, "{reply}");
+    let payload: Value = serde_json::from_str(result["content"][0]["text"].as_str().expect("text"))
+        .expect("payload is JSON");
+    assert_eq!(payload["api_schema_version"], 1);
+    assert_eq!(payload["project_root"], ".");
+    assert_eq!(payload["modules"][0]["module"], "game.player");
+    assert_eq!(
+        payload["modules"][0]["functions"][0]["signature"],
+        "pub fn fresh() -> Player"
+    );
+    assert!(
+        payload["modules"]
+            .as_array()
+            .expect("modules")
+            .iter()
+            .all(|m| m["module"] != "main"),
+        "the module filter holds: {payload}"
+    );
+}
+
+#[test]
+fn api_surface_with_an_unknown_module_is_a_tool_error() {
+    let options = ServerOptions {
+        experimental_api_surface: true,
+    };
+    let root = scratch_project(
+        "api-unknown",
+        &[("main.xn", "fn main() -> Int {\n    1\n}\n")],
+    );
+    let reply = handle_message_with(
+        &request(
+            12,
+            "tools/call",
+            json!({ "name": "api_surface", "arguments": { "module": "nowhere" } }),
+        ),
+        &root,
+        &options,
+    )
+    .expect("response");
+    assert_eq!(reply["result"]["isError"], true, "{reply}");
+    let text = reply["result"]["content"][0]["text"]
+        .as_str()
+        .expect("text");
+    assert!(text.contains("no module `nowhere`"), "{text}");
+}
 
 #[test]
 fn fmt_write_leaves_no_temporary_file_behind() {

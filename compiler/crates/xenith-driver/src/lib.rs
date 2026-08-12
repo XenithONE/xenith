@@ -10,6 +10,7 @@
 use xenith_diag::Diagnostic;
 use xenith_sema::Goal;
 
+pub mod api;
 pub mod project;
 pub mod wire;
 

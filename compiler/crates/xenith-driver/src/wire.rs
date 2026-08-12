@@ -29,7 +29,13 @@ pub const SCHEMA_VERSION: u32 = 1;
 
 /// Additive capabilities this compiler's wire output carries, named so a
 /// consumer can distinguish absence of support from absence of content.
-pub const FEATURES: &[&str] = &["diagnostic_teaching_v1", "module_call_teach_v1"];
+/// `project_mode_v1` is an advertisement, not a proof: the mode a response
+/// actually ran under is its `analysis_mode` field (design/0013 §1).
+pub const FEATURES: &[&str] = &[
+    "diagnostic_teaching_v1",
+    "module_call_teach_v1",
+    "project_mode_v1",
+];
 
 /// One file's diagnostics: `{ file, diagnostics: [ { …, line, column } ] }`.
 ///
@@ -141,6 +147,125 @@ pub fn producers(found: &[Producer]) -> Value {
         })
         .collect();
     Value::Array(entries)
+}
+
+/// The single-file `check` response a mode-aware tool returns: the
+/// [`file_diagnostics`] shape plus the honest `analysis_mode`. The CLI's
+/// frozen array shape predates modes and stays on `file_diagnostics`.
+pub fn single_file_check(file: &str, source: &str, diagnostics: &[Diagnostic]) -> Value {
+    let mut report = file_diagnostics(file, source, diagnostics, true);
+    report
+        .as_object_mut()
+        .expect("a report is an object")
+        .insert("analysis_mode".into(), json!("single_file"));
+    report
+}
+
+/// One project file a project-mode response reports on.
+pub struct ProjectFileReport<'a> {
+    /// Root-relative path, forward slashes ("src/main.xn").
+    pub file: String,
+    pub source: &'a str,
+    pub diagnostics: &'a [Diagnostic],
+}
+
+/// The project-mode `check` response: every file, the requested one first,
+/// the rest in path-lexicographic order — cascade mitigation by priority,
+/// never by truncation (design/0013 §1). `project_root` is relative to the
+/// workspace root the server was confined to.
+pub fn project_check(
+    project_root: &str,
+    requested: Option<&str>,
+    files: &[ProjectFileReport],
+) -> Value {
+    let entries: Vec<Value> = ordered(files, requested)
+        .into_iter()
+        .map(|report| {
+            let per_file = file_diagnostics(&report.file, report.source, report.diagnostics, false);
+            json!({
+                "file": report.file,
+                "diagnostics": per_file["diagnostics"],
+            })
+        })
+        .collect();
+    json!({
+        "schema_version": SCHEMA_VERSION,
+        "analysis_mode": "project",
+        "project_root": project_root,
+        "requested": requested,
+        "features": FEATURES,
+        "files": entries,
+    })
+}
+
+/// The project-mode `goals` response: still one flat array — the frozen
+/// single-file shape — with each entry naming its root-relative file and
+/// carrying the mode, ordered like project diagnostics are.
+pub fn project_goals(
+    project_root: &str,
+    requested: Option<&str>,
+    files: &[(String, &str, &[Goal])],
+) -> Value {
+    let reports: Vec<ProjectFileReport> = files
+        .iter()
+        .map(|(file, source, _)| ProjectFileReport {
+            file: file.clone(),
+            source,
+            diagnostics: &[],
+        })
+        .collect();
+    let mut entries: Vec<Value> = Vec::new();
+    for report in ordered(&reports, requested) {
+        let (_, source, file_goals) = files
+            .iter()
+            .find(|(file, _, _)| *file == report.file)
+            .expect("ordered() permutes the same files");
+        let mut rendered = goals(&report.file, source, file_goals);
+        stamp_mode(&mut rendered, "project", Some(project_root));
+        if let Value::Array(mut values) = rendered {
+            entries.append(&mut values);
+        }
+    }
+    Value::Array(entries)
+}
+
+/// Stamp the actual `analysis_mode` — and, in project mode, the root-relative
+/// `project_root` — onto a response: objects take the fields directly, array
+/// entries each take their own. Additive under the tolerant-reader contract.
+pub fn stamp_mode(value: &mut Value, analysis_mode: &str, project_root: Option<&str>) {
+    let stamp_object = |map: &mut serde_json::Map<String, Value>| {
+        map.insert("analysis_mode".into(), json!(analysis_mode));
+        if let Some(root) = project_root {
+            map.insert("project_root".into(), json!(root));
+        }
+    };
+    match value {
+        Value::Object(map) => stamp_object(map),
+        Value::Array(entries) => {
+            for entry in entries {
+                if let Value::Object(map) = entry {
+                    stamp_object(map);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The requested file first, everything else path-lexicographic.
+fn ordered<'a, 'b>(
+    files: &'a [ProjectFileReport<'b>],
+    requested: Option<&str>,
+) -> Vec<&'a ProjectFileReport<'b>> {
+    let mut sorted: Vec<&ProjectFileReport> = files.iter().collect();
+    sorted.sort_by(|a, b| {
+        let a_requested = Some(a.file.as_str()) == requested;
+        let b_requested = Some(b.file.as_str()) == requested;
+        b_requested
+            .cmp(&a_requested)
+            .then_with(|| a.file.cmp(&b.file))
+    });
+    sorted
 }
 
 /// One-based line and character column to a byte offset. `None` when the

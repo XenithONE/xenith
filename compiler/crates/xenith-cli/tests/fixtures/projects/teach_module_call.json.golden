@@ -3,7 +3,8 @@
     "diagnostics": [],
     "features": [
       "diagnostic_teaching_v1",
-      "module_call_teach_v1"
+      "module_call_teach_v1",
+      "project_mode_v1"
     ],
     "file": "tests/fixtures/projects/teach_module_call/src/depot/locker.xn",
     "schema_version": 1
@@ -46,7 +47,8 @@
     ],
     "features": [
       "diagnostic_teaching_v1",
-      "module_call_teach_v1"
+      "module_call_teach_v1",
+      "project_mode_v1"
     ],
     "file": "tests/fixtures/projects/teach_module_call/src/main.xn",
     "schema_version": 1
