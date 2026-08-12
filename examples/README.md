@@ -1,8 +1,8 @@
 # Examples
 
-> **These do not run yet.** There is no backend and only a provisional
-> prelude — but they parse, format, **type-check** (including effects), and
-> answer `xenith goals`.
+> **These run.** `xenith run` executes every program here through the
+> deterministic interpreter — and they also parse, format, **type-check**
+> (including effects), and answer `xenith goals`.
 >
 > They are written to be read, and to be kept honest by the tooling that does
 > exist: every file here is parsed, type-checked and format-verified in CI, so

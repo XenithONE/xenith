@@ -3,11 +3,13 @@
 **An experimental general-purpose language designed so that a compiler can guide an LLM to correct code.**
 
 > ⚠️ **Status: pre-alpha.** Xenith programs parse, type-check and **run** — through a
-> deterministic tree-walking interpreter, with only a provisional prelude. What exists: the front
-> end, a bidirectional checker with checked effects and sealed properties, typed holes that answer
-> through `xenith goals`, compiler queries, execution via `xenith run`, and all of it doubled as
-> an MCP server. What does not: a standard library, modules, concurrency, native code. If you are
-> looking for a language to build software in today, this is not it yet.
+> deterministic tree-walking interpreter. What exists: the front end, a bidirectional checker
+> with checked effects and sealed properties, a module system with projects, closures and four
+> `List` combinators, a minimal prelude (`List`/`Map`/`String`), typed holes that answer through
+> `xenith goals`, compiler queries, diagnostics that teach, an API-surface dump, execution via
+> `xenith run`, and all of it doubled as an MCP server. What does not: concurrency, a broader
+> standard library, native code. If you are looking for a language to build software in today,
+> this is not it yet.
 
 ---
 
@@ -75,9 +77,11 @@ fn load_config(fs: Fs, path: Path) -> Result<Config, ConfigError> uses {Fs.read}
 }
 ```
 
-A function that does not declare an effect cannot perform it. Function values — closures, `fn`
-types, `async` — are rejected by the checker until the closure-effects RFC lands, so a capability
-cannot hide inside one: the lie is impossible rather than checked.
+A function that does not declare an effect cannot perform it. Closures exist and are
+capability-effect-free by construction: their bodies are checked under an empty effect set and
+they cannot capture a capability ([design/0014](design/0014-closures.md)); `async` and
+named-function values remain rejected. Either way a capability cannot hide inside a function
+value — the lie is impossible rather than checked.
 
 **Type inference is local.** Public APIs and parameters are fully annotated. There is no
 whole-program inference, because non-local inference is repair poison: a model fixes a leaf and the
@@ -124,6 +128,9 @@ Design decisions and the reasoning behind them — including reversals — live 
 - [`0001-why-xenith.md`](design/0001-why-xenith.md) — goals, non-goals, and the original draft
 - [`0002-design-review.md`](design/0002-design-review.md) — an external review by four models that
   overturned the original north star, with the counterexample that disproved the first purity rule
+- `0003`–`0014` — the semantic kernel, the concurrency decision, the minimal std, diagnostics
+  that teach, the module system, two measurement RFCs and their verdicts, project truth, and
+  closures — one adopted file per decision, review wreckage recorded in each
 
 The specification draft is in [`spec/`](spec/).
 
@@ -158,6 +165,8 @@ $ xenith query producers examples/scores.xn "Result<Player, ScoreError>"
 producers of Result<Player, ScoreError>:
   function  try_award(player: Player, points: Int) -> Result<Player, ScoreError>
   function  try_find(name: String) -> Result<Player, ScoreError>
+  method    List<T>.fold(init: Result<Player, ScoreError>, f: fn(Result<Player, ScoreError>, T) -> Result<Player, ScoreError>) -> Result<Player, ScoreError>
+  method    Option<Player>.to_result(error: ScoreError) -> Result<Player, ScoreError>
   variant   Err(ScoreError)
   variant   Ok(Player)
 ```

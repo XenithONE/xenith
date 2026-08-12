@@ -84,8 +84,6 @@ enum Shape {
     Rect(Int, Int),
     Empty,
 }
-
-const LIMIT: Int = 1_000;
 ```
 
 Generic bounds come from a sealed set: `Eq`, `Ord`, `Hash`, `Copy`, `Text`. There are no traits
