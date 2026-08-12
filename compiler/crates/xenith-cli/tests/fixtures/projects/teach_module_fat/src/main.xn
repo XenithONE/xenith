@@ -1,0 +1,6 @@
+use depot.yard;
+
+fn main() -> Int {
+    let yard = depot.yard.make();
+    yard.weigh(mass: 3)
+}

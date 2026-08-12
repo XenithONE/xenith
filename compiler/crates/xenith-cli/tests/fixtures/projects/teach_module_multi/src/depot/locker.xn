@@ -1,0 +1,11 @@
+pub struct Locker {
+    var load: Int,
+}
+
+pub fn make() -> Locker {
+    Locker { load: 0 }
+}
+
+pub fn transfer(from: Locker, to: Locker) -> Int {
+    from.load + to.load
+}

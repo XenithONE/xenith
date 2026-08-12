@@ -1,0 +1,4 @@
+tests/fixtures/projects/teach_module_fat/src/main.xn:5:10: error[XN2003]: `depot.yard.Yard` has no method named `weigh`
+5 |     yard.weigh(mass: 3)
+  |          ^^^^^
+  run `xenith explain XN2003` for the rule

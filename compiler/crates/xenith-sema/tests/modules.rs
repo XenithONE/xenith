@@ -305,6 +305,279 @@ fn the_use_fix_inserts_in_dictionary_order_among_existing_uses() {
     assert_eq!(fix.edits[0].span.start, 0, "before `use zoo;`");
 }
 
+// --------------------------------------------------------- module-call teach
+
+/// Like `analyze`, but with the diagnostics kept whole so teaches and their
+/// structure can be asserted.
+fn analyze_diagnostics(modules: &[(&str, &str)]) -> Vec<Vec<xenith_diag::Diagnostic>> {
+    let parsed: Vec<(String, xenith_syntax::Parsed)> = modules
+        .iter()
+        .map(|(path, source)| (path.to_string(), parse(source)))
+        .collect();
+    for (path, p) in &parsed {
+        assert!(
+            p.diagnostics.is_empty(),
+            "module `{path}` must parse cleanly: {:?}",
+            p.diagnostics
+        );
+    }
+    let units: Vec<ModuleUnit> = parsed
+        .iter()
+        .map(|(path, p)| ModuleUnit {
+            path: path.clone(),
+            module: &p.module,
+        })
+        .collect();
+    analyze_project(&units).diagnostics
+}
+
+const LOCKER: &str = "pub struct Locker {\n    id: Int,\n    var load: Int,\n}\n\n\
+                      pub fn make(id: Int) -> Locker {\n    Locker { id: id, load: 0 }\n}\n\n\
+                      pub fn stow(locker: Locker, load: Int) -> Int {\n    locker.load + load\n}\n\n\
+                      pub fn peek(locker: Locker) -> Int {\n    locker.load\n}\n\n\
+                      pub fn transfer(from: Locker, to: Locker) -> Int {\n    from.load + to.load\n}\n\n\
+                      fn hidden(locker: Locker) -> Int {\n    locker.id\n}\n";
+
+#[test]
+fn an_unknown_member_on_a_module_type_teaches_the_rewrite_bridge() {
+    use xenith_diag::TeachKind;
+    let found = analyze_diagnostics(&[
+        ("depot.locker", LOCKER),
+        (
+            "main",
+            "use depot.locker;\n\n\
+             fn main() -> Int {\n    \
+                 let locker = depot.locker.make(id: 7);\n    \
+                 locker.stow(load: 12)\n}\n",
+        ),
+    ]);
+    let diagnostic = &found[1][0];
+    assert_eq!(diagnostic.code.id(), "XN2003");
+    // The body itself steers away from the method prior (design/0012 §1).
+    assert_eq!(
+        diagnostic.message,
+        "`depot.locker.Locker` has no method named `stow`; \
+         module functions are called as `depot.locker.stow(...)`"
+    );
+    let teach = &diagnostic.teaches[0];
+    assert_eq!(teach.kind, TeachKind::ModuleCall);
+    assert_eq!(teach.type_name, "depot.locker.Locker");
+    assert_eq!(teach.total_items, 3);
+    assert!(!teach.truncated);
+
+    // The name match ranks first and carries the full bridge.
+    let stow = &teach.items[0];
+    assert_eq!(stow.name, "depot.locker.stow");
+    assert_eq!(
+        stow.signature,
+        "depot.locker.stow(locker: depot.locker.Locker, load: Int) -> Int"
+    );
+    assert_eq!(stow.receiver_parameter.as_deref(), Some("locker"));
+    assert_eq!(
+        stow.rewrite.as_deref(),
+        Some("depot.locker.stow(locker: <receiver>, load: ...)")
+    );
+
+    // Then first-parameter matches in fully-qualified name order.
+    assert_eq!(teach.items[1].name, "depot.locker.peek");
+    assert_eq!(teach.items[2].name, "depot.locker.transfer");
+
+    // Return-only (`make`) and private (`hidden`) functions never appear.
+    assert!(
+        teach.items.iter().all(|i| i.name != "depot.locker.make"),
+        "return-only matches are excluded: {:#?}",
+        teach.items
+    );
+    assert!(
+        teach.items.iter().all(|i| i.name != "depot.locker.hidden"),
+        "private functions are excluded: {:#?}",
+        teach.items
+    );
+}
+
+#[test]
+fn a_multi_position_candidate_gets_a_signature_without_a_rewrite() {
+    let found = analyze_diagnostics(&[
+        ("depot.locker", LOCKER),
+        (
+            "main",
+            "use depot.locker;\n\n\
+             fn main() -> Int {\n    \
+                 let a = depot.locker.make(id: 1);\n    \
+                 let b = depot.locker.make(id: 2);\n    \
+                 a.transfer(to: b)\n}\n",
+        ),
+    ]);
+    let diagnostic = &found[1][0];
+    assert_eq!(diagnostic.code.id(), "XN2003");
+    let transfer = &diagnostic.teaches[0].items[0];
+    assert_eq!(transfer.name, "depot.locker.transfer");
+    assert_eq!(
+        transfer.signature,
+        "depot.locker.transfer(from: depot.locker.Locker, to: depot.locker.Locker) -> Int"
+    );
+    assert!(
+        transfer.receiver_parameter.is_none() && transfer.rewrite.is_none(),
+        "two fitting positions must not guess a bridge: {transfer:#?}"
+    );
+}
+
+#[test]
+fn a_name_match_is_never_displaced_out_of_the_budget() {
+    // Seven candidates, six slots. Sorted by name alone, `weigh` would be
+    // seventh and vanish; the name-match tier keeps it first, and the budget
+    // stays at six (design/0012 §1: the displacement invariant).
+    let yard = "pub struct Yard {\n    var mass: Int,\n}\n\n\
+                pub fn make() -> Yard {\n    Yard { mass: 0 }\n}\n\n\
+                pub fn annex(yard: Yard) -> Int {\n    yard.mass\n}\n\n\
+                pub fn budge(yard: Yard) -> Int {\n    yard.mass\n}\n\n\
+                pub fn clear(yard: Yard) -> Int {\n    yard.mass\n}\n\n\
+                pub fn drain(yard: Yard) -> Int {\n    yard.mass\n}\n\n\
+                pub fn evict(yard: Yard) -> Int {\n    yard.mass\n}\n\n\
+                pub fn flood(yard: Yard) -> Int {\n    yard.mass\n}\n\n\
+                pub fn weigh(yard: Yard, mass: Int) -> Int {\n    yard.mass + mass\n}\n";
+    let found = analyze_diagnostics(&[
+        ("depot.yard", yard),
+        (
+            "main",
+            "use depot.yard;\n\n\
+             fn main() -> Int {\n    \
+                 let yard = depot.yard.make();\n    \
+                 yard.weigh(mass: 3)\n}\n",
+        ),
+    ]);
+    let teach = &found[1][0].teaches[0];
+    assert_eq!(teach.items.len(), 6);
+    assert_eq!(teach.total_items, 7);
+    assert!(teach.truncated, "the omission is structural, not silent");
+    let names: Vec<&str> = teach.items.iter().map(|i| i.name.as_str()).collect();
+    assert_eq!(
+        names,
+        [
+            "depot.yard.weigh",
+            "depot.yard.annex",
+            "depot.yard.budge",
+            "depot.yard.clear",
+            "depot.yard.drain",
+            "depot.yard.evict",
+        ],
+        "name match first, then first-parameter matches in name order"
+    );
+}
+
+#[test]
+fn the_module_call_dedup_key_is_the_type_and_member_pair() {
+    let found = analyze_diagnostics(&[
+        ("depot.locker", LOCKER),
+        (
+            "main",
+            "use depot.locker;\n\n\
+             fn main() -> Int {\n    \
+                 let a = depot.locker.make(id: 1);\n    \
+                 let b = depot.locker.make(id: 2);\n    \
+                 a.stow(load: 1);\n    \
+                 b.stow(load: 2);\n    \
+                 a.peek_at();\n    1\n}\n",
+        ),
+    ]);
+    let taught: Vec<bool> = found[1].iter().map(|d| !d.teaches.is_empty()).collect();
+    assert_eq!(
+        taught,
+        [true, false, true],
+        "same (type, member) teaches once; a new member earns its own bridge: {:#?}",
+        found[1]
+    );
+    // The message correction is not budgeted: every module XN2003 carries it.
+    for diagnostic in &found[1] {
+        assert!(
+            diagnostic
+                .message
+                .contains("module functions are called as"),
+            "{}",
+            diagnostic.message
+        );
+    }
+}
+
+#[test]
+fn a_type_variable_receiver_attaches_no_module_teaching() {
+    let found = analyze_diagnostics(&[(
+        "main",
+        "fn main() -> Int {\n    helper(x: 1)\n}\n\n\
+         fn helper<T>(x: T) -> Int {\n    x.stow()\n}\n",
+    )]);
+    let diagnostic = &found[0][0];
+    assert_eq!(diagnostic.code.id(), "XN2003");
+    assert_eq!(
+        diagnostic.message, "`T` has no method named `stow`",
+        "no false bridge for a type variable"
+    );
+    assert!(diagnostic.teaches.is_empty());
+}
+
+#[test]
+fn a_prelude_receiver_keeps_its_method_catalogue_in_project_mode() {
+    use xenith_diag::TeachKind;
+    let found = analyze_diagnostics(&[(
+        "main",
+        "fn main() -> Int {\n    let xs = [1];\n    xs.size()\n}\n",
+    )]);
+    let diagnostic = &found[0][0];
+    assert_eq!(diagnostic.code.id(), "XN2003");
+    assert!(
+        !diagnostic.message.contains("module functions"),
+        "prelude XN2003 text is unchanged: {}",
+        diagnostic.message
+    );
+    assert_eq!(diagnostic.teaches[0].kind, TeachKind::AvailableMethods);
+}
+
+#[test]
+fn module_call_teaches_share_the_run_budget() {
+    let found = analyze_diagnostics(&[
+        ("depot.locker", LOCKER),
+        (
+            "main",
+            "use depot.locker;\n\n\
+             fn main() -> Int {\n    \
+                 let a = depot.locker.make(id: 1);\n    \
+                 a.m1();\n    a.m2();\n    a.m3();\n    a.m4();\n    a.m5();\n    a.m6();\n    1\n}\n",
+        ),
+    ]);
+    assert_eq!(found[1].len(), 6);
+    let taught = found[1].iter().filter(|d| !d.teaches.is_empty()).count();
+    assert_eq!(taught, 5, "the 0009 total budget applies unchanged");
+    assert!(found[1][5].teaches.is_empty(), "the sixth arrives too late");
+}
+
+#[test]
+fn an_own_module_receiver_teaches_the_bare_spelling() {
+    let source =
+        format!("{LOCKER}\npub fn poke(locker: Locker) -> Int {{\n    locker.peek_hard()\n}}\n");
+    let found = analyze_diagnostics(&[("depot.locker", &source)]);
+    let diagnostic = &found[0][0];
+    assert_eq!(diagnostic.code.id(), "XN2003");
+    assert!(
+        diagnostic
+            .message
+            .ends_with("; module functions are called as `peek_hard(...)`"),
+        "own items stay bare: {}",
+        diagnostic.message
+    );
+    let teach = &diagnostic.teaches[0];
+    // The callee stays fully qualified — it is an identity, not a spelling —
+    // while the signature and rewrite use the module's own bare form.
+    assert_eq!(teach.items[0].name, "depot.locker.peek");
+    assert_eq!(
+        teach.items[0].signature,
+        "peek(locker: depot.locker.Locker) -> Int"
+    );
+    assert_eq!(
+        teach.items[0].rewrite.as_deref(),
+        Some("peek(locker: <receiver>)")
+    );
+}
+
 // -------------------------------------------------------------------- cycles
 
 #[test]

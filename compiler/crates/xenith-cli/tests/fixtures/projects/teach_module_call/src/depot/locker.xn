@@ -1,0 +1,16 @@
+pub struct Locker {
+    id: Int,
+    var load: Int,
+}
+
+pub fn make(id: Int) -> Locker {
+    Locker { id: id, load: 0 }
+}
+
+pub fn stow(locker: Locker, load: Int) -> Int {
+    locker.load + load
+}
+
+pub fn peek(locker: Locker) -> Int {
+    locker.load
+}

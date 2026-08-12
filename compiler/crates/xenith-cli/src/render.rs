@@ -172,6 +172,27 @@ fn teach(teach: &Teach) -> String {
                 out.push_str(&format!("      {}\n", item.signature));
             }
         }
+        TeachKind::ModuleCall => {
+            // The rewrite bridge (design/0012 §1): candidates whole, the
+            // receiver-taking rewrite right under its signature, and any
+            // omission stated as a count rather than a cut signature.
+            if teach.truncated {
+                out.push_str(&format!(
+                    "  module functions taking {} ({} of {}):\n",
+                    teach.type_name,
+                    teach.items.len(),
+                    teach.total_items
+                ));
+            } else {
+                out.push_str(&format!("  module functions taking {}:\n", teach.type_name));
+            }
+            for item in &teach.items {
+                out.push_str(&format!("      {}\n", item.signature));
+                if let Some(rewrite) = &item.rewrite {
+                    out.push_str(&format!("      rewrite: {rewrite}\n"));
+                }
+            }
+        }
     }
     out
 }

@@ -1,0 +1,4 @@
+tests/fixtures/projects/teach_module_call/src/main.xn:5:12: error[XN2003]: `depot.locker.Locker` has no method named `stow`
+5 |     locker.stow(load: 12)
+  |            ^^^^
+  run `xenith explain XN2003` for the rule

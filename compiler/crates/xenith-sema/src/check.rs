@@ -12,7 +12,9 @@
 //! goes mute — they are the same for *compatibility* and different for
 //! *goal emission*.
 
-use xenith_diag::{DiagCode, Diagnostic, Edit, Fix, Span, Teach, TeachItem};
+use xenith_diag::{
+    DiagCode, Diagnostic, Edit, Fix, MAX_SIGNATURE_BYTES, MAX_TEACH_ITEMS, Span, Teach, TeachItem,
+};
 use xenith_syntax::ast;
 
 use crate::def::{self, DefKind, DefTable, FnSig, GenericInfo, MethodSig, Property, UsesInsertion};
@@ -166,6 +168,9 @@ pub(crate) struct TeachBudget {
     /// Receiver types whose method catalogue has already been taught; one
     /// catalogue per type per run.
     catalogued: Vec<String>,
+    /// `(receiver type, unknown member)` pairs whose module-call bridge has
+    /// already been taught — the design/0012 §1 dedup key.
+    module_called: Vec<(String, String)>,
 }
 
 impl TeachBudget {
@@ -173,6 +178,7 @@ impl TeachBudget {
         TeachBudget {
             blocks_left: MAX_TEACHES_PER_CHECK,
             catalogued: Vec::new(),
+            module_called: Vec::new(),
         }
     }
 }
@@ -526,6 +532,23 @@ impl<'a> Checker<'a> {
         true
     }
 
+    /// Claim budget for one module-call bridge. The dedup key is the pair
+    /// `(receiver type, unknown member)` (design/0012 §1): the same wrong
+    /// member on the same type teaches once per run, a different member
+    /// earns its own bridge.
+    fn claim_module_call_teach(&mut self, type_name: &str, member: &str) -> bool {
+        if self.teach_budget.blocks_left == 0 {
+            return false;
+        }
+        let key = (type_name.to_string(), member.to_string());
+        if self.teach_budget.module_called.contains(&key) {
+            return false;
+        }
+        self.teach_budget.module_called.push(key);
+        self.teach_budget.blocks_left -= 1;
+        true
+    }
+
     /// `name(param: Type, ..) -> Ret uses {..}` — the spelling the
     /// producers query uses, so a taught signature and a queried one agree.
     fn signature_text(
@@ -588,6 +611,129 @@ impl<'a> Checker<'a> {
             })
             .collect();
         Some(Teach::available_methods(self.render(receiver), items))
+    }
+
+    /// The defining module of a nominal receiver type, when there is one —
+    /// the gate for the module-call teach (design/0012 §1). Prelude types
+    /// are bare-named and answer `None`; so do type variables and poison,
+    /// which never reach here as `Type::Named`.
+    fn module_owner_of(&self, receiver: &Type) -> Option<String> {
+        let Type::Named { def, .. } = receiver else {
+            return None;
+        };
+        let name = self.defs.name_of(*def);
+        name.rsplit_once('.').map(|(owner, _)| owner.to_string())
+    }
+
+    /// A function key spelled the way this module calls it: the current
+    /// module's own items bare, everything else fully qualified. Unlike
+    /// `display_fn` this strips only an exact module match, so a sibling
+    /// nested module never renders half-qualified.
+    fn call_spelling(&self, owner: &str, bare: &str) -> String {
+        match self.ctx {
+            Some(ctx) if ctx.prefix == owner => bare.to_string(),
+            _ => format!("{owner}.{bare}"),
+        }
+    }
+
+    /// The module-call bridge for an unknown member on a module-owned type
+    /// (design/0012 §1): the defining module's `pub` functions whose input
+    /// parameters take the receiver type directly. Return-only matches are
+    /// excluded — the producers lesson (design/0009 §7) carried through.
+    ///
+    /// Ranking is deterministic: a function whose name equals the unknown
+    /// member comes first (and therefore always fits the unchanged budget —
+    /// the displacement invariant), then first-parameter matches, then other
+    /// input positions, ties broken by fully-qualified name. Candidates are
+    /// included or omitted whole: a signature over the byte budget drops the
+    /// candidate rather than cutting the signature, and `total_items` keeps
+    /// the omission structural.
+    fn module_call_teach(&self, receiver: &Type, owner: &str, member: &str) -> Option<Teach> {
+        let Type::Named {
+            def: receiver_def, ..
+        } = receiver
+        else {
+            return None;
+        };
+        // (tier, fully-qualified name, fn index, fitting input positions).
+        let mut ranked: Vec<(u8, String, usize, Vec<usize>)> = Vec::new();
+        for (index, sig) in self.defs.fns.iter().enumerate() {
+            let Some((fn_owner, bare)) = sig.name.rsplit_once('.') else {
+                continue;
+            };
+            if fn_owner != owner || !sig.is_pub {
+                continue;
+            }
+            let fitting: Vec<usize> = sig
+                .params
+                .iter()
+                .enumerate()
+                .filter(|(_, (_, ty))| matches!(ty, Type::Named { def, .. } if def == receiver_def))
+                .map(|(position, _)| position)
+                .collect();
+            if fitting.is_empty() {
+                continue; // return-only or unrelated: no bridge to offer.
+            }
+            let tier = if bare == member {
+                0
+            } else if fitting[0] == 0 {
+                1
+            } else {
+                2
+            };
+            ranked.push((tier, sig.name.clone(), index, fitting));
+        }
+        if ranked.is_empty() {
+            return None;
+        }
+        ranked.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+
+        let total_items = ranked.len();
+        let mut items = Vec::new();
+        for (_, key, index, fitting) in &ranked {
+            if items.len() == MAX_TEACH_ITEMS {
+                break;
+            }
+            let sig = &self.defs.fns[*index];
+            let bare = key.rsplit_once('.').map(|(_, b)| b).unwrap_or(key);
+            let spelled = self.call_spelling(owner, bare);
+            let names: Vec<String> = sig.params.iter().map(|(n, _)| n.clone()).collect();
+            let types: Vec<Type> = sig.params.iter().map(|(_, t)| t.clone()).collect();
+            let text = self.signature_text(&spelled, &names, &types, &sig.ret, &sig.effects);
+            if text.len() > MAX_SIGNATURE_BYTES {
+                continue; // omit the whole candidate, never cut its signature.
+            }
+            let mut item = TeachItem::new(key.clone(), text);
+            if let [only] = fitting.as_slice() {
+                // Exactly one input position fits, so the rewrite is honest.
+                // Several fitting positions stay signature-only: guessing
+                // which one takes the receiver would be mis-guidance.
+                item.receiver_parameter = Some(names[*only].clone());
+                let args: Vec<String> = names
+                    .iter()
+                    .enumerate()
+                    .map(|(position, name)| {
+                        if position == *only {
+                            format!("{name}: <receiver>")
+                        } else {
+                            format!("{name}: ...")
+                        }
+                    })
+                    .collect();
+                item.rewrite = Some(format!("{spelled}({})", args.join(", ")));
+            }
+            items.push(item);
+        }
+        if items.is_empty() {
+            // Every candidate was over the byte budget: an empty block
+            // teaches nothing and claims none (the 0009 catalogue rule).
+            return None;
+        }
+        Some(Teach::module_call(
+            self.render(receiver),
+            items,
+            total_items,
+        ))
     }
 
     /// Bare type names resolve to the current module first, then the
@@ -2276,10 +2422,23 @@ impl<'a> Checker<'a> {
                 message.push_str(&format!("; did you mean `{meant}`?"));
             }
             let mut diagnostic = Diagnostic::error(DiagCode::UnknownMethod, method.span, message);
-            // The receiver's catalogue is the measured payload (0009 §6
-            // step 0: XN2003 dominates unrepaired failures). An empty
-            // catalogue teaches nothing and claims no budget.
-            if let Some(catalogue) = self.method_catalogue(&receiver_ty, &methods) {
+            if let Some(owner) = self.module_owner_of(&receiver_ty) {
+                // A module-owned type: steer the message itself away from the
+                // method prior (design/0012 §1) — a body that stops at "has
+                // no method" reinforces exactly the habit that failed — and
+                // attach the rewrite bridge when the module offers one.
+                let spelled = self.call_spelling(&owner, &method.name);
+                diagnostic = diagnostic
+                    .with_teach_note(format!("; module functions are called as `{spelled}(...)`"));
+                if let Some(teach) = self.module_call_teach(&receiver_ty, &owner, &method.name) {
+                    if self.claim_module_call_teach(&teach.type_name, &method.name) {
+                        diagnostic = diagnostic.with_teach(teach);
+                    }
+                }
+            } else if let Some(catalogue) = self.method_catalogue(&receiver_ty, &methods) {
+                // The receiver's catalogue is the measured payload (0009 §6
+                // step 0: XN2003 dominates unrepaired failures). An empty
+                // catalogue teaches nothing and claims no budget.
                 if self.claim_teach(Some(&catalogue.type_name)) {
                     diagnostic = diagnostic.with_teach(catalogue);
                 }

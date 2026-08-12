@@ -1,0 +1,17 @@
+tests/fixtures/projects/teach_module_fat/src/main.xn:5:10: error[XN2003]: `depot.yard.Yard` has no method named `weigh`; module functions are called as `depot.yard.weigh(...)`
+  module functions taking depot.yard.Yard (6 of 7):
+      depot.yard.weigh(yard: depot.yard.Yard, mass: Int) -> Int
+      rewrite: depot.yard.weigh(yard: <receiver>, mass: ...)
+      depot.yard.annex(yard: depot.yard.Yard) -> Int
+      rewrite: depot.yard.annex(yard: <receiver>)
+      depot.yard.budge(yard: depot.yard.Yard) -> Int
+      rewrite: depot.yard.budge(yard: <receiver>)
+      depot.yard.clear(yard: depot.yard.Yard) -> Int
+      rewrite: depot.yard.clear(yard: <receiver>)
+      depot.yard.drain(yard: depot.yard.Yard) -> Int
+      rewrite: depot.yard.drain(yard: <receiver>)
+      depot.yard.evict(yard: depot.yard.Yard) -> Int
+      rewrite: depot.yard.evict(yard: <receiver>)
+5 |     yard.weigh(mass: 3)
+  |          ^^^^^
+  run `xenith explain XN2003` for the rule

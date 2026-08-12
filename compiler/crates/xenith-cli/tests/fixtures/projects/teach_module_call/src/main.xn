@@ -1,0 +1,6 @@
+use depot.locker;
+
+fn main() -> Int {
+    let locker = depot.locker.make(id: 7);
+    locker.stow(load: 12)
+}

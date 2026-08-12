@@ -1,0 +1,35 @@
+pub struct Yard {
+    var mass: Int,
+}
+
+pub fn make() -> Yard {
+    Yard { mass: 0 }
+}
+
+pub fn annex(yard: Yard) -> Int {
+    yard.mass
+}
+
+pub fn budge(yard: Yard) -> Int {
+    yard.mass
+}
+
+pub fn clear(yard: Yard) -> Int {
+    yard.mass
+}
+
+pub fn drain(yard: Yard) -> Int {
+    yard.mass
+}
+
+pub fn evict(yard: Yard) -> Int {
+    yard.mass
+}
+
+pub fn flood(yard: Yard) -> Int {
+    yard.mass
+}
+
+pub fn weigh(yard: Yard, mass: Int) -> Int {
+    yard.mass + mass
+}

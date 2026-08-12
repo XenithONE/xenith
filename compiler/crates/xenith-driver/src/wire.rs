@@ -29,7 +29,7 @@ pub const SCHEMA_VERSION: u32 = 1;
 
 /// Additive capabilities this compiler's wire output carries, named so a
 /// consumer can distinguish absence of support from absence of content.
-pub const FEATURES: &[&str] = &["diagnostic_teaching_v1"];
+pub const FEATURES: &[&str] = &["diagnostic_teaching_v1", "module_call_teach_v1"];
 
 /// One file's diagnostics: `{ file, diagnostics: [ { …, line, column } ] }`.
 ///
@@ -190,6 +190,7 @@ mod tests {
         // consumer can tell "supported but empty" from "old compiler".
         let on = file_diagnostics("t.xn", source, &analysis.diagnostics, true);
         assert_eq!(on["features"][0], "diagnostic_teaching_v1");
+        assert_eq!(on["features"][1], "module_call_teach_v1");
         let off = file_diagnostics("t.xn", source, &analysis.diagnostics, false);
         assert!(off.get("features").is_none());
     }

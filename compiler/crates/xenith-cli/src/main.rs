@@ -539,12 +539,13 @@ fn run_project(root: &Path, teaching: Teaching) -> ExitCode {
     ExitCode::from(u8::try_from(outcome.exit).unwrap_or(101))
 }
 
-/// `--diagnostic-teaching=off` strips exactly the teaches and nothing else,
-/// which is what makes the byte-identity guarantee testable.
+/// `--diagnostic-teaching=off` strips exactly the teaching — the teach
+/// blocks and the module-call teach note — and nothing else, which is what
+/// makes the byte-identity guarantee testable.
 fn strip_teaches(diagnostics: &mut [Diagnostic], teaching: Teaching) {
     if teaching == Teaching::Off {
         for diagnostic in diagnostics {
-            diagnostic.teaches.clear();
+            diagnostic.strip_teaching();
         }
     }
 }

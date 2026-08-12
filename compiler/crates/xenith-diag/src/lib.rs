@@ -473,6 +473,13 @@ impl DiagCode {
                  misspelling is the usual cause — the naming rules make the correct \
                  spelling guessable: `to_` converts totally, `try_` returns `Result`, \
                  `is_`/`has_` return `Bool`, `checked_` returns `Option`.\n\n\
+                 A type declared by a module has no methods at all. Its operations \
+                 are the defining module's `pub` functions, which take the value as \
+                 an ordinary parameter and are called module-qualified: not \
+                 `locker.stow(load: 12)` but \
+                 `depot.locker.stow(locker: locker, load: 12)`. When the module \
+                 exports functions taking the receiver's type, the diagnostic \
+                 lists them with the rewritten call shape.\n\n\
                  When exactly one of the receiver's methods sits within two edits \
                  of what was written, the message suggests it; a tie between \
                  equally close names suggests nothing."
@@ -813,14 +820,31 @@ pub enum TeachKind {
     /// The modules that export the exact name an unknown reference used —
     /// listed in canonical order, never auto-picked (design/0010 §6).
     UseCandidates,
+    /// The defining module's `pub` functions that take the receiver type as
+    /// an input parameter — the rewrite bridge for a method call on a
+    /// module-owned type (design/0012 §1). Return-only matches are excluded.
+    ModuleCall,
 }
 
 /// One taught entry: a name and its signature, rendered the way source
 /// writes it.
+///
+/// The two optional fields belong to [`TeachKind::ModuleCall`] (design/0012
+/// §1) and ride the wire only when present — a tolerant reader that predates
+/// them keeps parsing the shape it knows.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TeachItem {
     pub name: String,
     pub signature: String,
+    /// The parameter of a module-call candidate that takes the receiver.
+    /// Absent when more than one input position fits — naming one of several
+    /// would be mis-guidance.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub receiver_parameter: Option<String>,
+    /// The concrete rewrite shape, `depot.locker.stow(locker: <receiver>,
+    /// load: ...)`. Absent under the same ambiguity rule.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rewrite: Option<String>,
 }
 
 impl TeachItem {
@@ -839,6 +863,8 @@ impl TeachItem {
         TeachItem {
             name: name.into(),
             signature,
+            receiver_parameter: None,
+            rewrite: None,
         }
     }
 }
@@ -904,6 +930,28 @@ impl Teach {
             truncated,
         }
     }
+
+    /// The module-call bridge for a method call on a module-owned type
+    /// (design/0012 §1). `items` arrive ranked and already filtered to whole
+    /// candidates — a signature is never cut mid-way, candidates are included
+    /// or omitted whole — and `total_items` counts every candidate found,
+    /// omissions included, so the cut stays structural.
+    pub fn module_call(
+        type_name: impl Into<String>,
+        items: Vec<TeachItem>,
+        total_items: usize,
+    ) -> Teach {
+        let mut items = items;
+        items.truncate(MAX_TEACH_ITEMS);
+        let truncated = total_items > items.len();
+        Teach {
+            kind: TeachKind::ModuleCall,
+            type_name: type_name.into(),
+            items,
+            total_items,
+            truncated,
+        }
+    }
 }
 
 /// A fix that can be applied without human judgement.
@@ -944,6 +992,12 @@ pub struct Diagnostic {
     /// pre-teaching shape byte for byte.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub teaches: Vec<Teach>,
+    /// How many trailing bytes of `message` belong to teaching (design/0012
+    /// §1: the module-call sentence). Never on the wire — it exists so
+    /// `--diagnostic-teaching=off` can restore the pre-teaching message byte
+    /// for byte, the same contract the teach blocks obey.
+    #[serde(skip)]
+    pub teach_note: u32,
 }
 
 impl Diagnostic {
@@ -955,6 +1009,7 @@ impl Diagnostic {
             message: message.into(),
             fix: None,
             teaches: Vec::new(),
+            teach_note: 0,
         }
     }
 
@@ -966,6 +1021,7 @@ impl Diagnostic {
             message: message.into(),
             fix: None,
             teaches: Vec::new(),
+            teach_note: 0,
         }
     }
 
@@ -977,6 +1033,26 @@ impl Diagnostic {
     pub fn with_teach(mut self, teach: Teach) -> Diagnostic {
         self.teaches.push(teach);
         self
+    }
+
+    /// Append a teaching sentence to the message. It reads as ordinary
+    /// message text while teaching is on; [`Diagnostic::strip_teaching`]
+    /// removes exactly it, so the off-mode message is the pre-teaching one.
+    pub fn with_teach_note(mut self, note: impl AsRef<str>) -> Diagnostic {
+        let note = note.as_ref();
+        self.message.push_str(note);
+        self.teach_note = note.len() as u32;
+        self
+    }
+
+    /// `--diagnostic-teaching=off`: drop the teach blocks and the teach note,
+    /// and nothing else — the byte-identity contract (design/0009 §3,
+    /// design/0012 §1).
+    pub fn strip_teaching(&mut self) {
+        self.teaches.clear();
+        let keep = self.message.len().saturating_sub(self.teach_note as usize);
+        self.message.truncate(keep);
+        self.teach_note = 0;
     }
 
     pub fn is_error(&self) -> bool {
@@ -1180,5 +1256,81 @@ mod tests {
         assert_eq!(teach.items.len(), MAX_TEACH_ITEMS);
         assert_eq!(teach.total_items, 10);
         assert!(teach.truncated);
+    }
+
+    #[test]
+    fn a_module_call_teach_spells_its_kind_and_bridge_fields_on_the_wire() {
+        let mut item = TeachItem::new(
+            "depot.locker.stow",
+            "depot.locker.stow(locker: depot.locker.Locker, load: Int) -> Int",
+        );
+        item.receiver_parameter = Some("locker".to_string());
+        item.rewrite = Some("depot.locker.stow(locker: <receiver>, load: ...)".to_string());
+        let diag = Diagnostic::error(DiagCode::UnknownMethod, Span::new(0, 4), "no such method")
+            .with_teach(Teach::module_call("depot.locker.Locker", vec![item], 3));
+
+        let json = serde_json::to_value(&diag).unwrap();
+        assert_eq!(json["teaches"][0]["kind"], "module_call");
+        assert_eq!(json["teaches"][0]["type"], "depot.locker.Locker");
+        assert_eq!(json["teaches"][0]["items"][0]["name"], "depot.locker.stow");
+        assert_eq!(
+            json["teaches"][0]["items"][0]["receiver_parameter"],
+            "locker"
+        );
+        assert_eq!(
+            json["teaches"][0]["items"][0]["rewrite"],
+            "depot.locker.stow(locker: <receiver>, load: ...)"
+        );
+        // Omissions are structural: one included, three found.
+        assert_eq!(json["teaches"][0]["total_items"], 3);
+        assert_eq!(json["teaches"][0]["truncated"], true);
+
+        let back: Diagnostic = serde_json::from_value(json).unwrap();
+        assert_eq!(back, diag);
+    }
+
+    #[test]
+    fn an_ambiguous_module_call_item_omits_its_bridge_fields_from_the_wire() {
+        let diag = Diagnostic::error(DiagCode::UnknownMethod, Span::new(0, 4), "no such method")
+            .with_teach(Teach::module_call(
+                "depot.locker.Locker",
+                vec![TeachItem::new(
+                    "depot.locker.transfer",
+                    "depot.locker.transfer(from: depot.locker.Locker, to: depot.locker.Locker) -> Int",
+                )],
+                1,
+            ));
+        let json = serde_json::to_value(&diag).unwrap();
+        let item = &json["teaches"][0]["items"][0];
+        assert!(item.get("receiver_parameter").is_none(), "{item}");
+        assert!(item.get("rewrite").is_none(), "{item}");
+        assert_eq!(json["teaches"][0]["truncated"], false);
+    }
+
+    #[test]
+    fn strip_teaching_removes_the_teach_note_and_blocks_and_nothing_else() {
+        let base = "`depot.locker.Locker` has no method named `stow`";
+        let mut diag = Diagnostic::error(DiagCode::UnknownMethod, Span::new(0, 4), base)
+            .with_teach_note("; module functions are called as `depot.locker.stow(...)`")
+            .with_teach(Teach::module_call("depot.locker.Locker", Vec::new(), 0));
+        assert!(diag.message.ends_with("stow(...)`"));
+
+        let untaught = serde_json::to_value(Diagnostic::error(
+            DiagCode::UnknownMethod,
+            Span::new(0, 4),
+            base,
+        ))
+        .unwrap();
+        diag.strip_teaching();
+        assert_eq!(serde_json::to_value(&diag).unwrap(), untaught);
+    }
+
+    #[test]
+    fn the_teach_note_length_never_reaches_the_wire() {
+        let diag = Diagnostic::error(DiagCode::UnknownMethod, Span::new(0, 4), "m")
+            .with_teach_note("; note");
+        let json = serde_json::to_value(&diag).unwrap();
+        assert!(json.get("teach_note").is_none(), "{json}");
+        assert_eq!(json["message"], "m; note");
     }
 }

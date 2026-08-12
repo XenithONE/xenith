@@ -1,0 +1,7 @@
+use depot.locker;
+
+fn main() -> Int {
+    let a = depot.locker.make();
+    let b = depot.locker.make();
+    a.transfer(to: b)
+}

@@ -1,0 +1,54 @@
+[
+  {
+    "diagnostics": [],
+    "features": [
+      "diagnostic_teaching_v1",
+      "module_call_teach_v1"
+    ],
+    "file": "tests/fixtures/projects/teach_module_call/src/depot/locker.xn",
+    "schema_version": 1
+  },
+  {
+    "diagnostics": [
+      {
+        "code": "XN2003",
+        "column": 12,
+        "line": 5,
+        "message": "`depot.locker.Locker` has no method named `stow`; module functions are called as `depot.locker.stow(...)`",
+        "severity": "error",
+        "span": {
+          "end": 96,
+          "start": 92
+        },
+        "teaches": [
+          {
+            "items": [
+              {
+                "name": "depot.locker.stow",
+                "receiver_parameter": "locker",
+                "rewrite": "depot.locker.stow(locker: <receiver>, load: ...)",
+                "signature": "depot.locker.stow(locker: depot.locker.Locker, load: Int) -> Int"
+              },
+              {
+                "name": "depot.locker.peek",
+                "receiver_parameter": "locker",
+                "rewrite": "depot.locker.peek(locker: <receiver>)",
+                "signature": "depot.locker.peek(locker: depot.locker.Locker) -> Int"
+              }
+            ],
+            "kind": "module_call",
+            "total_items": 2,
+            "truncated": false,
+            "type": "depot.locker.Locker"
+          }
+        ]
+      }
+    ],
+    "features": [
+      "diagnostic_teaching_v1",
+      "module_call_teach_v1"
+    ],
+    "file": "tests/fixtures/projects/teach_module_call/src/main.xn",
+    "schema_version": 1
+  }
+]

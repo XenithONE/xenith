@@ -1,0 +1,6 @@
+tests/fixtures/projects/teach_module_multi/src/main.xn:6:7: error[XN2003]: `depot.locker.Locker` has no method named `transfer`; module functions are called as `depot.locker.transfer(...)`
+  module functions taking depot.locker.Locker:
+      depot.locker.transfer(from: depot.locker.Locker, to: depot.locker.Locker) -> Int
+6 |     a.transfer(to: b)
+  |       ^^^^^^^^
+  run `xenith explain XN2003` for the rule
