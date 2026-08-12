@@ -1,0 +1,18 @@
+name = "t6-01"
+tier = 6
+prompt = '''
+Write a complete Xenith program. Start from the whole numbers 4, 11, 6, 9, 14, 3, 8 in that
+order. Triple each number, keep only the tripled values greater than 20, and add up what
+remains. Print the resulting sum.
+'''
+expected_stdout = "126"
+reference = '''
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    let total = [4, 11, 6, 9, 14, 3, 8]
+        .map(|x| x * 3)
+        .filter(|x| x > 20)
+        .fold(init: 0, f: |acc, x| acc + x);
+    io.write(text: total.to_text())?;
+    return Ok(unit);
+}
+'''

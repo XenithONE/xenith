@@ -1,0 +1,24 @@
+name = "t6-02"
+tier = 6
+prompt = '''
+Write a complete Xenith program. Start from the words ink, paper, clips in that order. For
+each word, print one line of the form word=length, where length is the number of characters
+in that word. Every line ends with a newline, including the last one.
+'''
+expected_stdout = "ink=3\npaper=5\nclips=5\n"
+reference = '''
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    let words = ["ink", "paper", "clips"];
+    var i = 0;
+    while i < words.len() {
+        let word = match words.get(index: i) {
+            Some(w) => w,
+            None => "",
+        };
+        let line = word.concat(other: "=").concat(other: word.len().to_text()).concat(other: "\n");
+        io.write(text: line)?;
+        i = i + 1;
+    }
+    return Ok(unit);
+}
+'''

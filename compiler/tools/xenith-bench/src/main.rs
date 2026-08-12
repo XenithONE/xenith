@@ -28,6 +28,11 @@
 //! round-1 prompts are byte-identical across that factor, and goals-on-holes
 //! stays disabled in all four arms — teaching is the only feedback
 //! difference.
+//! `t6-plain` / `t6-teach` — the 0014 §6 closure-measurement pair: prompt
+//! assembly cloned byte-for-byte from `v3-plain`/`v3-teach` (no docs,
+//! teaching off/on), run over the two frozen tier-6 closure tasks only.
+//! Both arms record per-round diagnostic codes and feedback verbatim, the
+//! raw material for the XN4005/XN4006 misuse-rate analysis.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -173,6 +178,16 @@ enum Condition {
     T5V2NoneOn,
     #[value(name = "t5v2-none-off")]
     T5V2NoneOff,
+    // The 0014 §6 closure-measurement pair. Prompt assembly is an exact
+    // clone of `v3-plain`/`v3-teach` — same base instruction, no docs,
+    // teaching off/on — but the arms are distinct variants so their runs
+    // land in their own ledger files and cover only the tier-6 closure
+    // tasks. Names pinned for the same digit-boundary reason as the v3
+    // quartet.
+    #[value(name = "t6-plain")]
+    T6Plain,
+    #[value(name = "t6-teach")]
+    T6Teach,
 }
 
 impl Condition {
@@ -205,6 +220,9 @@ impl Condition {
     /// array generates the frozen 0011 shuffle table and summary section,
     /// both of which must not move.
     const T5V2: [Condition; 2] = [Condition::T5V2NoneOn, Condition::T5V2NoneOff];
+    /// The 0014 §6 pair: the v3 no-docs assembly over the tier-6 closure
+    /// tasks, teaching off/on. Order is the summary-table column order.
+    const T6: [Condition; 2] = [Condition::T6Plain, Condition::T6Teach];
 
     fn name(self) -> &'static str {
         match self {
@@ -227,6 +245,8 @@ impl Condition {
             Condition::T5NoneOff => "t5-none-off",
             Condition::T5V2NoneOn => "t5v2-none-on",
             Condition::T5V2NoneOff => "t5v2-none-off",
+            Condition::T6Plain => "t6-plain",
+            Condition::T6Teach => "t6-teach",
         }
     }
 
@@ -259,6 +279,20 @@ impl Condition {
 
     fn is_t5(self) -> bool {
         self.t5_docs().is_some()
+    }
+
+    /// The 0014 §6 arms draw only the frozen tier-6 closure tasks, and every
+    /// other single-file condition excludes them — a legacy cell re-run must
+    /// keep measuring the task set its ledger recorded, not silently absorb
+    /// tasks that did not exist when it was written.
+    fn tier6_tasks_only(self) -> bool {
+        matches!(self, Condition::T6Plain | Condition::T6Teach)
+    }
+
+    /// The single-file task filter implied by the condition. Tier-5 arms
+    /// never reach this — they load project tasks through the t5 module.
+    fn runs_tier(self, tier: u32) -> bool {
+        (tier == 6) == self.tier6_tasks_only()
     }
 
     /// The docs factor: these arms carry the std API table. For the tier-5
@@ -303,16 +337,25 @@ impl Condition {
                 | Condition::T5ApiOff
                 | Condition::T5NoneOff
                 | Condition::T5V2NoneOff
+                | Condition::T6Plain
         )
     }
 
     /// The 0009 arms store each failed round's feedback verbatim plus its
     /// diagnostic codes — the consumption-oracle raw material (0009 §1b).
     /// Teach-off rounds are recorded too: they are the oracle's control text.
+    /// The 0014 §6 arms record the same fields: the closure misuse-rate
+    /// analysis reads XN4005/XN4006 (and the XN1009–XN1012 parse family)
+    /// straight out of `diag_codes`.
     fn records_feedback(self) -> bool {
         matches!(
             self,
-            Condition::V3Plain | Condition::V3Teach | Condition::V3Docs | Condition::V3DocsTeach
+            Condition::V3Plain
+                | Condition::V3Teach
+                | Condition::V3Docs
+                | Condition::V3DocsTeach
+                | Condition::T6Plain
+                | Condition::T6Teach
         )
     }
 }
@@ -409,6 +452,20 @@ fn summarize(paths: &Paths) -> ExitCode {
              order as the 0011 pair; same cell format as above.\n\n",
         );
         table.push_str(&t5v2_block);
+    }
+
+    // The 0014 §6 closure pair, rendered only once a t6 result file exists.
+    let (t6_block, measured) = matrix_block(paths, &Condition::T6);
+    if measured {
+        table.push_str(
+            "\n## Closures (0014 t6)\n\n\
+             The design/0014 §6 pair: the v3-plain/v3-teach prompt assembly (no docs,\n\
+             diagnostic teaching off/on) over the two frozen tier-6 closure tasks —\n\
+             t6-01 pure transform, t6-02 Io temptation. Same cell format as above;\n\
+             XN4005/XN4006 misuse rates are read post-hoc from the recorded\n\
+             `diag_codes`.\n\n",
+        );
+        table.push_str(&t6_block);
     }
 
     let out = paths.results.join("summary.md");
@@ -749,8 +806,13 @@ fn run_models(
             return ExitCode::FAILURE;
         }
     };
+    // The tier filter comes before the explicit `--task` narrowing: a t6
+    // cell runs only the tier-6 closure tasks by default, and no legacy
+    // condition can pick them up (design/0014 §6 — new tasks must not leak
+    // into frozen cells).
     let tasks: Vec<&Task> = tasks
         .iter()
+        .filter(|t| condition.runs_tier(t.tier))
         .filter(|t| only.is_empty() || only.contains(&t.name))
         .collect();
 
@@ -1272,8 +1334,17 @@ fn first_prompt(guide: &str, api_table: &str, task: &Task, condition: Condition)
         // four arms produce exactly two prompt texts (with and without the
         // API table), asserted byte-for-byte in tests. The hole permission
         // stays, unchanged and shared (v2 showed it moves nothing), and the
-        // feedback sentence never names a channel.
-        Condition::V3Plain | Condition::V3Teach | Condition::V3Docs | Condition::V3DocsTeach => {
+        // feedback sentence never names a channel. The t6 pair (0014 §6)
+        // shares this assembly on purpose: both t6 arms lack the API table,
+        // so they reproduce the v3-plain text byte for byte — the closure
+        // measurement differs from 0009 only in tasks and teaching flag,
+        // never in prompt.
+        Condition::V3Plain
+        | Condition::V3Teach
+        | Condition::V3Docs
+        | Condition::V3DocsTeach
+        | Condition::T6Plain
+        | Condition::T6Teach => {
             let guide = if condition.has_api_table() {
                 format!("{guide}\n\n## std API reference\n\n{api_table}")
             } else {
@@ -1599,6 +1670,7 @@ mod tests {
             .chain(Condition::V3)
             .chain(Condition::T5)
             .chain(Condition::T5V2)
+            .chain(Condition::T6)
         {
             let value = condition.to_possible_value().expect("hidden variant");
             assert_eq!(value.get_name(), condition.name());
@@ -1650,6 +1722,74 @@ mod tests {
         assert_eq!(Condition::T5V2NoneOff.shuffle_arm(), "t5-none-off");
         for condition in Condition::T5 {
             assert_eq!(condition.shuffle_arm(), condition.name());
+        }
+    }
+
+    #[test]
+    fn t6_condition_names_match_result_files() {
+        let names: Vec<&str> = Condition::T6.iter().map(|c| c.name()).collect();
+        assert_eq!(names, ["t6-plain", "t6-teach"]);
+    }
+
+    #[test]
+    fn t6_prompts_clone_the_v3_plain_assembly_byte_for_byte() {
+        // 0014 §6: the closure measurement reuses the 0009 no-docs prompt
+        // exactly — same base instruction, no API table — so a t6 cell
+        // differs from a v3-plain cell only in tasks and the teaching flag.
+        // And as in v3, teaching lives in post-failure output only, so the
+        // pair's round-1 prompts are byte-identical to each other.
+        assert_eq!(
+            separation_prompt(Condition::T6Plain),
+            separation_prompt(Condition::V3Plain)
+        );
+        assert_eq!(
+            separation_prompt(Condition::T6Teach),
+            separation_prompt(Condition::V3Plain)
+        );
+        assert_eq!(
+            separation_prompt(Condition::T6Plain),
+            separation_prompt(Condition::T6Teach)
+        );
+        assert!(!separation_prompt(Condition::T6Plain).contains("## std API reference"));
+    }
+
+    #[test]
+    fn t6_teaching_follows_the_arm_and_the_rounds_are_recorded() {
+        assert!(!Condition::T6Plain.teaching());
+        assert!(Condition::T6Teach.teaching());
+        for condition in Condition::T6 {
+            // Not a tier-5 arm, no docs, no goals channel — the pair clones
+            // v3-plain/v3-teach in everything but tasks and ledger names.
+            assert!(!condition.is_t5(), "{}", condition.name());
+            assert!(!condition.has_api_table(), "{}", condition.name());
+            assert!(!condition.feeds_goals(), "{}", condition.name());
+            // Both arms record diag_codes and feedback verbatim: the
+            // XN4005/XN4006 misuse-rate analysis reads them post-hoc, and
+            // the teach-off rounds are its control text.
+            assert!(condition.records_feedback(), "{}", condition.name());
+        }
+    }
+
+    #[test]
+    fn t6_cells_run_only_the_tier6_tasks_and_legacy_cells_never_do() {
+        for condition in Condition::T6 {
+            assert!(condition.runs_tier(6), "{}", condition.name());
+            for tier in [1, 2, 3, 4] {
+                assert!(!condition.runs_tier(tier), "{}", condition.name());
+            }
+        }
+        // Every earlier single-file condition keeps its historical task set:
+        // re-running a frozen cell must not absorb the closure tasks.
+        for condition in Condition::ALL
+            .into_iter()
+            .chain(Condition::SEPARATION)
+            .chain(Condition::V3)
+        {
+            assert!(!condition.tier6_tasks_only(), "{}", condition.name());
+            assert!(!condition.runs_tier(6), "{}", condition.name());
+            for tier in [1, 2, 3, 4] {
+                assert!(condition.runs_tier(tier), "{}", condition.name());
+            }
         }
     }
 

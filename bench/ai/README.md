@@ -95,7 +95,13 @@ compiler's own syntax tree — deterministic ordering, generator version and con
 the header, never hand-edited. `verify` regenerates every dump and fails on drift, then
 checks the golden gate: every provided-module surface the reference solution consumes
 must appear in the dump (0011 §7 — no measuring against a broken map). With the six
-project references, `verify` covers 22 references.
+project references, `verify` covers 24 references (the two tier-6 closure tasks of
+design/0014 §6 joined in 2026-08: t6-01 is a pure map/filter/fold transform, t6-02
+asks for one output line per item — the temptation is `xs.map(|x| io.write(...))`,
+the correct shape is a while loop, and the statement deliberately does not warn.
+Their arms `t6-plain` / `t6-teach` clone the v3 none pair byte-for-byte except the
+teaching flag, write their own ledgers, and are tier-fenced both ways so no frozen
+cell can absorb them on resume).
 
 **Reading (252/252 runs, 2026-08-08).** The family split is the finding — a double
 dissociation the pooled table hides:
