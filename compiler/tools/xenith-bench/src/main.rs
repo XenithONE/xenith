@@ -208,6 +208,15 @@ enum Condition {
     T7Plain,
     #[value(name = "t7-teach")]
     T7Teach,
+    // Amendment 1 (0016 §4.5, registered before the measurement): step 0
+    // returned 0/13 task usage, so a pair that differs only by teaching
+    // would have spent 28 runs on 100% bypassed-green. The pair becomes the
+    // 0009 v3 2×2 — the docs factor crossed with teaching — to ask whether
+    // documentation can introduce a feature the prior does not carry.
+    #[value(name = "t7-docs")]
+    T7Docs,
+    #[value(name = "t7-docs-teach")]
+    T7DocsTeach,
     // Step 0 (0016 §1): the tier-7 tasks under the compiler's current
     // defaults, for exploratory sampling before the freeze is trusted. It is
     // deliberately in no summary array — its ledger is separate and stays
@@ -255,10 +264,17 @@ impl Condition {
     /// The 0014 §6 pair: the v3 no-docs assembly over the tier-6 closure
     /// tasks, teaching off/on. Order is the summary-table column order.
     const T6: [Condition; 2] = [Condition::T6Plain, Condition::T6Teach];
-    /// The 0016 tier-7 campaign pair. `T7Sample` is deliberately absent:
+    /// The 0016 tier-7 campaign arms, in summary-table column order: the
+    /// amendment-1 2×2 (docs × teaching), ordered like [`Condition::V3`]
+    /// whose assembly it clones. `T7Sample` is deliberately absent:
     /// step-0 sampling is not an arm of the campaign, and every summary
     /// table is built from these arrays.
-    const T7: [Condition; 2] = [Condition::T7Plain, Condition::T7Teach];
+    const T7: [Condition; 4] = [
+        Condition::T7Plain,
+        Condition::T7Teach,
+        Condition::T7Docs,
+        Condition::T7DocsTeach,
+    ];
 
     fn name(self) -> &'static str {
         match self {
@@ -285,6 +301,8 @@ impl Condition {
             Condition::T6Teach => "t6-teach",
             Condition::T7Plain => "t7-plain",
             Condition::T7Teach => "t7-teach",
+            Condition::T7Docs => "t7-docs",
+            Condition::T7DocsTeach => "t7-docs-teach",
             Condition::T7Sample => "t7-sample",
         }
     }
@@ -328,7 +346,11 @@ impl Condition {
     fn tier_fence(self) -> Option<u32> {
         match self {
             Condition::T6Plain | Condition::T6Teach => Some(6),
-            Condition::T7Plain | Condition::T7Teach | Condition::T7Sample => Some(7),
+            Condition::T7Plain
+            | Condition::T7Teach
+            | Condition::T7Docs
+            | Condition::T7DocsTeach
+            | Condition::T7Sample => Some(7),
             _ => None,
         }
     }
@@ -365,6 +387,11 @@ impl Condition {
                 | Condition::T5GuideOff
                 | Condition::T5ApiOn
                 | Condition::T5ApiOff
+                // Amendment 1 (0016 §4.5): the docs factor arrives at
+                // tier 7 exactly as v3 supplies it — the std API table on
+                // top of the shared field guide, nothing else.
+                | Condition::T7Docs
+                | Condition::T7DocsTeach
         )
     }
 
@@ -395,6 +422,7 @@ impl Condition {
                 | Condition::T5V2NoneOff
                 | Condition::T6Plain
                 | Condition::T7Plain
+                | Condition::T7Docs
         )
     }
 
@@ -534,14 +562,17 @@ fn summarize(paths: &Paths) -> ExitCode {
     if measured {
         table.push_str(
             "\n## Task structure (0016 tier-7)\n\n\
-             The design/0016 pair: the v3-plain/v3-teach prompt assembly (no docs,\n\
-             diagnostic teaching off/on) over the two frozen tier-7 tasks — t7-01 fan-out,\n\
-             t7-02 pure boundary. **Cells are `pass@1 · used-green/tasks (mean\n\
-             rounds-to-used-green)`, and both heads count used-green only**: a run whose green\n\
-             program never spawned anything is a bypass, not aptitude (0016 §0). The\n\
-             classes below account for every run, and the delivery column is the 0012\n\
-             discipline standing — an effect claimed for teaching needs the teaching to\n\
-             have been delivered.\n\n",
+             The design/0016 amendment-1 2×2: the std API table crossed with diagnostic\n\
+             teaching, over the two frozen tier-7 tasks — t7-01 fan-out, t7-02 pure\n\
+             boundary. The pair was widened after step 0 returned **0/13 task usage**: two\n\
+             docless arms differing only by teaching would have spent every run on\n\
+             bypassed-green and measured nothing, so the question became whether\n\
+             documentation can introduce a feature the prior does not carry.\n\n\
+             **Cells are `pass@1 · used-green/tasks (mean rounds-to-used-green)`, and both\n\
+             heads count used-green only**: a run whose green program never spawned\n\
+             anything is a bypass, not aptitude (0016 §0). The classes below account for\n\
+             every run, and the delivery column is the 0012 discipline standing — an effect\n\
+             claimed for teaching needs the teaching to have been delivered.\n\n",
         );
         table.push_str(&t7_block);
         table.push_str(&t7_classes_block(paths));
@@ -841,10 +872,11 @@ fn t7_classes_block(paths: &Paths) -> String {
     out.push_str(
         "\nDelivery audit (design/0012's discipline, now standing; 0016 §4 H-delivery):\n\
          failing rounds, how many raised a task diagnostic (XN6001–XN6011), and how many of\n\
-         those carried the canonical task teach. `t7-plain` compiles with\n\
-         `--diagnostic-teaching=off`, so its teach column is zero by construction — that is\n\
-         the control. A `t7-teach` teach column far below its XN6xxx column means the\n\
-         teaching was not delivered, and H2 is then **untested**, not confirmed.\n\n\
+         those carried the canonical task teach. The teach-off arms (`t7-plain`, `t7-docs`)\n\
+         compile with `--diagnostic-teaching=off`, so their teach column is zero by\n\
+         construction — that is the control. A teach-on arm whose teach column sits far\n\
+         below its XN6xxx column means the teaching was not delivered, and H2 is then\n\
+         **untested**, not confirmed.\n\n\
          | condition | failing rounds | raised XN6xxx | carried the task teach |\n\
          | --- | --- | --- | --- |\n",
     );
@@ -1954,8 +1986,13 @@ fn first_prompt(guide: &str, api_table: &str, task: &Task, condition: Condition)
         // and the step-0 sampler shares it too — step 0 must draw from the
         // same population as the measurement layer (0016 §1), which means
         // the same prompt bytes, not a free-form "use tasks" instruction.
+        // Amendment 1 makes it the full v3 2×2: the `t7-docs*` pair adds
+        // the API table through the same `has_api_table` branch v3-docs
+        // uses, so the docs block is the same bytes in the same place.
         | Condition::T7Plain
         | Condition::T7Teach
+        | Condition::T7Docs
+        | Condition::T7DocsTeach
         | Condition::T7Sample => {
             let guide = if condition.has_api_table() {
                 format!("{guide}\n\n## std API reference\n\n{api_table}")
@@ -2404,7 +2441,7 @@ mod tests {
     #[test]
     fn t7_condition_names_match_result_files() {
         let names: Vec<&str> = Condition::T7.iter().map(|c| c.name()).collect();
-        assert_eq!(names, ["t7-plain", "t7-teach"]);
+        assert_eq!(names, ["t7-plain", "t7-teach", "t7-docs", "t7-docs-teach"]);
         assert_eq!(Condition::T7Sample.name(), "t7-sample");
         for condition in Condition::T7.into_iter().chain([Condition::T7Sample]) {
             let value = condition.to_possible_value().expect("hidden variant");
@@ -2420,7 +2457,10 @@ mod tests {
         // 0016 §1: step 0 draws from the same population as the campaign,
         // which means the same prompt bytes — not a free-form instruction
         // to use tasks. And as in v3, teaching is invisible in round 1.
-        for condition in Condition::T7.into_iter().chain([Condition::T7Sample]) {
+        // Amendment 1 leaves the docless pair exactly where it was, so the
+        // step-0 sample and the `t7-plain`/`t7-teach` cells stay one
+        // population.
+        for condition in [Condition::T7Plain, Condition::T7Teach, Condition::T7Sample] {
             assert_eq!(
                 separation_prompt(condition),
                 separation_prompt(Condition::V3Plain),
@@ -2444,21 +2484,128 @@ mod tests {
     }
 
     #[test]
+    fn the_t7_docs_pair_is_byte_identical_across_the_teaching_factor() {
+        // The 0009 §4 guarantee, inherited: teaching lives in post-failure
+        // compiler output, so a round-1 prompt cannot reveal which arm a
+        // model is in. If this pair diverges, amendment 1's 2×2 is
+        // measuring prompts instead of diagnostics.
+        assert_eq!(
+            separation_prompt(Condition::T7Docs),
+            separation_prompt(Condition::T7DocsTeach)
+        );
+        assert_eq!(
+            separation_prompt(Condition::T7Plain),
+            separation_prompt(Condition::T7Teach)
+        );
+    }
+
+    #[test]
+    fn the_t7_docs_arms_differ_from_the_plain_arms_by_exactly_the_docs_block() {
+        // The substitution property the t5 byte-manifest tests use: putting
+        // the docs block into the plain prompt must reproduce the docs
+        // prompt byte for byte. Any third difference — a nudge, a reordered
+        // sentence, an extra separator — breaks these equalities, which is
+        // the point of asserting them rather than reading the code.
+        let docs_block = "GUIDE\n\n## std API reference\n\nTABLE";
+        assert_eq!(
+            separation_prompt(Condition::T7Plain).replace("GUIDE", docs_block),
+            separation_prompt(Condition::T7Docs)
+        );
+        assert_eq!(
+            separation_prompt(Condition::T7Teach).replace("GUIDE", docs_block),
+            separation_prompt(Condition::T7DocsTeach)
+        );
+        // And it is the *same* substitution v3 uses, so the tier-7 docs
+        // factor is the 0009 docs factor and not a new one (0016 §5: only
+        // clones of existing arms).
+        assert_eq!(
+            separation_prompt(Condition::T7Docs),
+            separation_prompt(Condition::V3Docs)
+        );
+        assert_eq!(
+            separation_prompt(Condition::V3Plain).replace("GUIDE", docs_block),
+            separation_prompt(Condition::V3Docs)
+        );
+    }
+
+    #[test]
     fn t7_teaching_follows_the_arm_and_the_sampler_keeps_the_default() {
         assert!(!Condition::T7Plain.teaching());
         assert!(Condition::T7Teach.teaching());
+        assert!(!Condition::T7Docs.teaching());
+        assert!(Condition::T7DocsTeach.teaching());
         // Step 0 runs "with the current default settings" (0016 §1), and
         // the compiler's default is teaching on.
         assert!(Condition::T7Sample.teaching());
         for condition in Condition::T7.into_iter().chain([Condition::T7Sample]) {
             assert!(condition.is_t7(), "{}", condition.name());
             assert!(!condition.is_t5(), "{}", condition.name());
-            assert!(!condition.has_api_table(), "{}", condition.name());
             assert!(!condition.feeds_goals(), "{}", condition.name());
             // The delivery audit reads diag_codes and the verbatim
             // feedback; without both it cannot be computed at all.
             assert!(condition.records_feedback(), "{}", condition.name());
         }
+        // The docs factor, and only along its own edge.
+        assert!(Condition::T7Docs.has_api_table());
+        assert!(Condition::T7DocsTeach.has_api_table());
+        assert!(!Condition::T7Plain.has_api_table());
+        assert!(!Condition::T7Teach.has_api_table());
+        assert!(!Condition::T7Sample.has_api_table());
+    }
+
+    #[test]
+    fn the_field_guide_and_its_tasks_section_are_in_every_tier7_arm() {
+        // Over the real documents, because the factor's *name* and the
+        // factor's *bytes* are different things and only the bytes measure
+        // anything. The v3 lineage this pair clones calls its factor
+        // "docs", but what that factor adds is the std API table alone —
+        // the field guide, including the `## Tasks` section 0017 added, is
+        // shared by all four arms and by the step-0 sampler. So `t7-plain`
+        // is not "no documentation": it is "no std API table", and step 0's
+        // 0/13 was measured with the Tasks section already in context.
+        // Recorded here rather than in prose so it cannot quietly stop
+        // being true.
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repository root");
+        let guide = std::fs::read_to_string(root.join("bench/ai/field-guide.md")).unwrap();
+        let api_table = std::fs::read_to_string(root.join("bench/ai/api-table.md")).unwrap();
+        assert!(
+            guide.contains("## Tasks"),
+            "the guide lost its Tasks section"
+        );
+
+        let task = sample_task();
+        for condition in Condition::T7.into_iter().chain([Condition::T7Sample]) {
+            let prompt = first_prompt(&guide, &api_table, &task, condition);
+            assert!(
+                prompt.contains("## Tasks"),
+                "{} lacks the guide's Tasks section",
+                condition.name()
+            );
+            assert_eq!(
+                prompt.contains("## std API reference"),
+                condition.has_api_table(),
+                "{}: the API table does not follow the docs factor",
+                condition.name()
+            );
+        }
+    }
+
+    #[test]
+    fn the_t7_arms_are_the_two_by_two_of_the_two_factors() {
+        // Four arms, each a distinct (docs, teaching) cell — a duplicated
+        // cell would silently halve the design.
+        let mut cells: Vec<(bool, bool)> = Condition::T7
+            .iter()
+            .map(|c| (c.has_api_table(), c.teaching()))
+            .collect();
+        cells.sort();
+        assert_eq!(
+            cells,
+            [(false, false), (false, true), (true, false), (true, true)]
+        );
     }
 
     #[test]
@@ -2468,6 +2615,11 @@ mod tests {
             for tier in [1, 2, 3, 4, 6] {
                 assert!(!condition.runs_tier(tier), "{}", condition.name());
             }
+        }
+        // The v3 quartet whose assembly the docs pair clones keeps its own
+        // task set: sharing a prompt shape must not share a task battery.
+        for condition in Condition::V3 {
+            assert!(!condition.runs_tier(7), "{}", condition.name());
         }
         // The tier-6 pair must not absorb the new tasks on a re-run.
         for condition in Condition::T6 {

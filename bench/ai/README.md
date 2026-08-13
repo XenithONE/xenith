@@ -131,18 +131,47 @@ zero greens bypassed the provided API.
 
 ### Task-structure conditions (0016 tier-7)
 
-The pair of [design/0016](../../design/0016-measurement-tier7.md), over the two frozen
+The arms of [design/0016](../../design/0016-measurement-tier7.md), over the two frozen
 tier-7 tasks — `t7-01` fan-out (two pure children whose results the parent combines and
 prints once) and `t7-02` pure boundary (the parent needs an effect per item, so the
-`uses {}` contract of design/0015 refuses the obvious placement). Both arms clone the
-`v3-plain` / `v3-teach` assembly byte for byte — no docs beyond the field guide, teaching
-off/on — and are tier-fenced both ways, so no frozen cell absorbs them on resume:
+`uses {}` contract of design/0015 refuses the obvious placement). The campaign is the
+0009 §4 2×2 again, cloned one tier on: the std API table crossed with diagnostic
+teaching. Every arm is tier-fenced both ways, so no frozen cell absorbs the tasks on
+resume, and every arm records the usage audit:
 
-| Condition | Diagnostic teaching in feedback | Ledger |
-| --- | --- | --- |
-| `t7-plain` | no | `{model}-t7-plain.json` |
-| `t7-teach` | yes | `{model}-t7-teach.json` |
-| `t7-sample` | compiler default (yes) | `{model}-t7-sample.json` — **step 0, not a campaign arm** |
+| Condition | API table in the prompt | Diagnostic teaching in feedback | Ledger |
+| --- | --- | --- | --- |
+| `t7-plain` | no | no | `{model}-t7-plain.json` |
+| `t7-teach` | no | yes | `{model}-t7-teach.json` |
+| `t7-docs` | yes | no | `{model}-t7-docs.json` |
+| `t7-docs-teach` | yes | yes | `{model}-t7-docs-teach.json` |
+| `t7-sample` | no | compiler default (yes) | `{model}-t7-sample.json` — **step 0, not a campaign arm** |
+
+Round-1 prompts are byte-identical across the teaching factor in both pairs, and each
+docs arm is its plain counterpart with the same docs block `v3-docs` uses substituted in —
+both asserted byte-for-byte in tests, so the four cells differ along exactly two factors.
+
+**What the docs factor actually is, stated precisely.** In the v3 lineage this pair
+clones, "docs" means the **std API table**, not the field guide: the guide is shared by
+every arm in the family, and the docs edge adds `## std API reference` on top of it. So
+`t7-plain` is *not* "no documentation" — it is "no std API table", and the guide's
+`## Tasks` section (added by 0017) is in all four arms and in the step-0 sampler, which a
+test asserts over the real documents. Two consequences worth carrying into the reading:
+step 0's 0/13 was measured **with** the Tasks section already in context, and the std API
+table carries no task vocabulary at all, so the docs edge as wired adds `List`/`Map`/
+`String` signatures rather than anything about `spawn`.
+
+**Amendment 1 (0016 §4.5), registered before the measurement.** Step 0 ran seven models
+over 13 programs and found **zero** uses of the task vocabulary: 11 went green, all of
+them bypassed-green sequential loops. The registered pair differed only by teaching, so
+running it would have spent 28 runs on 100% bypass and measured nothing. The pair became
+the 2×2 above, and the question became the one the project has not answered: **can
+documentation introduce a feature the prior distribution does not carry?** (0011 measured
+*what to call* vs *how to wire*; 0014 measured a surface the prior already reached —
+closures arrived with no docs at all. Tasks do not arrive.) The honest limit is recorded
+with it: Xenith's children are pure, so parallelism buys wall-clock and nothing a
+stdout-judged benchmark can reward — tier 7 measures **whether models use the feature
+when documented**, not whether the feature pays.
 
 **The usage audit is the point (0016 §0).** Four independent reviews of the draft found
 the same hole: the hidden expectation is stdout, and a *sequential* program prints the
@@ -164,7 +193,11 @@ audit.) `summarize` reports all of them, the rounds-to-used-green distribution, 
 **delivery audit**: of the failing rounds, how many raised an XN6xxx task diagnostic and
 how many of those carried the canonical task teach. That last column is design/0012's
 discipline made standing — an effect attributed to teaching needs the teaching to have
-been delivered, and `t7-plain`'s zero is the control, not a fault.
+been delivered, and the teach-off arms' zero is the control, not a fault.
+
+The audit earned its keep on first firing: step 0's codex `t7-01` submission wrote two
+`while` loops and printed the right bytes, auditing as `spawns: 0, scope: false`. Without
+the audit it would have been filed as a tier-7 pass@1.
 
 **Step 0 before the freeze is trusted.** 0016 §1 requires the tier-7 tasks to be sampled
 across all seven columns under the compiler's current defaults *before* the campaign is
