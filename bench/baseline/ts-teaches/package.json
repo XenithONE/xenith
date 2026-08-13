@@ -1,0 +1,12 @@
+{
+  "name": "ts-teaches",
+  "private": true,
+  "description": "design/0019: teaches-for-TypeScript baseline instrument",
+  "type": "module",
+  "scripts": {
+    "overlap": "node scripts/overlap.mjs"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}
