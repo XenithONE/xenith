@@ -71,6 +71,12 @@ The unit of work becomes *fill one hole*, not *rewrite the module*. Compiler out
 `{ diagnostics[], holes[], suggested_edits[] }`, and every diagnostic carries a stable code, an
 `explain` entry, and a machine-applicable fix.
 
+A measured honesty note: models do **not** reach for holes on their own — invited, even
+explicitly permitted, they wrote one in under 5% of failing rounds. Holes earn their keep as an
+instrument a harness calls (`goals`, the MCP tools, running a partial program to be told the
+next hole), not as a habit models arrive with. Where the compiler measurably moves models today
+is the *repair loop* — the evaluation section below has the numbers.
+
 **Signatures cannot lie.** Capabilities are ordinary values, and effects are checked:
 
 ```xenith
