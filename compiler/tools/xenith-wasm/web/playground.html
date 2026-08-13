@@ -1,0 +1,193 @@
+<!doctype html>
+<!--
+  The Xenith playground: one file, no dependencies, no build step.
+
+  Build the module and put it next to this file:
+
+    cargo build -p xenith-wasm --release \
+      --target wasm32-unknown-unknown --target-dir target-b3
+    cp target-b3/wasm32-unknown-unknown/release/xenith_wasm.wasm <this directory>
+
+  Then serve the directory — `file://` blocks both the wasm fetch and the
+  module script, so a static host (or one line of Python) is required:
+
+    python -m http.server 8080
+
+  design/0018 says why this page runs the interpreter rather than generated
+  code, and `verify.mjs` next door is the check that it agrees with the CLI.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Xenith, running in your browser</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #fbfaf8;
+    --panel: #ffffff;
+    --ink: #1b1a18;
+    --dim: #6a6862;
+    --rule: #ddd9d2;
+    --accent: #7a4f2a;
+    --bad: #a33;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #171614; --panel: #1f1e1b; --ink: #eae7e1;
+      --dim: #9c988f; --rule: #34322d; --accent: #d6a06a; --bad: #e0736c;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2rem 1.25rem; background: var(--bg); color: var(--ink);
+    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 62rem; margin: 0 auto; }
+  h1 { font-size: 1.35rem; margin: 0 0 .2rem; font-weight: 620; letter-spacing: -.01em; }
+  p.lede { margin: 0 0 1.4rem; color: var(--dim); max-width: 46rem; }
+  .grid { display: grid; gap: 1rem; grid-template-columns: 1fr; }
+  @media (min-width: 60rem) { .grid { grid-template-columns: 1fr 1fr; } }
+  section { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
+  h2 {
+    margin: 0; padding: .5rem .85rem; font-size: .72rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .09em; color: var(--dim);
+    border-bottom: 1px solid var(--rule);
+  }
+  textarea, pre {
+    margin: 0; padding: .85rem; width: 100%; min-height: 21rem; border: 0;
+    background: transparent; color: inherit; resize: vertical;
+    font: 13px/1.6 ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+    tab-size: 4; white-space: pre; overflow-x: auto;
+  }
+  textarea:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .bar { display: flex; gap: .75rem; align-items: center; margin: 1rem 0 0; flex-wrap: wrap; }
+  button {
+    font: inherit; font-weight: 560; padding: .45rem 1.1rem; border-radius: 6px;
+    border: 1px solid var(--accent); background: var(--accent); color: var(--bg); cursor: pointer;
+  }
+  button:disabled { opacity: .5; cursor: default; }
+  .status { color: var(--dim); font-size: .85rem; }
+  .exit { font-family: ui-monospace, monospace; }
+  .exit.bad { color: var(--bad); }
+  .trap, .diag { color: var(--bad); }
+  footer { margin-top: 1.5rem; color: var(--dim); font-size: .8rem; }
+  code { font-family: ui-monospace, monospace; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Xenith, running in your browser</h1>
+  <p class="lede">
+    The Xenith compiler and its interpreter, cross-compiled to WebAssembly and running on this
+    page. Nothing is sent anywhere: the parser, the type checker and the tree-walking
+    interpreter are all in the module your browser just downloaded.
+  </p>
+
+  <div class="grid">
+    <section>
+      <h2>playground.xn</h2>
+      <textarea id="source" spellcheck="false" aria-label="Xenith source"></textarea>
+    </section>
+    <section>
+      <h2>output</h2>
+      <pre id="output">loading the compiler…</pre>
+    </section>
+  </div>
+
+  <div class="bar">
+    <button id="run" disabled>Run</button>
+    <span class="status" id="status">loading the compiler…</span>
+  </div>
+
+  <footer>
+    Children of <code>spawn</code> run on the sequential executor here — the browser has no
+    threads. The compiler tests both executors against each other byte for byte
+    (design/0017 §5), so this is the same program you would get from <code>xenith run</code>.
+  </footer>
+</main>
+
+<script type="module">
+// The hardcoded program the page opens with: examples/hello.xn.
+const HELLO = `// \`main\` receives its capabilities as parameters. There is no ambient
+// environment to reach for, so a function that is not handed \`Io\` cannot
+// write to the console -- and its signature says so.
+
+fn greeting(name: String) -> String {
+    "Hello, ".concat(other: name)
+}
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    io.write(text: greeting(name: "world"))?;
+    return Ok(unit);
+}
+`;
+
+const source = document.getElementById("source");
+const output = document.getElementById("output");
+const status = document.getElementById("status");
+const runButton = document.getElementById("run");
+source.value = HELLO;
+
+// ---- the entire binding. Three exports and the module's linear memory. ----
+function bind(instance) {
+  const { memory, xn_alloc, xn_run, xn_free } = instance.exports;
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  return function run(text) {
+    const bytes = encoder.encode(text);
+    const input = xn_alloc(bytes.length);
+    new Uint8Array(memory.buffer, input, bytes.length).set(bytes);
+    // xn_run consumes the input buffer and returns a length-prefixed one.
+    const result = xn_run(input, bytes.length);
+    const length = new DataView(memory.buffer).getUint32(result, true);
+    const json = decoder.decode(new Uint8Array(memory.buffer, result + 4, length));
+    xn_free(result, 4 + length);
+    return JSON.parse(json);
+  };
+}
+
+function render(result) {
+  const lines = [];
+  const diagnostics = result.report?.diagnostics ?? [];
+  for (const d of diagnostics) {
+    lines.push(`<span class="diag">playground.xn:${d.line}:${d.column}: ${d.severity ?? "error"}[${d.code}]: ${escape(d.message)}</span>`);
+    if (d.fix) lines.push(`  fix: ${escape(d.fix.description)}`);
+  }
+  if (result.exit === 2) {
+    lines.push("");
+    lines.push("not run — fix the diagnostics first");
+  } else {
+    if (result.stdout) lines.push(escape(result.stdout));
+    if (result.error) {
+      lines.push(`<span class="trap">playground.xn:${result.error.line}:${result.error.column}: runtime error: ${escape(result.error.message)}</span>`);
+    }
+  }
+  lines.push("");
+  const bad = result.exit !== 0 ? " bad" : "";
+  lines.push(`<span class="exit${bad}">exit ${result.exit}</span>`);
+  output.innerHTML = lines.join("\n");
+}
+
+const escape = (text) =>
+  String(text).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+
+try {
+  const wasm = await WebAssembly.instantiateStreaming(fetch("./xenith_wasm.wasm"), {});
+  const run = bind(wasm.instance);
+  const go = () => render(run(source.value));
+  runButton.addEventListener("click", go);
+  runButton.disabled = false;
+  status.textContent = "ready";
+  go(); // run the hardcoded program on load
+} catch (error) {
+  status.textContent = String(error);
+  output.textContent =
+    "could not load ./xenith_wasm.wasm\n\n" +
+    String(error) +
+    "\n\nServe this directory over HTTP (file:// blocks both the fetch and the module import):\n" +
+    "  python -m http.server 8080";
+}
+</script>
+</body>
+</html>

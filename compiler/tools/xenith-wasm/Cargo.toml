@@ -1,0 +1,24 @@
+[package]
+name = "xenith-wasm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "The Xenith compiler and interpreter as one WebAssembly module"
+
+[lib]
+# `cdylib` is the wasm module; `rlib` keeps the same code testable on the host,
+# so `run_source` is checked by `cargo test` on the machine that builds it.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# The same crates the CLI runs. Nothing is re-implemented here: this crate is
+# an entry point, not a second front end (design/0018).
+xenith-diag = { workspace = true }
+xenith-syntax = { workspace = true }
+xenith-sema = { workspace = true }
+xenith-vm = { workspace = true }
+xenith-driver = { workspace = true }
+serde_json = { workspace = true }
