@@ -1171,6 +1171,48 @@ impl<'a> Parser<'a> {
                 self.lambda()
             }
             TokenKind::Ident => {
+                // Contextual task forms (design/0015). `scope` followed by
+                // `{` opens a task region — gated exactly like struct
+                // literals, so `if scope { .. }` keeps reading a binding
+                // named `scope`. `spawn` followed by an identifier begins a
+                // spawn; two adjacent identifiers were never a legal
+                // expression, so no existing program changes meaning. In
+                // every other position both words stay ordinary names —
+                // which is also what keeps `uses {Task.spawn}` parsing.
+                let text = self.text(self.span());
+                if text == "scope"
+                    && self.peek_ahead(1) == TokenKind::LBrace
+                    && !self.no_struct_literal
+                {
+                    self.bump(); // `scope`
+                    let block = self.block();
+                    return Expr {
+                        span: start.to(self.prev_span()),
+                        kind: ExprKind::Scope(block),
+                    };
+                }
+                if text == "spawn" && self.peek_ahead(1) == TokenKind::Ident {
+                    self.bump(); // `spawn`
+                    return self.spawn_expr(start);
+                }
+                if text == "spawn" && self.peek_ahead(1) == TokenKind::LParen {
+                    // `spawn (expr)(args)` — a computed callee. The refusal
+                    // is the point (design/0015 §1): the child's contract is
+                    // checked against a declaration, so the callee must be a
+                    // name. Recovery yields poison; postfix will absorb the
+                    // parenthesised call so the arguments still get walked.
+                    let token = self.bump();
+                    self.error(
+                        DiagCode::SpawnCalleeNotFn,
+                        token.span,
+                        "`spawn` takes a named fn, not a computed expression; \
+                         extract a named fn and spawn that",
+                    );
+                    return Expr {
+                        kind: ExprKind::Error,
+                        span: token.span,
+                    };
+                }
                 // Exactly one segment. `Rank.Gold` and `player.score` are
                 // syntactically identical, so the parser does not try to tell
                 // them apart: both become field access over a single-segment
@@ -1315,6 +1357,34 @@ impl<'a> Parser<'a> {
 
         Expr {
             kind: ExprKind::StructLit { path, fields },
+            span: start.to(self.prev_span()),
+        }
+    }
+
+    /// The tail of `spawn Path(args)`; the word itself is already consumed.
+    ///
+    /// The callee is a plain dotted path — the same shape an ordinary call
+    /// resolves — and the argument list is mandatory: a spawn without a call
+    /// is not a form, so the recovery poisons rather than inventing one.
+    fn spawn_expr(&mut self, start: Span) -> Expr {
+        let path = self.path();
+        if !self.at(TokenKind::LParen) {
+            self.error(
+                DiagCode::ExpectedToken,
+                self.span(),
+                format!(
+                    "expected `(` after the spawned fn, found {}",
+                    self.peek().describe()
+                ),
+            );
+            return Expr {
+                kind: ExprKind::Error,
+                span: start.to(self.prev_span()),
+            };
+        }
+        let args = self.call_args();
+        Expr {
+            kind: ExprKind::Spawn { path, args },
             span: start.to(self.prev_span()),
         }
     }
@@ -1605,7 +1675,7 @@ impl<'a> Parser<'a> {
 fn block_like(kind: &ExprKind) -> bool {
     matches!(
         kind,
-        ExprKind::Block(_) | ExprKind::If { .. } | ExprKind::Match { .. }
+        ExprKind::Block(_) | ExprKind::If { .. } | ExprKind::Match { .. } | ExprKind::Scope(_)
     )
 }
 

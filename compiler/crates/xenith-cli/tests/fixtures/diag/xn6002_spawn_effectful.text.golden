@@ -1,0 +1,4 @@
+tests/fixtures/diag/xn6002_spawn_effectful.xn:7:9: error[XN6002]: `shout` declares `uses {Io.write}`; a spawned child performs no effects — its `uses` set must be empty
+7 |         spawn shout(io: io, text: "hi");
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  run `xenith explain XN6002` for the rule

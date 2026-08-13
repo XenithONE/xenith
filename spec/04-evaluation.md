@@ -123,4 +123,62 @@ Same program, same input, same behaviour — byte for byte:
   deterministic.
 
 Determinism is load-bearing: benchmark tasks are judged on exact stdout, and a language that
-can pass or fail a test by luck cannot be measured (design/0011).
+can pass or fail a test by luck cannot be measured (design/0011). Task structure (§7) does not
+dent it: children are pure, so their interleaving is unobservable and the guarantee holds
+unconditionally.
+
+## 7. Task structure
+
+design/0015 ships the task boundary — the types, the structure, the effect gate — with no
+concurrency claim attached. Three forms:
+
+- `scope { .. }` — a block statement or expression opening a task region. `spawn` is legal
+  only inside one. A scope is not a value; its value is its tail, like any block.
+- `spawn f(args)` — call a named fn as a child. The callee must declare an **empty `uses`
+  set** and every parameter type must be CaptureSafe ([06 §3](06-closures.md#3-capturesafe)):
+  capabilities do not cross the task boundary, so a child computes and never performs
+  effects. Spawning itself is the effect `Task.spawn`, declared by the enclosing function
+  ([03 §4](03-effects-and-capabilities.md#4-what-ships-today)).
+- `j.await` — consume the handle bound by `let j = spawn f(args);`, exactly once on every
+  path. The handle does nothing else: it cannot be copied, stored, returned, passed,
+  captured or annotated, and a non-Unit result still live at the scope's normal exit is
+  refused. A Unit child may be fired as a statement: `spawn ping();`.
+
+**Execution is eager**: the arguments are evaluated at the spawn point — normal order,
+exactly once — and the child runs to completion right there. The handle is a ready box;
+`.await` moves the result out. A trap inside the child surfaces at the spawn statement,
+naming the child. On an early exit (`?`, `return`, a trap) a ready, unconsumed result is
+discarded — the child was pure, so nothing observable is lost. Because children are pure,
+the order in which a future implementation might actually run them is unobservable: the §6
+byte-determinism guarantee holds unconditionally, with no carve-out to remember.
+
+```xenith
+fn square(n: Int) -> Int {
+    n * n
+}
+
+fn parse(text: String) -> Result<Int, Error> {
+    text.try_to_int()
+}
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write, Task.spawn} {
+    let total = scope {
+        let a = spawn square(n: 4);
+        let b = spawn parse(text: "26");
+        a.await + b.await?
+    };
+    io.write(text: total.to_text())?;
+    return Ok(unit);
+}
+```
+
+```console
+$ xenith run tasks.xn
+42
+```
+
+A child may fail purely — return `Result` and let the parent propagate with `j.await?`, as
+above. The diagnostics own the rest of the contract: `XN6001`–`XN6010` refuse spawns outside
+scopes, effectful or non-CaptureSafe children, escaped handles, and every await count other
+than exactly-once. `scope`, `spawn` and `.await` are banned inside closure bodies
+([06](06-closures.md)); `async fn` remains outside the language.

@@ -1,0 +1,9 @@
+fn shout(io: Io, text: String) -> Result<Unit, Error> uses {Io.write} {
+    io.write(text: text)
+}
+
+fn f(io: Io) uses {Task.spawn} {
+    scope {
+        spawn shout(io: io, text: "hi");
+    }
+}

@@ -1,0 +1,8 @@
+fn work(n: Int) -> Int {
+    n * 2
+}
+
+fn f() -> Int uses {Task.spawn} {
+    let j = spawn work(n: 21);
+    j.await
+}

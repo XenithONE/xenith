@@ -1,0 +1,4 @@
+tests/fixtures/diag/xn6001_spawn_scope.xn:6:13: error[XN6001]: `spawn` is only legal inside a `scope { .. }` block
+6 |     let j = spawn work(n: 21);
+  |             ^^^^^^^^^^^^^^^^^
+  run `xenith explain XN6001` for the rule

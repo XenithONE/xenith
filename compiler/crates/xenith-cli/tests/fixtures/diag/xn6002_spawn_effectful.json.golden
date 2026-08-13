@@ -1,0 +1,19 @@
+[
+  {
+    "diagnostics": [
+      {
+        "code": "XN6002",
+        "column": 9,
+        "line": 7,
+        "message": "`shout` declares `uses {Io.write}`; a spawned child performs no effects — its `uses` set must be empty",
+        "severity": "error",
+        "span": {
+          "end": 184,
+          "start": 153
+        }
+      }
+    ],
+    "file": "tests/fixtures/diag/xn6002_spawn_effectful.xn",
+    "schema_version": 1
+  }
+]

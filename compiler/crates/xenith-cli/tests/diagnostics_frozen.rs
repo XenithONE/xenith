@@ -22,6 +22,9 @@ const FIXTURES: &[&str] = &[
     "xn3008_user_fn",
     "xn4001_effect",
     "xn5001_match",
+    // design/0015, added additively: the pre-existing goldens above are
+    // untouched, and the task family joins the same byte contracts.
+    "xn6001_spawn_scope",
 ];
 
 /// Fixtures whose diagnostics carry teaches when teaching is on. Everything
@@ -154,6 +157,75 @@ fn taught_output_is_deterministic_across_runs() {
             check_project("teach_module_fat", args),
             check_project("teach_module_fat", args),
             "module-call ranking must agree to the byte across runs"
+        );
+    }
+}
+
+// ------------------------------------------------------- task teach (0015)
+//
+// The task diagnostics teach through a message note — the design/0012
+// mechanism — converging on the design/0015 canonical sentence. Same two
+// contracts as everywhere: off reproduces the untaught text byte for byte,
+// and teaching adds exactly the sentence.
+
+const TASK_NOTE_TAUGHT: &[&str] = &["xn6002_spawn_effectful"];
+
+const TASK_SENTENCE: &str = "; a task computes a plan — effects run in the parent, after await";
+
+#[test]
+fn task_teaching_off_is_byte_identical_to_the_untaught_text() {
+    for name in TASK_NOTE_TAUGHT {
+        let off = check(name, &["--diagnostic-teaching=off"]);
+        assert_eq!(off, golden(name, "text"), "{name} drifted");
+        assert!(
+            !off.contains("a task computes a plan"),
+            "{name}: off mode must not carry the teaching sentence:\n{off}"
+        );
+    }
+}
+
+#[test]
+fn task_taught_text_matches_its_snapshot_and_differs_only_by_the_sentence() {
+    for name in TASK_NOTE_TAUGHT {
+        let taught = check(name, &[]);
+        assert_eq!(taught, golden(name, "taught"), "{name} drifted");
+        assert_eq!(
+            taught.replace(TASK_SENTENCE, ""),
+            golden(name, "text"),
+            "{name}: teaching must add the sentence and nothing else"
+        );
+    }
+}
+
+#[test]
+fn task_taught_json_differs_from_frozen_only_by_the_sentence_and_features() {
+    for name in TASK_NOTE_TAUGHT {
+        let on: serde_json::Value =
+            serde_json::from_str(&check(name, &["--json"])).expect("wire output parses");
+        let off: serde_json::Value =
+            serde_json::from_str(&golden(name, "json")).expect("golden parses");
+
+        let mut scrubbed = on.clone();
+        for report in scrubbed.as_array_mut().expect("reports are an array") {
+            let map = report.as_object_mut().expect("a report is an object");
+            map.remove("features");
+            for diagnostic in map["diagnostics"].as_array_mut().expect("array") {
+                let entry = diagnostic.as_object_mut().expect("object");
+                entry.remove("teaches");
+                if let Some(serde_json::Value::String(message)) = entry.get_mut("message") {
+                    if let Some(cut) = message.find(TASK_SENTENCE) {
+                        message.truncate(cut);
+                    }
+                }
+            }
+        }
+        assert_eq!(scrubbed, off, "{name}: more than the teaching changed");
+        assert!(
+            on[0]["diagnostics"][0]["message"]
+                .as_str()
+                .expect("a message")
+                .contains("a task computes a plan"),
+            "{name}: the sentence was really there to scrub"
         );
     }
 }

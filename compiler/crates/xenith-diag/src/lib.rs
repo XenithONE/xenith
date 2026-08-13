@@ -211,6 +211,27 @@ pub enum DiagCode {
     /// XN5001 — a `match` does not cover every possible value.
     NonExhaustiveMatch,
 
+    /// XN6001 — `spawn` outside a `scope { .. }` block.
+    SpawnOutsideScope,
+    /// XN6002 — the spawned callee declares a non-empty `uses` set.
+    SpawnEffectfulCallee,
+    /// XN6003 — a spawn argument's type is not CaptureSafe.
+    SpawnArgumentNotCaptureSafe,
+    /// XN6004 — the spawned callee is not a directly named fn.
+    SpawnCalleeNotFn,
+    /// XN6005 — a Join used as anything other than the receiver of `.await`.
+    JoinEscape,
+    /// XN6006 — a Join awaited more than once (or possibly more than once).
+    JoinAwaitedTwice,
+    /// XN6007 — a Join awaited on some control-flow paths but not others.
+    JoinPartialAwait,
+    /// XN6008 — a non-Unit Join never awaited before normal scope exit.
+    JoinUnawaited,
+    /// XN6009 — statement-form `spawn f(..);` of a callee with a result.
+    SpawnStatementNotUnit,
+    /// XN6010 — `scope` / `spawn` / `.await` inside a closure body.
+    TaskInClosure,
+
     /// XN7001 — a source file cannot name a module (bad segment, symlink).
     InvalidModulePath,
     /// XN7002 — two module paths differ only by letter case.
@@ -278,6 +299,16 @@ impl DiagCode {
         DiagCode::ClosureSelfReference,
         DiagCode::CaptureOfVar,
         DiagCode::NonExhaustiveMatch,
+        DiagCode::SpawnOutsideScope,
+        DiagCode::SpawnEffectfulCallee,
+        DiagCode::SpawnArgumentNotCaptureSafe,
+        DiagCode::SpawnCalleeNotFn,
+        DiagCode::JoinEscape,
+        DiagCode::JoinAwaitedTwice,
+        DiagCode::JoinPartialAwait,
+        DiagCode::JoinUnawaited,
+        DiagCode::SpawnStatementNotUnit,
+        DiagCode::TaskInClosure,
         DiagCode::InvalidModulePath,
         DiagCode::ModuleCaseCollision,
         DiagCode::ModuleItemClash,
@@ -336,6 +367,16 @@ impl DiagCode {
             DiagCode::ClosureSelfReference => "XN4007",
             DiagCode::CaptureOfVar => "XN4008",
             DiagCode::NonExhaustiveMatch => "XN5001",
+            DiagCode::SpawnOutsideScope => "XN6001",
+            DiagCode::SpawnEffectfulCallee => "XN6002",
+            DiagCode::SpawnArgumentNotCaptureSafe => "XN6003",
+            DiagCode::SpawnCalleeNotFn => "XN6004",
+            DiagCode::JoinEscape => "XN6005",
+            DiagCode::JoinAwaitedTwice => "XN6006",
+            DiagCode::JoinPartialAwait => "XN6007",
+            DiagCode::JoinUnawaited => "XN6008",
+            DiagCode::SpawnStatementNotUnit => "XN6009",
+            DiagCode::TaskInClosure => "XN6010",
             DiagCode::InvalidModulePath => "XN7001",
             DiagCode::ModuleCaseCollision => "XN7002",
             DiagCode::ModuleItemClash => "XN7003",
@@ -468,18 +509,22 @@ impl DiagCode {
             }
             DiagCode::UnshippedConstruct => {
                 "This construct is parsed but is not part of the shipped language.\n\n\
-                 The parser is total: it accepts `.await`, `async fn`, `for`, \
-                 function-type annotations and named functions used as values, so \
-                 that a broken or half-edited file still yields a tree to repair \
-                 from. Accepting the syntax is not shipping the feature — each of \
-                 these is gated on a future RFC, and passing them through \
-                 half-checked would let an effect escape its declaration.\n\n\
+                 The parser is total: it accepts `async fn`, `for`, function-type \
+                 annotations and named functions used as values, so that a broken \
+                 or half-edited file still yields a tree to repair from. Accepting \
+                 the syntax is not shipping the feature — each of these is gated on \
+                 a future RFC, and passing them through half-checked would let an \
+                 effect escape its declaration.\n\n\
                  Closures shipped with design/0014, but only as call arguments to \
                  `fn(..)`-typed parameters (the std combinators `map`, `filter`, \
                  `fold`, `find`). Function types still cannot be written in user \
                  code, and a named function is still called, never passed: wrap the \
                  call in a closure instead. Iterate with `while` + `len()` + \
-                 `get(index:)`."
+                 `get(index:)`.\n\n\
+                 `.await` shipped with design/0015, but in exactly one position: \
+                 on a task handle bound by `let name = spawn f(..);` inside a \
+                 `scope { .. }` block. On anything else `.await` remains refused, \
+                 and `async fn` / async closures remain out of the language."
             }
             DiagCode::ClosureAnnotation => {
                 "Closure parameters take no type annotation.\n\n\
@@ -791,6 +836,124 @@ impl DiagCode {
                  capture that: `let snapshot = total;` makes the copy explicit \
                  and the code honest about when it was taken."
             }
+            DiagCode::SpawnOutsideScope => {
+                "`spawn` is legal only inside a `scope { .. }` block.\n\n\
+                 The scope is where every task's result is owned and consumed: \
+                 each `spawn` inside it either discards a Unit result (statement \
+                 form) or produces a handle that the same scope must await. \
+                 Without the block there would be no place where \"every child is \
+                 accounted for\" can be checked, which is the whole structure \
+                 design/0015 ships.\n\n\
+                 Wrap the region that spawns and awaits in `scope { .. }`:\n\n  \
+                 scope {\n      let j = spawn plan(n: 21);\n      j.await\n  }\n\n\
+                 A task computes a plan — effects run in the parent, after await."
+            }
+            DiagCode::SpawnEffectfulCallee => {
+                "A spawned fn must declare no effects: its `uses` set is empty or \
+                 it cannot be a child.\n\n\
+                 Capabilities do not cross the task boundary in v1 — there is no \
+                 transfer semantics that could say which task may act through a \
+                 capability, so the boundary refuses them entirely. A child \
+                 therefore computes; it never writes, reads or sends.\n\n\
+                 Split the work: give the child the pure part (parse, plan, \
+                 total), return the result, and perform the effect in the parent \
+                 once `.await` has delivered the value. The parent already holds \
+                 the capability and declares the effect.\n\n\
+                 A task computes a plan — effects run in the parent, after await."
+            }
+            DiagCode::SpawnArgumentNotCaptureSafe => {
+                "Every argument to `spawn` must have a CaptureSafe type.\n\n\
+                 CaptureSafe is the same inductive rule closures use \
+                 (design/0014): primitives are safe; structs, enums, `List`, \
+                 `Map`, `Option` and `Result` are safe when every component is; \
+                 capabilities (`Io`), `Shared`, `Task` and unbounded type \
+                 parameters are not. A spawn argument is a copy handed across the \
+                 task boundary, and none of those have an honest copy.\n\n\
+                 Pass the child data — extract what it needs from the capability \
+                 in the parent first, or restructure so the effectful step \
+                 happens in the parent.\n\n\
+                 A task computes a plan — effects run in the parent, after await."
+            }
+            DiagCode::SpawnCalleeNotFn => {
+                "`spawn` takes a directly named fn: `spawn plan(n: 21)` or \
+                 `spawn game.workers.plan(n: 21)`.\n\n\
+                 A method call, a computed expression, a constructor or a local \
+                 value cannot be spawned. The callee must be resolvable at check \
+                 time, because the child's contract — empty `uses`, CaptureSafe \
+                 parameters — is checked against its declaration before anything \
+                 runs. Closures cannot be spawned either; that surface is \
+                 deliberately frozen (design/0015 §8).\n\n\
+                 Extract the work into a named fn and spawn that."
+            }
+            DiagCode::JoinEscape => {
+                "The result of `spawn` is a task handle, and a handle does only \
+                 one thing: it is awaited.\n\n\
+                 Bind it with a bare `let` and consume it with `.await`, exactly \
+                 once:\n\n  \
+                 let j = spawn plan(n: 21);\n  let v = j.await;\n\n\
+                 The handle cannot be copied to another binding, stored in a \
+                 container or field, returned, passed as an argument, captured \
+                 by a closure, rebound with `var`, or given a type annotation — \
+                 it has no written type. Each of those would create a second \
+                 route to a result that must be consumed exactly once.\n\n\
+                 A task computes a plan — effects run in the parent, after await."
+            }
+            DiagCode::JoinAwaitedTwice => {
+                "`.await` consumes the task handle; it cannot run twice.\n\n\
+                 The first `.await` moves the child's result out of the handle. \
+                 A second one would have nothing to take — so the checker \
+                 refuses any await that could run after the handle is already \
+                 consumed, including an await inside a loop when the handle was \
+                 created outside it, and an await inside a `match` guard, which \
+                 may run for several arms.\n\n\
+                 Await once, bind the value with `let`, and use the binding as \
+                 often as needed — values copy freely; handles do not."
+            }
+            DiagCode::JoinPartialAwait => {
+                "Every control-flow path must await this handle the same number \
+                 of times: exactly once.\n\n\
+                 When one branch of an `if` or one `match` arm awaits and \
+                 another does not, whether the result was consumed depends on a \
+                 runtime condition — the exactly-once contract can no longer be \
+                 checked, so the shape is refused.\n\n\
+                 Either hoist the `.await` above the branch and let both sides \
+                 use the value, or await in every branch. (Early exits — `?`, \
+                 `return`, a trap — are exempt: a path that leaves the function \
+                 discards the result, which is legal because the child was pure.)"
+            }
+            DiagCode::JoinUnawaited => {
+                "This task's result is never consumed: the handle reaches the \
+                 end of its block without `.await`.\n\n\
+                 A child that returns a value computed something the program \
+                 then silently drops on the normal path — almost always a \
+                 mistake, and the mistake the statement-form rule (XN6009) exists \
+                 to catch at the other end. Await the handle, or, if the result \
+                 is genuinely unneeded, make the child return Unit and use the \
+                 statement form `spawn f(..);`.\n\n\
+                 Early exits are exempt: on `?`, `return` or a trap the ready \
+                 result is discarded, which is safe because the child was pure."
+            }
+            DiagCode::SpawnStatementNotUnit => {
+                "The statement form `spawn f(..);` is for children that return \
+                 Unit; this callee returns a value.\n\n\
+                 Writing it as a statement would silence the result at the spawn \
+                 site. If the result matters, bind and await it:\n\n  \
+                 let j = spawn f(..);\n  let v = j.await;\n\n\
+                 If it does not, say so in the child's signature by returning \
+                 Unit.\n\n\
+                 A task computes a plan — effects run in the parent, after await."
+            }
+            DiagCode::TaskInClosure => {
+                "`scope`, `spawn` and `.await` cannot appear in a closure body.\n\n\
+                 A closure's effect budget is the empty set, implicitly and \
+                 always (design/0014), and `Task.spawn` is an effect — so a \
+                 spawn inside a closure is refused the same way `io.write` is. \
+                 `scope` and `.await` follow it: task structure belongs to the \
+                 named fn whose `uses` clause declares `Task.spawn`.\n\n\
+                 Move the scope into the enclosing named fn; let the closure \
+                 compute data for it.\n\n\
+                 A task computes a plan — effects run in the parent, after await."
+            }
             DiagCode::NonExhaustiveMatch => {
                 "This `match` does not cover every value its scrutinee can hold.\n\n\
                  Every possible value must land on some arm. A wildcard `_` or a \
@@ -942,6 +1105,11 @@ enclosing named fn's `while` loop, and the closure returns data";
 /// body converge on this sentence instead.
 pub const CLOSURE_EXIT_TEACH: &str = "closures cannot early-return; \
 failure-carrying iteration belongs in a `while` loop";
+
+/// The one task teach (design/0015 §6): every task diagnostic that teaches
+/// converges on this sentence, appended as a teach note so
+/// `--diagnostic-teaching=off` strips exactly it.
+pub const TASK_PLAN_TEACH: &str = "a task computes a plan — effects run in the parent, after await";
 
 /// The most items one teaching block may carry (design/0009 §3): a finite
 /// contract, not a terminal-height guess.
@@ -1321,6 +1489,16 @@ mod tests {
                 | DiagCode::ClosureSelfReference
                 | DiagCode::CaptureOfVar
                 | DiagCode::NonExhaustiveMatch
+                | DiagCode::SpawnOutsideScope
+                | DiagCode::SpawnEffectfulCallee
+                | DiagCode::SpawnArgumentNotCaptureSafe
+                | DiagCode::SpawnCalleeNotFn
+                | DiagCode::JoinEscape
+                | DiagCode::JoinAwaitedTwice
+                | DiagCode::JoinPartialAwait
+                | DiagCode::JoinUnawaited
+                | DiagCode::SpawnStatementNotUnit
+                | DiagCode::TaskInClosure
                 | DiagCode::InvalidModulePath
                 | DiagCode::ModuleCaseCollision
                 | DiagCode::ModuleItemClash
@@ -1331,8 +1509,8 @@ mod tests {
                 | DiagCode::CrossModuleAssignment => seen += 1,
             }
         }
-        assert_eq!(seen, 53, "update DiagCode::ALL when adding a variant");
-        assert_eq!(DiagCode::ALL.len(), 53);
+        assert_eq!(seen, 63, "update DiagCode::ALL when adding a variant");
+        assert_eq!(DiagCode::ALL.len(), 63);
     }
 
     #[test]

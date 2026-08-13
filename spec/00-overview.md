@@ -51,6 +51,9 @@ tiebreak and the draft follows the compiler.
   ([05](05-modules-and-projects.md)).
 - **Closures** — capability-effect-zero function values in call-argument position, with the
   `map` / `filter` / `fold` / `find` combinators ([06](06-closures.md)).
+- **Task structure** — `scope { … }` / `spawn f(args)` / `j.await`: pure children run to
+  completion at the spawn point, consumed exactly once, gated by the `Task.spawn` effect;
+  no concurrency claim attached ([04 §7](04-evaluation.md#7-task-structure)).
 - **Prelude** — `List` / `Map` / `String` / `Int` / `Option` / `Io` method surface, fixed
   small ([07](07-std-prelude.md)).
 - **Diagnostics and tooling** — stable codes, machine-applicable fixes, teaching blocks with
@@ -65,19 +68,22 @@ parser accepts several of these forms so that a half-edited file still yields a 
 repair from, and the checker then refuses them — accepting syntax is not shipping a feature,
 and passing one through half-checked would let an effect escape its declaration.
 
-**Concurrency (design/0004 — decided, entirely unimplemented).** Structured stackless
-async/await; one language model with two executors (`IoExecutor`, `FrameExecutor`); no
-detached spawn; `Transfer` / `ShareSafe` marker properties with compiler-only derivation;
-`Shared<T>` with `share()`, `Mutex`, atomics, channels; lock guards that cannot cross
-suspension points; DRF-SC memory model. Reserved footprint visible in 0.0: the keywords
-`async` / `await` / `move`, the type names `Shared<T>` and `Task<T>` (they resolve; nothing
-constructs them), the `is` identity operator (checks only against `Shared`, so no well-typed
-program reaches it), the empty `XN6xxx` diagnostic family, and closure rules that already
-treat `Shared` / `Task` as non-capturable.
+**Concurrency (design/0004, narrowed by design/0015).** The task boundary shipped
+(design/0015): `scope` / `spawn` / `.await`, pure children, the `Task.spawn` effect, and the
+`XN6xxx` diagnostic family enforcing it — with no concurrency claim attached. What remains
+adopted but unshipped from design/0004: actual concurrent execution and its executors
+(`IoExecutor`, `FrameExecutor`); `Transfer` / `ShareSafe` marker properties with
+compiler-only derivation; capability transfer across the task boundary; `Shared<T>` with
+`share()`, `Mutex`, atomics, channels; lock guards that cannot cross suspension points; the
+memory-model text. Reserved footprint still visible in 0.0: the keywords `async` / `await` /
+`move`, the type names `Shared<T>` and `Task<T>` (they resolve; nothing constructs them),
+and the `is` identity operator (checks only against `Shared`, so no well-typed program
+reaches it).
 
 **Refused today under `XN1008`:**
 
-- `async fn` and `.await` — no effect rules exist for them yet.
+- `async fn`, and `.await` anywhere other than the design/0015 task-handle position — no
+  effect rules exist for suspension yet.
 - `for` loops — iteration is a future RFC; write `while` + `len()` + `get(index:)`.
 - Function types `fn(T) -> U` written in user source — they appear only in std signatures.
 - A named function used as a value — named functions are resolved, never passed; wrap the
@@ -121,4 +127,4 @@ treat `Shared` / `Task` as non-capturable.
 Per-topic decision records: kernel semantics design/0003 · type checking design/0006 ·
 formatter design/0005 · std design/0007 · diagnostics-that-teach design/0009 · modules
 design/0010 · module-call teaching design/0012 · project analysis design/0013 · closures
-design/0014 · concurrency design/0004.
+design/0014 · concurrency design/0004 · task structure design/0015.

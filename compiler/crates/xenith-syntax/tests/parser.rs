@@ -105,6 +105,16 @@ fn render(expr: &Expr) -> String {
                 .join(".")
         ),
         ExprKind::Lambda { .. } => "lambda".to_string(),
+        ExprKind::Scope(_) => "scope".to_string(),
+        ExprKind::Spawn { path, args } => format!(
+            "spawn {}({})",
+            path.segments
+                .iter()
+                .map(|s| s.name.as_str())
+                .collect::<Vec<_>>()
+                .join("."),
+            render_args(args)
+        ),
         ExprKind::Error => "<error>".to_string(),
     }
 }
@@ -979,4 +989,74 @@ fn an_unterminated_function_body_still_yields_the_function() {
     };
     assert_eq!(f.name.name, "f");
     assert!(!parsed.diagnostics.is_empty());
+}
+
+// ------------------------------------------------------- tasks (design/0015)
+//
+// `scope` and `spawn` are contextual: claimed only in their two forms —
+// `scope` before `{`, `spawn` before an identifier or a refused `(` — and
+// ordinary identifiers everywhere else, which is what keeps every pre-0015
+// program (and `uses {Task.spawn}`) parsing unchanged.
+
+#[test]
+fn spawn_parses_as_a_spawn_of_a_named_path() {
+    assert_eq!(render(&expr_of("spawn f(x: 1)")), "spawn f(x: 1)");
+    assert_eq!(
+        render(&expr_of("spawn game.workers.plan(n: 2)")),
+        "spawn game.workers.plan(n: 2)"
+    );
+}
+
+#[test]
+fn a_scope_block_is_an_expression_and_a_terminator_free_statement() {
+    let module = expect_clean("fn f() { scope { let x = 1; } let y = 2; }");
+    let ItemKind::Fn(f) = &module.items[0].kind else {
+        panic!("expected a function");
+    };
+    let body = f.body.as_ref().expect("body");
+    assert_eq!(body.stmts.len(), 2, "scope needs no `;` as a statement");
+    assert!(matches!(
+        &body.stmts[0].kind,
+        StmtKind::Expr(Expr {
+            kind: ExprKind::Scope(_),
+            ..
+        })
+    ));
+
+    let tail = expr_of("scope { 1 }");
+    assert!(matches!(tail.kind, ExprKind::Scope(_)));
+}
+
+#[test]
+fn scope_and_spawn_stay_ordinary_identifiers_elsewhere() {
+    expect_clean("fn f(scope: Bool) -> Int { if scope { 1 } else { 2 } }");
+    expect_clean("fn f() -> Int { let spawn = 1; spawn + 1 }");
+    expect_clean("fn f() -> Int { let scope = 2; scope }");
+    // The open effect namespace keeps its spelling (design/0015 §5).
+    let module = expect_clean("fn g() uses {Task.spawn} {}");
+    let ItemKind::Fn(g) = &module.items[0].kind else {
+        panic!("expected a function");
+    };
+    let effects = g.effects.as_ref().expect("uses clause");
+    assert_eq!(effects.effects.len(), 1);
+    assert_eq!(effects.effects[0].segments[1].name, "spawn");
+}
+
+#[test]
+fn a_computed_spawn_callee_is_refused_at_parse_time() {
+    let found = codes("fn f() { scope { spawn (g)(x: 1); } }");
+    assert!(found.contains(&"XN6004"), "{found:?}");
+}
+
+#[test]
+fn a_spawn_without_a_call_poisons_rather_than_inventing_a_form() {
+    let found = codes("fn f() { scope { let j = spawn g; } }");
+    assert!(found.contains(&"XN1001"), "{found:?}");
+}
+
+#[test]
+fn the_task_forms_round_trip_through_the_formatter() {
+    let canonical = "fn work(n: Int) -> Int {\n    n\n}\n\nfn f() -> Int uses {Task.spawn} {\n    scope {\n        let j = spawn work(n: 1);\n        j.await\n    }\n}\n";
+    let formatted = xenith_syntax::format(canonical).expect("formats");
+    assert_eq!(formatted, canonical);
 }

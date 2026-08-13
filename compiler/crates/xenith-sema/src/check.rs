@@ -14,7 +14,7 @@
 
 use xenith_diag::{
     CLOSURE_EXIT_TEACH, CLOSURE_PLAN_TEACH, DiagCode, Diagnostic, Edit, Fix, MAX_SIGNATURE_BYTES,
-    MAX_TEACH_ITEMS, Span, Teach, TeachItem,
+    MAX_TEACH_ITEMS, Span, TASK_PLAN_TEACH, Teach, TeachItem,
 };
 use xenith_syntax::ast;
 
@@ -114,6 +114,9 @@ pub fn analyze_at(module: &ast::Module, offset: Option<u32>) -> (Analysis, Optio
             closures: Vec::new(),
             loop_depth: 0,
             initializing: Vec::new(),
+            scope_depth: 0,
+            joins: Vec::new(),
+            in_guard: false,
         };
         checker.check_fn();
     }
@@ -174,6 +177,9 @@ pub(crate) fn check_module_bodies(
             closures: Vec::new(),
             loop_depth: 0,
             initializing: Vec::new(),
+            scope_depth: 0,
+            joins: Vec::new(),
+            in_guard: false,
         };
         checker.check_fn();
     }
@@ -301,6 +307,36 @@ struct Binding {
     name: String,
     ty: Type,
     mutable: bool,
+    /// Index into [`Checker::joins`] when this binding holds a task handle
+    /// (design/0015 §4). A Join is not a value: the only legal read is as
+    /// the receiver of `.await`, and the dataflow states live in the side
+    /// table so branches can snapshot and merge them.
+    join: Option<usize>,
+}
+
+/// The consumption state of one task handle (design/0015 §4): `.await`
+/// happens exactly once on every path.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum JoinState {
+    /// Bound, not yet awaited.
+    Live,
+    /// Awaited; a second await is XN6006.
+    Consumed,
+    /// Already reported (escape, double await, partial await) — every later
+    /// rule stays silent, the one-mistake-one-diagnostic discipline.
+    Poisoned,
+}
+
+/// One task handle: what the child returns, where it was bound, and how far
+/// the exactly-once dataflow has progressed.
+struct JoinInfo {
+    name: String,
+    result: Type,
+    state: JoinState,
+    binding_span: Span,
+    /// `Checker::loop_depth` at the `spawn` — an await at greater depth sits
+    /// in a loop that may run it more than once.
+    created_loop_depth: u32,
 }
 
 /// One closure body being checked (design/0014). The stack of these is what
@@ -317,6 +353,9 @@ struct ClosureCtx {
     /// Capture names already diagnosed, so one bad capture reports once
     /// however often the body mentions it.
     reported: Vec<String>,
+    /// A task construct (`scope` / `spawn` / `.await`) was already refused
+    /// in this body — the rest stay silent (design/0015 §5).
+    task_reported: bool,
 }
 
 struct Checker<'a> {
@@ -341,6 +380,15 @@ struct Checker<'a> {
     /// Names the `let` currently being checked will bind — referencing one
     /// from a closure is XN4007, definite initialization.
     initializing: Vec<String>,
+    /// `scope { .. }` nesting depth (design/0015 §1) — `spawn` is legal only
+    /// when this is non-zero.
+    scope_depth: u32,
+    /// Every task handle of this function, in creation order. Branch merges
+    /// snapshot and restore the states by index.
+    joins: Vec<JoinInfo>,
+    /// Inside a `match` guard, which may run for several arms — an await
+    /// there cannot be exactly-once (design/0015 §4).
+    in_guard: bool,
 }
 
 impl<'a> Checker<'a> {
@@ -443,6 +491,485 @@ impl<'a> Checker<'a> {
             .push(name.to_string());
     }
 
+    // ----- task structure (design/0015) -----
+
+    /// `scope` / `spawn` / `.await` inside a closure body — one report per
+    /// body, however many task constructs it holds (design/0015 §5: the
+    /// implicit empty effect budget refuses `Task.spawn`, and the region
+    /// forms follow it).
+    fn task_in_closure(&mut self, spelled: &str, span: Span) {
+        let ctx = self
+            .closures
+            .last_mut()
+            .expect("task-in-closure check outside a closure");
+        if ctx.task_reported {
+            return;
+        }
+        ctx.task_reported = true;
+        let message = format!(
+            "{spelled} cannot appear in a closure body: a closure performs no \
+             effects, and `Task.spawn` is an effect"
+        );
+        self.diagnostics.push(
+            Diagnostic::error(DiagCode::TaskInClosure, span, message)
+                .with_teach_note(format!("; {TASK_PLAN_TEACH}")),
+        );
+    }
+
+    /// The per-handle states, by index — what a branch snapshot holds.
+    fn join_snapshot(&self) -> Vec<JoinState> {
+        self.joins.iter().map(|j| j.state).collect()
+    }
+
+    fn restore_joins(&mut self, snapshot: &[JoinState]) {
+        for (join, state) in self.joins.iter_mut().zip(snapshot) {
+            join.state = *state;
+        }
+        // Handles created after the snapshot belong to a finished branch;
+        // their own block already enforced consumption.
+        for join in self.joins.iter_mut().skip(snapshot.len()) {
+            join.state = JoinState::Poisoned;
+        }
+    }
+
+    /// Merge the handle states after a branching construct: every branch
+    /// must have consumed exactly the same handles (design/0015 §4 — the
+    /// branch-partial rule). Disagreement is XN6007, once, at the construct.
+    fn merge_joins(&mut self, before: &[JoinState], branches: &[Vec<JoinState>], span: Span) {
+        if branches.is_empty() {
+            self.restore_joins(before);
+            return;
+        }
+        for index in 0..self.joins.len() {
+            let merged = if index >= before.len() {
+                // Created inside a branch: out of scope beyond it.
+                JoinState::Poisoned
+            } else {
+                let states: Vec<JoinState> = branches
+                    .iter()
+                    .map(|b| b.get(index).copied().unwrap_or(JoinState::Poisoned))
+                    .collect();
+                if states.contains(&JoinState::Poisoned) {
+                    JoinState::Poisoned
+                } else if states.iter().all(|s| *s == states[0]) {
+                    states[0]
+                } else {
+                    let name = self.joins[index].name.clone();
+                    self.error(
+                        DiagCode::JoinPartialAwait,
+                        span,
+                        format!(
+                            "`{name}` is awaited on one path through this branch \
+                             but not another; every path must await it exactly once"
+                        ),
+                    );
+                    JoinState::Poisoned
+                }
+            };
+            self.joins[index].state = merged;
+        }
+    }
+
+    /// Normal exit of the block a handle is bound in: a non-Unit result
+    /// still `Live` was silently dropped — XN6008. Early exits (`return`,
+    /// `break`, `continue`, and the failing arm of `?`) discard instead,
+    /// which is legal because the child was pure (design/0015 §3).
+    fn enforce_join_exit(&mut self, block: &ast::Block) {
+        let diverges = block.tail.is_none()
+            && matches!(
+                block.stmts.last().map(|s| &s.kind),
+                Some(ast::StmtKind::Return(_) | ast::StmtKind::Break | ast::StmtKind::Continue)
+            );
+        let indices: Vec<usize> = self
+            .scopes
+            .last()
+            .into_iter()
+            .flatten()
+            .filter_map(|binding| binding.join)
+            .collect();
+        for index in indices {
+            if self.joins[index].state == JoinState::Live
+                && !diverges
+                && !matches!(self.joins[index].result, Type::Unit)
+                && !self.joins[index].result.is_unknown()
+            {
+                let name = self.joins[index].name.clone();
+                let span = self.joins[index].binding_span;
+                self.error(
+                    DiagCode::JoinUnawaited,
+                    span,
+                    format!(
+                        "`{name}` is never awaited; a task's result cannot be \
+                         dropped on normal exit — await it, or make the child \
+                         return Unit and use the statement form"
+                    ),
+                );
+            }
+            // Its binding dies with this block either way.
+            self.joins[index].state = JoinState::Poisoned;
+        }
+    }
+
+    /// The one legal producer of a handle: `spawn f(args)` in a blessed
+    /// position. Checks structure (inside `scope`, outside closures), the
+    /// callee contract (a named fn, empty `uses`, CaptureSafe parameters),
+    /// the `Task.spawn` effect, and the argument shapes. `None` means the
+    /// spawn was refused and poisons its position.
+    fn spawn_check(&mut self, path: &ast::Path, args: &[ast::Arg], span: Span) -> Option<Type> {
+        if !self.closures.is_empty() {
+            self.task_in_closure("`spawn`", span);
+            for arg in args {
+                let _ = self.synth(&arg.value);
+            }
+            return None;
+        }
+        if self.scope_depth == 0 {
+            self.error(
+                DiagCode::SpawnOutsideScope,
+                span,
+                "`spawn` is only legal inside a `scope { .. }` block",
+            );
+            for arg in args {
+                let _ = self.synth(&arg.value);
+            }
+            return None;
+        }
+
+        let key = self.spawn_callee(path, args, span)?;
+
+        let sig = self.defs.fn_named(&key).expect("resolved by spawn_callee");
+        let shown = self.display_fn(&key);
+        let param_names: Vec<String> = sig.params.iter().map(|(n, _)| n.clone()).collect();
+        let param_types: Vec<Type> = sig.params.iter().map(|(_, t)| t.clone()).collect();
+        let ret = sig.ret.clone();
+        let effects = sig.effects.clone();
+        let generics: Vec<GenericInfo> = sig
+            .generics
+            .iter()
+            .map(|g| GenericInfo {
+                name: g.name.clone(),
+                bounds: g.bounds.clone(),
+            })
+            .collect();
+
+        // The child's contract (design/0015 §2): capability effects do not
+        // cross the task boundary, so the callee declares none. Refused at
+        // the boundary, once — the parent is not also charged XN4001, and
+        // the argument and result rules stay quiet behind it: the repair is
+        // to restructure, not to patch three symptoms of one spawn.
+        if !effects.is_empty() {
+            let listed: Vec<&str> = effects.iter().collect();
+            let message = format!(
+                "`{shown}` declares `uses {{{}}}`; a spawned child performs no \
+                 effects — its `uses` set must be empty",
+                listed.join(", ")
+            );
+            self.diagnostics.push(
+                Diagnostic::error(DiagCode::SpawnEffectfulCallee, span, message)
+                    .with_teach_note(format!("; {TASK_PLAN_TEACH}")),
+            );
+            for arg in args {
+                let _ = self.synth(&arg.value);
+            }
+            return None;
+        }
+
+        // Spawning is itself an effect (design/0015 §5): the enclosing fn
+        // declares `Task.spawn`, and the ordinary machinery carries the fix.
+        self.require_effects(&EffectSet::new(["Task.spawn".to_string()]), span);
+
+        let mut bindings: Vec<(String, Type)> = Vec::new();
+        let teach = Some(Teach::call_signature(
+            String::new(),
+            TeachItem::new(
+                shown.clone(),
+                self.signature_text(&shown, &param_names, &param_types, &ret, &effects),
+            ),
+        ));
+        self.check_args(
+            Callee {
+                name: &shown,
+                param_names: &param_names,
+                param_types: &param_types,
+                teach,
+            },
+            args,
+            &mut bindings,
+            span,
+        );
+
+        for generic in &generics {
+            if !bindings.iter().any(|(n, _)| *n == generic.name) {
+                let message = format!(
+                    "cannot determine `{}` for this call to `{shown}`; \
+                     annotate the surrounding binding",
+                    generic.name
+                );
+                self.error(DiagCode::AnnotationRequired, span, message);
+                bindings.push((generic.name.clone(), Type::Error));
+            }
+        }
+        for generic in &generics {
+            let Some((_, concrete)) = bindings.iter().find(|(n, _)| *n == generic.name) else {
+                continue;
+            };
+            for &bound in &generic.bounds {
+                if !self.defs.has_property(concrete, bound, &self.sig.generics) {
+                    let message = format!(
+                        "`{shown}` requires `{}: {}`, but `{}` does not satisfy it",
+                        generic.name,
+                        bound.name(),
+                        self.render(concrete)
+                    );
+                    self.error(DiagCode::PropertyNotSatisfied, span, message);
+                }
+            }
+        }
+
+        // Every argument crosses the task boundary as a copy, so every
+        // parameter type must be CaptureSafe — the design/0014 inductive
+        // rule, reused verbatim (design/0015 §2).
+        for (index, (param_name, param_ty)) in param_names.iter().zip(&param_types).enumerate() {
+            let concrete = param_ty.substitute(&bindings);
+            if !concrete.is_unknown() && !self.defs.is_capture_safe(&concrete) {
+                let rendered = self.render(&concrete);
+                let at = args.get(index).map(|arg| arg.value.span).unwrap_or(span);
+                let message = format!(
+                    "`{param_name}: {rendered}` cannot cross the task boundary: \
+                     `{rendered}` is not CaptureSafe"
+                );
+                self.diagnostics.push(
+                    Diagnostic::error(DiagCode::SpawnArgumentNotCaptureSafe, at, message)
+                        .with_teach_note(format!("; {TASK_PLAN_TEACH}")),
+                );
+            }
+        }
+
+        Some(ret.substitute(&bindings))
+    }
+
+    /// Resolve the spawned callee: a bare own-module fn or a fully
+    /// qualified one — the same resolution ordinary calls use (design/0010).
+    /// Anything else — a local value, a method receiver, a constructor — is
+    /// XN6004, and an unknown name reports the way every unknown name does.
+    fn spawn_callee(&mut self, path: &ast::Path, args: &[ast::Arg], span: Span) -> Option<String> {
+        let refuse = |this: &mut Self, message: String| {
+            this.error(DiagCode::SpawnCalleeNotFn, path.span, message);
+            for arg in args {
+                let _ = this.synth(&arg.value);
+            }
+            None
+        };
+
+        let segments: Vec<String> = path.segments.iter().map(|s| s.name.clone()).collect();
+        if let [single] = segments.as_slice() {
+            if self.lookup(single).is_some() {
+                return refuse(
+                    self,
+                    format!("`{single}` is a value; `spawn` takes a named fn"),
+                );
+            }
+            if let Some(key) = self.fn_key(single) {
+                return Some(key);
+            }
+            if self.defs.unqualified_variant(single).is_some() {
+                return refuse(
+                    self,
+                    format!("`{single}` is a constructor, not a fn; `spawn` takes a named fn"),
+                );
+            }
+            // Unknown: the ordinary rich report (did-you-mean, use-fix).
+            let _ = self.synth_path(path, span);
+            for arg in args {
+                let _ = self.synth(&arg.value);
+            }
+            return None;
+        }
+
+        if self.lookup(&segments[0]).is_some() {
+            return refuse(
+                self,
+                format!(
+                    "`{}` is a method call on `{}`; `spawn` takes a named fn — \
+                     extract one and spawn that",
+                    segments.join("."),
+                    segments[0]
+                ),
+            );
+        }
+        if segments.len() == 2 && self.lookup_type_name(&segments[0]).is_some() {
+            return refuse(
+                self,
+                format!(
+                    "`{}` is a constructor, not a fn; `spawn` takes a named fn",
+                    segments.join(".")
+                ),
+            );
+        }
+        if self.ctx.is_some() {
+            match self.qualified_ref(&segments, path.span) {
+                QualifiedLookup::Fn(key) => return Some(key),
+                QualifiedLookup::Variant(..) | QualifiedLookup::Type(_) => {
+                    return refuse(
+                        self,
+                        format!(
+                            "`{}` is not a fn; `spawn` takes a named fn",
+                            segments.join(".")
+                        ),
+                    );
+                }
+                QualifiedLookup::Reported => {
+                    for arg in args {
+                        let _ = self.synth(&arg.value);
+                    }
+                    return None;
+                }
+                QualifiedLookup::NotModule => {}
+            }
+        }
+        self.error(
+            DiagCode::UnknownName,
+            path.span,
+            format!("nothing named `{}` is in scope", segments.join(".")),
+        );
+        for arg in args {
+            let _ = self.synth(&arg.value);
+        }
+        None
+    }
+
+    /// A spawn somewhere other than its two blessed positions — the general
+    /// escape refusal (design/0015 §4).
+    fn spawn_escape(&mut self, args: &[ast::Arg], span: Span, message: &str) -> Type {
+        self.diagnostics.push(
+            Diagnostic::error(DiagCode::JoinEscape, span, message.to_string())
+                .with_teach_note(format!("; {TASK_PLAN_TEACH}")),
+        );
+        for arg in args {
+            let _ = self.synth(&arg.value);
+        }
+        Type::Error
+    }
+
+    /// `let name = spawn f(..);` — bind a task handle. The binding is bare
+    /// on purpose: no `var` (the handle is consumed, never reassigned), no
+    /// annotation (`Join` is not a written type), no pattern (a handle has
+    /// no structure to take apart, and `_` would silence the result).
+    fn spawn_binding(
+        &mut self,
+        pattern: &ast::Pattern,
+        annotation: Option<&ast::Type>,
+        path: &ast::Path,
+        args: &[ast::Arg],
+        span: Span,
+        mutable: bool,
+    ) {
+        let simple = matches!(&pattern.kind, ast::PatternKind::Binding(_));
+        if annotation.is_some() || mutable || !simple {
+            let message = if mutable {
+                "a task handle is bound with `let`, not `var`: it is consumed \
+                 by `.await`, not reassigned"
+            } else if annotation.is_some() {
+                "a task binding takes no type annotation — `Join` is not a \
+                 written type; bind it bare: `let j = spawn f(..);`"
+            } else {
+                "bind the task to a name; a pattern or `_` would silence its \
+                 result"
+            };
+            if let Some(ty) = annotation {
+                // Lowered anyway, so the annotation's own problems and its
+                // holes' goals survive this refusal.
+                let _ = self.lower(ty);
+            }
+            self.diagnostics.push(
+                Diagnostic::error(DiagCode::JoinEscape, span, message.to_string())
+                    .with_teach_note(format!("; {TASK_PLAN_TEACH}")),
+            );
+            for arg in args {
+                let _ = self.synth(&arg.value);
+            }
+            self.bind_pattern(pattern, &Type::Error, mutable);
+            return;
+        }
+
+        let mut names = Vec::new();
+        pattern_names(pattern, &mut names);
+        let saved = std::mem::replace(&mut self.initializing, names);
+        let result = self.spawn_check(path, args, span);
+        self.initializing = saved;
+
+        let ast::PatternKind::Binding(ident) = &pattern.kind else {
+            unreachable!("checked above");
+        };
+        match result {
+            Some(result) => {
+                if ident.name.is_empty() {
+                    return; // parser recovery
+                }
+                let index = self.joins.len();
+                self.joins.push(JoinInfo {
+                    name: ident.name.clone(),
+                    result: result.clone(),
+                    state: JoinState::Live,
+                    binding_span: pattern.span,
+                    created_loop_depth: self.loop_depth,
+                });
+                self.scopes
+                    .last_mut()
+                    .expect("at least one scope")
+                    .push(Binding {
+                        name: ident.name.clone(),
+                        ty: result,
+                        mutable: false,
+                        join: Some(index),
+                    });
+            }
+            None => self.bind(&ident.name, Type::Error, false),
+        }
+    }
+
+    /// `.await` of a live handle: move the result out, exactly once. Every
+    /// route that could run it zero or several times is refused here.
+    fn consume_join(&mut self, index: usize, span: Span) -> Type {
+        let result = self.joins[index].result.clone();
+        let name = self.joins[index].name.clone();
+        match self.joins[index].state {
+            JoinState::Live if self.in_guard => {
+                self.error(
+                    DiagCode::JoinAwaitedTwice,
+                    span,
+                    format!(
+                        "`{name}` is awaited inside a `match` guard, which may \
+                         run for several arms; await it before the `match`"
+                    ),
+                );
+                self.joins[index].state = JoinState::Poisoned;
+            }
+            JoinState::Live if self.loop_depth > self.joins[index].created_loop_depth => {
+                self.error(
+                    DiagCode::JoinAwaitedTwice,
+                    span,
+                    format!(
+                        "`{name}` was created outside this loop, so the loop \
+                         may await it more than once; await it after the loop"
+                    ),
+                );
+                self.joins[index].state = JoinState::Poisoned;
+            }
+            JoinState::Live => self.joins[index].state = JoinState::Consumed,
+            JoinState::Consumed => {
+                self.error(
+                    DiagCode::JoinAwaitedTwice,
+                    span,
+                    format!("`{name}` is already awaited; `.await` consumes the task exactly once"),
+                );
+                self.joins[index].state = JoinState::Poisoned;
+            }
+            JoinState::Poisoned => {}
+        }
+        result
+    }
+
     /// The effect budget at the current position: the enclosing function's
     /// declared set — or, inside a closure body, the empty set, implicitly
     /// and always (pillar 1, design/0014 §1).
@@ -469,6 +996,7 @@ impl<'a> Checker<'a> {
                 name: name.to_string(),
                 ty,
                 mutable,
+                join: None,
             });
     }
 
@@ -522,11 +1050,19 @@ impl<'a> Checker<'a> {
 
     /// The same snapshot with real types and mutability, for candidate
     /// generation — a mutating method is only offered on a `var` binding.
+    ///
+    /// Task handles are excluded (design/0015 §4): a Join is not a value,
+    /// so neither a goal's scope listing nor a candidate expression may
+    /// offer one — and being shadowed-out beats being described falsely.
     fn scope_types(&self) -> Vec<(String, Type, bool)> {
         let mut seen = std::collections::HashSet::new();
         let mut out = Vec::new();
         for scope in self.scopes.iter().rev() {
             for binding in scope.iter().rev() {
+                if binding.join.is_some() {
+                    seen.insert(binding.name.clone());
+                    continue;
+                }
                 if seen.insert(binding.name.clone()) {
                     out.push((binding.name.clone(), binding.ty.clone(), binding.mutable));
                 }
@@ -1180,6 +1716,7 @@ impl<'a> Checker<'a> {
                 name: name.clone(),
                 ty: ty.clone(),
                 mutable: false,
+                join: None,
             });
         }
         let Some(body) = &self.fn_ast.body else {
@@ -1199,24 +1736,24 @@ impl<'a> Checker<'a> {
             match &block.tail {
                 Some(tail) => this.check(tail, expected),
                 None => {
-                    if expected.is_compatible_with(&Type::Unit) {
-                        return;
-                    }
-                    // A trailing `return` already satisfied the type.
-                    let diverges = matches!(
-                        block.stmts.last().map(|s| &s.kind),
-                        Some(ast::StmtKind::Return(_))
-                    );
-                    if !diverges {
-                        let message = format!(
-                            "this block must produce `{}`, but ends without a value; \
-                             add a tail expression (no trailing `;`)",
-                            this.render(expected)
+                    if !expected.is_compatible_with(&Type::Unit) {
+                        // A trailing `return` already satisfied the type.
+                        let diverges = matches!(
+                            block.stmts.last().map(|s| &s.kind),
+                            Some(ast::StmtKind::Return(_))
                         );
-                        this.error(DiagCode::TypeMismatch, block.span, message);
+                        if !diverges {
+                            let message = format!(
+                                "this block must produce `{}`, but ends without a value; \
+                                 add a tail expression (no trailing `;`)",
+                                this.render(expected)
+                            );
+                            this.error(DiagCode::TypeMismatch, block.span, message);
+                        }
                     }
                 }
             }
+            this.enforce_join_exit(block);
         });
     }
 
@@ -1228,6 +1765,12 @@ impl<'a> Checker<'a> {
                 init,
                 mutable,
             } => {
+                // `let j = spawn f(..);` — the one binding form for a task
+                // handle (design/0015 §4).
+                if let ast::ExprKind::Spawn { path, args } = &init.kind {
+                    self.spawn_binding(pattern, ty.as_ref(), path, args, init.span, *mutable);
+                    return;
+                }
                 let declared = ty.as_ref().map(|t| self.lower(t));
                 // While the initializer runs, its own names have no value
                 // yet. A closure created in it that mentions one is XN4007 —
@@ -1253,6 +1796,35 @@ impl<'a> Checker<'a> {
                 self.bind_pattern(pattern, &value_ty, *mutable);
             }
             ast::StmtKind::Expr(expr) => {
+                // `spawn f(..);` — the fire-and-forget statement form, for
+                // children with nothing to hand back (design/0015 §4).
+                if let ast::ExprKind::Spawn { path, args } = &expr.kind {
+                    if let Some(result) = self.spawn_check(path, args, expr.span) {
+                        if !matches!(result, Type::Unit) && !result.is_unknown() {
+                            let spelled = path
+                                .segments
+                                .iter()
+                                .map(|s| s.name.as_str())
+                                .collect::<Vec<_>>()
+                                .join(".");
+                            let message = format!(
+                                "`{spelled}` returns `{}`; the statement form \
+                                 discards it — bind the result: \
+                                 `let j = spawn {spelled}(..);` and await `j`",
+                                self.render(&result)
+                            );
+                            self.diagnostics.push(
+                                Diagnostic::error(
+                                    DiagCode::SpawnStatementNotUnit,
+                                    expr.span,
+                                    message,
+                                )
+                                .with_teach_note(format!("; {TASK_PLAN_TEACH}")),
+                            );
+                        }
+                    }
+                    return;
+                }
                 // Value discarded; no unused-result lint yet.
                 let _ = self.synth(expr);
             }
@@ -1289,8 +1861,10 @@ impl<'a> Checker<'a> {
                 }
             }
             ast::StmtKind::While { cond, body } => {
-                self.check(cond, &Type::Bool);
+                // The condition re-runs every iteration, so for the
+                // exactly-once dataflow it counts as inside the loop too.
                 self.loop_depth += 1;
+                self.check(cond, &Type::Bool);
                 self.check_block(body, &Type::Unit);
                 self.loop_depth -= 1;
             }
@@ -1342,7 +1916,10 @@ impl<'a> Checker<'a> {
                 else_branch,
             } => {
                 self.check(cond, &Type::Bool);
+                let before = self.join_snapshot();
                 self.check_block(then_block, expected);
+                let after_then = self.join_snapshot();
+                self.restore_joins(&before);
                 match else_branch {
                     Some(branch) => self.check(branch, expected),
                     None => {
@@ -1355,23 +1932,45 @@ impl<'a> Checker<'a> {
                         }
                     }
                 }
+                let after_else = self.join_snapshot();
+                self.merge_joins(&before, &[after_then, after_else], expr.span);
             }
 
             ast::ExprKind::Match { scrutinee, arms } => {
                 let scrutinee_ty = self.synth(scrutinee);
+                let before = self.join_snapshot();
+                let mut arm_states = Vec::new();
                 for arm in arms {
+                    self.restore_joins(&before);
                     self.scoped(|this| {
                         this.bind_pattern(&arm.pattern, &scrutinee_ty, false);
                         if let Some(guard) = &arm.guard {
+                            let saved = std::mem::replace(&mut this.in_guard, true);
                             this.check(guard, &Type::Bool);
+                            this.in_guard = saved;
                         }
                         this.check(&arm.body, expected);
                     });
+                    arm_states.push(self.join_snapshot());
                 }
+                self.merge_joins(&before, &arm_states, expr.span);
                 self.check_exhaustiveness(&scrutinee_ty, arms, expr.span);
             }
 
             ast::ExprKind::Block(block) => self.check_block(block, expected),
+
+            // The task region (design/0015 §1): spawning becomes legal
+            // inside, and every handle bound inside is consumed inside.
+            ast::ExprKind::Scope(block) => {
+                if !self.closures.is_empty() {
+                    self.task_in_closure("`scope`", expr.span);
+                    self.check_block(block, expected);
+                } else {
+                    self.scope_depth += 1;
+                    self.check_block(block, expected);
+                    self.scope_depth -= 1;
+                }
+            }
 
             // A closure fits exactly one shape of expectation: a `fn(..)`
             // type, which only argument positions push (design/0014 §3).
@@ -1572,14 +2171,54 @@ impl<'a> Checker<'a> {
             ast::ExprKind::Field { receiver, name } => self.field(receiver, name, expr.span),
 
             ast::ExprKind::Await(inner) => {
-                // Parsed for recovery, not shipped (design/0008 §1). The
-                // operand is still synthesised so its own problems and goals
-                // survive.
-                let _ = self.synth(inner);
+                if !self.closures.is_empty() {
+                    self.task_in_closure("`.await`", expr.span);
+                    // Poison the handle it names so the scope end does not
+                    // stack an unawaited report on this one.
+                    if let ast::ExprKind::Path(path) = &inner.kind {
+                        if let [single] = path.segments.as_slice() {
+                            let found = self.lookup(&single.name).and_then(|b| b.join);
+                            if let Some(index) = found {
+                                self.joins[index].state = JoinState::Poisoned;
+                            }
+                        }
+                    }
+                    return Type::Error;
+                }
+                // One canonical spelling: bind, then await. Awaiting the
+                // spawn inline would be a second spelling of the same
+                // program (design/0015 §4).
+                if let ast::ExprKind::Spawn { args, .. } = &inner.kind {
+                    return self.spawn_escape(
+                        args,
+                        expr.span,
+                        "bind the result of `spawn` with `let`, then await the \
+                         binding: `let j = spawn f(..); j.await`",
+                    );
+                }
+                // The design/0015 carve-out: `.await` moves a task handle's
+                // result out, exactly once.
+                if let ast::ExprKind::Path(path) = &inner.kind {
+                    if let [single] = path.segments.as_slice() {
+                        let found = self.lookup(&single.name).and_then(|b| b.join);
+                        if let Some(index) = found {
+                            return self.consume_join(index, expr.span);
+                        }
+                    }
+                }
+                // Everything else stays out of the language (design/0008
+                // §1). The operand is still synthesised so its own problems
+                // and goals survive; poison stays silent, so an await of an
+                // already-refused spawn binding reports once, not twice.
+                let inner_ty = self.synth(inner);
+                if inner_ty.is_unknown() {
+                    return Type::Error;
+                }
                 self.error(
                     DiagCode::UnshippedConstruct,
                     expr.span,
-                    "`.await` is not part of the language yet",
+                    "`.await` applies only to a task handle bound by \
+                     `let j = spawn f(..);` inside `scope`",
                 );
                 Type::Error
             }
@@ -1593,43 +2232,92 @@ impl<'a> Checker<'a> {
             } => {
                 // Without context, an if-value takes the then-branch's type.
                 self.check(cond, &Type::Bool);
+                let before = self.join_snapshot();
                 let then_ty = self.synth_block(then_block);
-                if let Some(branch) = else_branch {
+                let after_then = self.join_snapshot();
+                self.restore_joins(&before);
+                let out = if let Some(branch) = else_branch {
                     self.check(branch, &then_ty);
                     then_ty
                 } else {
                     Type::Unit
-                }
+                };
+                let after_else = self.join_snapshot();
+                self.merge_joins(&before, &[after_then, after_else], expr.span);
+                out
             }
 
             ast::ExprKind::Match { scrutinee, arms } => {
                 let scrutinee_ty = self.synth(scrutinee);
+                let before = self.join_snapshot();
                 let mut result: Option<Type> = None;
+                let mut arm_states = Vec::new();
                 for arm in arms {
+                    self.restore_joins(&before);
                     let expected = result.clone();
-                    self.scoped(|this| {
-                        this.bind_pattern(&arm.pattern, &scrutinee_ty, false);
-                        if let Some(guard) = &arm.guard {
-                            this.check(guard, &Type::Bool);
-                        }
-                        if let Some(ty) = &expected {
-                            this.check(&arm.body, ty);
-                        }
-                    });
-                    if result.is_none() {
-                        // First arm sets the type; scoped() above skipped it.
-                        let ty = self.scoped(|this| {
+                    match expected {
+                        Some(ty) => self.scoped(|this| {
                             this.bind_pattern(&arm.pattern, &scrutinee_ty, false);
-                            this.synth(&arm.body)
-                        });
-                        result = Some(ty);
+                            if let Some(guard) = &arm.guard {
+                                let saved = std::mem::replace(&mut this.in_guard, true);
+                                this.check(guard, &Type::Bool);
+                                this.in_guard = saved;
+                            }
+                            this.check(&arm.body, &ty);
+                        }),
+                        None => {
+                            // The first arm names the type for the rest.
+                            let ty = self.scoped(|this| {
+                                this.bind_pattern(&arm.pattern, &scrutinee_ty, false);
+                                if let Some(guard) = &arm.guard {
+                                    let saved = std::mem::replace(&mut this.in_guard, true);
+                                    this.check(guard, &Type::Bool);
+                                    this.in_guard = saved;
+                                }
+                                this.synth(&arm.body)
+                            });
+                            result = Some(ty);
+                        }
                     }
+                    arm_states.push(self.join_snapshot());
                 }
+                self.merge_joins(&before, &arm_states, expr.span);
                 self.check_exhaustiveness(&scrutinee_ty, arms, expr.span);
                 result.unwrap_or(Type::Unit)
             }
 
             ast::ExprKind::Block(block) => self.synth_block(block),
+
+            // The task region (design/0015 §1). Its value is the block's
+            // tail — a scope is not a first-class thing, just a region.
+            ast::ExprKind::Scope(block) => {
+                if !self.closures.is_empty() {
+                    self.task_in_closure("`scope`", expr.span);
+                    return self.synth_block(block);
+                }
+                self.scope_depth += 1;
+                let ty = self.synth_block(block);
+                self.scope_depth -= 1;
+                ty
+            }
+
+            // A spawn anywhere other than `let j = spawn f(..);` or the
+            // statement form is the handle escaping (design/0015 §4).
+            ast::ExprKind::Spawn { args, .. } => {
+                if !self.closures.is_empty() {
+                    self.task_in_closure("`spawn`", expr.span);
+                    for arg in args {
+                        let _ = self.synth(&arg.value);
+                    }
+                    return Type::Error;
+                }
+                self.spawn_escape(
+                    args,
+                    expr.span,
+                    "the result of `spawn` must be bound with `let` and \
+                     awaited: `let j = spawn f(..); j.await`",
+                )
+            }
 
             // With nothing pushed down, the first element names the element
             // type and the rest are checked against it. An empty literal has
@@ -1686,10 +2374,12 @@ impl<'a> Checker<'a> {
             for stmt in &block.stmts {
                 this.stmt(stmt);
             }
-            match &block.tail {
+            let ty = match &block.tail {
                 Some(tail) => this.synth(tail),
                 None => Type::Unit,
-            }
+            };
+            this.enforce_join_exit(block);
+            ty
         })
     }
 
@@ -1711,6 +2401,24 @@ impl<'a> Checker<'a> {
         if let Some((depth, binding)) = self.lookup_indexed(name) {
             let ty = binding.ty.clone();
             let mutable = binding.mutable;
+            let join = binding.join;
+            // A task handle does exactly one thing — it is awaited — and
+            // `.await` never routes its receiver through here. Any read
+            // that does arrive is the handle escaping: a copy, a container,
+            // a return, an argument, a capture (design/0015 §4).
+            if let Some(index) = join {
+                let message = format!(
+                    "`{name}` is a task handle: it can only be awaited \
+                     (`{name}.await`) — it cannot be copied, stored, \
+                     returned, or passed"
+                );
+                self.diagnostics.push(
+                    Diagnostic::error(DiagCode::JoinEscape, span, message)
+                        .with_teach_note(format!("; {TASK_PLAN_TEACH}")),
+                );
+                self.joins[index].state = JoinState::Poisoned;
+                return Type::Error;
+            }
             // A reference reaching below the innermost closure boundary is a
             // capture (design/0014 §1, free-variable rule (a): values copy
             // at creation — so the copy must be honest).
@@ -2428,12 +3136,14 @@ impl<'a> Checker<'a> {
                 name: param.name.name.clone(),
                 ty,
                 mutable: false,
+                join: None,
             });
         }
         self.closures.push(ClosureCtx {
             boundary: self.scopes.len() - 1,
             entry_loop_depth: self.loop_depth,
             reported: Vec::new(),
+            task_reported: false,
         });
 
         let ret_concrete = ret.substitute(bindings);

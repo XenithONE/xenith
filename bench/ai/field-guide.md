@@ -181,6 +181,18 @@ both are named: `xs.fold(init: 0, f: |acc, x| acc + x)`. Effectful iteration nev
 a closure — write a `while` loop in the enclosing named `fn`, which declares the effects in
 `uses` and holds the capability: the closure returns data, the loop performs the effects.
 
+## Tasks
+
+`scope { ... }` opens a task region — the only place `spawn` may appear. `spawn plan(n: 21)`
+calls a named fn as a child and runs it to completion on the spot; the child must be pure (an
+empty `uses` set, every parameter CaptureSafe — no capabilities cross the boundary). Bind the
+handle bare and consume it with `.await`, exactly once on every path:
+`let j = spawn plan(n: 21);` then `j.await` — or `j.await?` when the child returns `Result`.
+The handle does nothing else: no copy, no store, no return, no passing, and a non-Unit result
+must be awaited before the scope ends. A Unit child fires as a statement: `spawn ping();`.
+Spawning is an effect — the enclosing fn declares `uses {Task.spawn}`. A task computes a
+plan — effects run in the parent, after await.
+
 ## Holes
 
 `??` or `??name` is a legal expression or type: the program still compiles. Running a program

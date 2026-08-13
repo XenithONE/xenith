@@ -567,6 +567,42 @@ impl<'a> Interp<'a> {
                 _ => trap(expr.span, "`.await` needs a Task"),
             },
 
+            // The task region (design/0015): just a block at runtime — every
+            // child inside already ran to completion at its spawn point.
+            ast::ExprKind::Scope(block) => self.block(block, env),
+
+            // `spawn f(args)`: evaluate the arguments here, in normal order,
+            // exactly once — then run the child to completion on the spot
+            // (design/0015 §3). The handle is a ready box; `.await` moves
+            // the result out. A trap inside the child surfaces at the spawn
+            // site, carrying the child's name for context.
+            ast::ExprKind::Spawn { path, args } => {
+                let segments: Vec<String> = path.segments.iter().map(|s| s.name.clone()).collect();
+                let shown = segments.join(".");
+                let callee = if let [single] = segments.as_slice() {
+                    self.fn_value(self.current, single, path.span)?
+                } else {
+                    match self.runtime_ref(&segments) {
+                        Some(RuntimeRef::Fn(home, bare)) => {
+                            self.fn_value(home, &bare, path.span)?
+                        }
+                        _ => return trap(path.span, format!("no function `{shown}` at runtime")),
+                    }
+                };
+                let mut evaluated = Vec::with_capacity(args.len());
+                for arg in args {
+                    evaluated.push(self.eval(&arg.value, env)?);
+                }
+                match self.apply(callee, evaluated, expr.span) {
+                    Ok(value) => Ok(Value::Task(Box::new(value))),
+                    Err(Control::Trap { message, .. }) => Err(Control::Trap {
+                        message: format!("task `{shown}` trapped: {message}"),
+                        span: expr.span,
+                    }),
+                    Err(other) => Err(other),
+                }
+            }
+
             ast::ExprKind::Try(inner) => {
                 let value = self.eval(inner, env)?;
                 match value {

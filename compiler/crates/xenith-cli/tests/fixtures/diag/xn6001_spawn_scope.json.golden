@@ -1,0 +1,19 @@
+[
+  {
+    "diagnostics": [
+      {
+        "code": "XN6001",
+        "column": 13,
+        "line": 6,
+        "message": "`spawn` is only legal inside a `scope { .. }` block",
+        "severity": "error",
+        "span": {
+          "end": 101,
+          "start": 84
+        }
+      }
+    ],
+    "file": "tests/fixtures/diag/xn6001_spawn_scope.xn",
+    "schema_version": 1
+  }
+]

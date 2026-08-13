@@ -317,6 +317,18 @@ pub enum ExprKind {
     /// `expr?` — return early on the error case.
     Try(Box<Expr>),
 
+    /// `scope { .. }` — the task region (design/0015). A block expression;
+    /// `scope` is contextual, recognised only when a `{` follows, so the
+    /// word stays an ordinary identifier everywhere else.
+    Scope(Block),
+    /// `spawn path(args)` — run a pure child to completion (design/0015).
+    /// The callee is a path, resolved like an ordinary call's; `spawn` is
+    /// contextual, recognised only when an identifier follows.
+    Spawn {
+        path: Path,
+        args: Vec<Arg>,
+    },
+
     If {
         cond: Box<Expr>,
         then_block: Block,
@@ -685,6 +697,11 @@ fn normalize_expr(expr: &mut Expr) {
             normalize_ident(name);
         }
         ExprKind::Await(inner) | ExprKind::Try(inner) => normalize_expr(inner),
+        ExprKind::Scope(block) => normalize_block(block),
+        ExprKind::Spawn { path, args } => {
+            normalize_path(path);
+            args.iter_mut().for_each(normalize_arg);
+        }
         ExprKind::If {
             cond,
             then_block,

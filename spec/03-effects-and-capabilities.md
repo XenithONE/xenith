@@ -77,14 +77,24 @@ smuggled into a closure.
 
 ## 4. What ships today
 
-The whole shipped effect surface is one operation:
+The shipped effect surface is two operations:
 
-| Operation | Signature | Effect |
+| Operation | Form | Effect |
 | --- | --- | --- |
-| `Io.write` | `write(text: String) -> Result<Unit, Error>` | `Io.write` |
+| `Io.write` | `write(text: String) -> Result<Unit, Error>` — a method on `Io` | `Io.write` |
+| `Task.spawn` | `spawn f(args)` — a construct, not a method ([04 §7](04-evaluation.md#7-task-structure)) | `Task.spawn` |
 
-It writes exactly `text` to stdout — no newline is added ([04 §6](04-evaluation.md#6-determinism)).
-`Io` reaches a program only as `main`'s parameter ([04 §5](04-evaluation.md#5-entry-and-exit)).
+`Io.write` writes exactly `text` to stdout — no newline is added
+([04 §6](04-evaluation.md#6-determinism)). `Io` reaches a program only as `main`'s parameter
+([04 §5](04-evaluation.md#5-entry-and-exit)).
+
+`Task.spawn` is performed by the `spawn` construct inside a `scope { .. }` block: the
+enclosing function declares it like any other effect, and the `XN4001` fix inserts it. The
+spawned child itself declares an empty `uses` set — capabilities and effects do not cross the
+task boundary ([04 §7](04-evaluation.md#7-task-structure)) — so `Task.spawn` never propagates
+*through* a child, only up the parent's call chain. Declaring `uses {Task.spawn}` without
+spawning was legal before design/0015 gave it meaning (the namespace below is open) and stays
+legal now.
 
 **The effect namespace is open.** `uses {Net.send}` on a function that never performs it is
 accepted: declared-but-unused effects are not an error, and effect names are not validated
@@ -92,6 +102,5 @@ against a registry. The checker constrains what a function *does*, not what it p
 might do. Over-declaring weakens a signature's information value, so the convention is to
 declare exactly what the body needs — the `XN4001` fix maintains that discipline mechanically.
 
-Effect-polymorphic functions, effect rows, and further capabilities (`Fs`, `Net`, clocks,
-task spawning) are design work, not shipped surface —
-[00 §3](00-overview.md#3-adopted-but-not-shipped).
+Effect-polymorphic functions, effect rows, and further capabilities (`Fs`, `Net`, clocks) are
+design work, not shipped surface — [00 §3](00-overview.md#3-adopted-but-not-shipped).

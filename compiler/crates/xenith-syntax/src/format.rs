@@ -508,6 +508,9 @@ impl<'a> Writer<'a> {
                 self.line(&format!("}}{suffix}"));
             }
             ExprKind::Block(block) => self.braced(prefix.trim_end(), block, suffix),
+            // `scope { .. }` always takes the multi-line block form — it is a
+            // region, and a region reads as one (design/0015).
+            ExprKind::Scope(block) => self.braced(&format!("{prefix}scope"), block, suffix),
             _ => {
                 let inline = format!("{prefix}{}{suffix}", render_expr(expr, PREC_LOWEST));
                 if inline.chars().count() <= self.width_left() {
@@ -612,6 +615,15 @@ impl<'a> Writer<'a> {
                 self.depth -= 1;
                 self.line(&format!("){suffix}"));
             }
+            ExprKind::Spawn { path, args } if !args.is_empty() => {
+                self.line(&format!("{prefix}spawn {}(", render_path(path)));
+                self.depth += 1;
+                for arg in args {
+                    self.line(&format!("{},", render_arg(arg)));
+                }
+                self.depth -= 1;
+                self.line(&format!("){suffix}"));
+            }
             ExprKind::StructLit { path, fields } if !fields.is_empty() => {
                 self.line(&format!("{prefix}{} {{", render_path(path)));
                 self.depth += 1;
@@ -673,7 +685,7 @@ fn binary_precedence(op: BinaryOp) -> u8 {
 fn is_block_like(kind: &ExprKind) -> bool {
     matches!(
         kind,
-        ExprKind::Block(_) | ExprKind::If { .. } | ExprKind::Match { .. }
+        ExprKind::Block(_) | ExprKind::If { .. } | ExprKind::Match { .. } | ExprKind::Scope(_)
     )
 }
 
@@ -866,6 +878,15 @@ fn render_expr(expr: &Expr, min_precedence: u8) -> String {
         ExprKind::Await(inner) => format!("{}.await", render_expr(inner, PREC_POSTFIX)),
         ExprKind::Try(inner) => format!("{}?", render_expr(inner, PREC_POSTFIX)),
 
+        // The canonical spawn: `spawn f(args)`. Like a call, never
+        // parenthesised on its own account — the checker confines it to the
+        // two positions where no operator can reach it.
+        ExprKind::Spawn { path, args } => format!(
+            "spawn {}({})",
+            render_path(path),
+            args.iter().map(render_arg).collect::<Vec<_>>().join(", ")
+        ),
+
         ExprKind::ListLit(elements) => format!(
             "[{}]",
             elements
@@ -916,7 +937,7 @@ fn render_expr(expr: &Expr, min_precedence: u8) -> String {
         // Block-shaped expressions are emitted by the writer, not rendered
         // inline. Reaching here means one appeared somewhere the writer does
         // not break, so produce something that still parses to the same tree.
-        ExprKind::If { .. } | ExprKind::Match { .. } | ExprKind::Block(_) => {
+        ExprKind::If { .. } | ExprKind::Match { .. } | ExprKind::Block(_) | ExprKind::Scope(_) => {
             render_block_like_inline(expr)
         }
 
@@ -968,6 +989,7 @@ fn render_block_like_inline(expr: &Expr) -> String {
             )
         }
         ExprKind::Block(block) => render_block_inline(block),
+        ExprKind::Scope(block) => format!("scope {}", render_block_inline(block)),
         _ => render_expr(expr, PREC_LOWEST),
     }
 }
