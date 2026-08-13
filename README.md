@@ -7,9 +7,12 @@
 > with checked effects and sealed properties, a module system with projects, closures and four
 > `List` combinators, a minimal prelude (`List`/`Map`/`String`), typed holes that answer through
 > `xenith goals`, compiler queries, diagnostics that teach, an API-surface dump, execution via
-> `xenith run`, and all of it doubled as an MCP server. What does not: concurrency, a broader
-> standard library, native code. If you are looking for a language to build software in today,
-> this is not it yet.
+> `xenith run`, and all of it doubled as an MCP server. Structured tasks run in **real
+> parallel** — pure children on a thread pool, observably byte-identical to sequential
+> execution — and the whole toolchain also compiles to WebAssembly and runs in a browser.
+> What does not exist: shared state between tasks, channels, a broader standard library,
+> native code, a package registry. If you are looking for a language to build software in
+> today, this is not it yet.
 
 ---
 
@@ -103,23 +106,34 @@ spent entirely on the compiler–model protocol, not on punctuation.
   their output is committed and inspectable.)
 - No package registry before 1.0 — dependencies are git references.
 
-## How this gets evaluated
+## How this gets evaluated — and what the evaluation already killed
 
-The design goal is measurable, so it is measured. `bench/ai/` holds tasks with hidden tests. The same
-model attempts each task under three conditions:
+The design goal is measurable, so it is measured: over a thousand runs across seven models,
+frozen tasks with hidden tests, results committed to `bench/ai/results/`. Reported metrics are
+**pass@1** and **rounds-to-green**. The original registration promised that if `hole-guided`
+construction did not beat a documentation pack, the central premise was wrong and the design
+would be revisited. **That clause fired.** The passive hole channel measured dead — models
+invited, even explicitly permitted, to leave holes spoke to the compiler in under 5% of failing
+rounds — and the design was revisited as promised. What replaced it survived measurement:
 
-| condition | what the model gets |
-| --- | --- |
-| `full-pack` | the whole field guide in context |
-| `retrieved` | only task-relevant types, signatures and verified examples |
-| `hole-guided` | compiler holes and queries during construction |
+- **Diagnostics that teach** ([design/0009](design/0009-diagnostics-that-teach.md)): the compiler
+  attaches exact signatures to the errors models actually make. With zero documentation in
+  context, repair success rose from 34/42 to 40/42 — within one task of the full-documentation
+  arm.
+- **Priors are load-bearing** ([design/0014](design/0014-closures.md)): when the surface matches
+  training-data shape, no documentation is needed at all — `map`/`filter`/`fold` were written
+  correctly first-try by five of six models with the combinators absent from every document.
+  When the surface has no prior (structured tasks), passive documentation installs nothing:
+  fourteen programs, zero uses, all green by correct sequential code.
+- **Documents split by kind** ([design/0011](design/0011-measurement-rfc.md)): a general guide
+  teaches *wiring* (how to connect modules), a machine-generated API dump teaches *calling*
+  (what exists) — measured as a double dissociation, 12 vs 0 and 2 vs 17 first-shot passes.
+  Neither substitutes for the other.
 
-Reported metrics are **pass@1** and **mean fix-iterations-to-green**. A language change is judged by
-whether those numbers move. If `hole-guided` does not beat the others, the central premise of this
-project is wrong and the design gets revisited.
-
-Benchmarks run locally against subscription CLIs rather than metered APIs, so results are committed
-to the repository rather than produced in CI.
+The running summary of every campaign is [`bench/ai/README.md`](bench/ai/README.md); each RFC in
+[`design/`](design/) carries its verdict, including the ones that demolished their own drafts.
+Benchmarks run locally against subscription CLIs rather than metered APIs, so results are
+committed to the repository rather than produced in CI.
 
 ## Design record
 
