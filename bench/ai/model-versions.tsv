@@ -1,0 +1,24 @@
+# The version behind each benchmark column: model <TAB> version <TAB> recorded <TAB> note.
+#
+# design/0016 §2 requires versions on record, because grok moved 4.5 -> 4.6 in
+# the middle of this project and no result file said so. This table is the
+# record: `xenith-bench run` stamps the matching `version` into every result
+# file it writes, as `model_version`, and `summarize` prints the table.
+#
+# Hand-maintained on purpose — see the reader's header comment in
+# src/main.rs for why a `--version` probe cannot replace it. The values below
+# were probed once (2026-08-13) and cross-read against invoke.ps1, which is
+# where the pinned model ids actually live: change a `--model` flag there and
+# this table is stale until someone updates it.
+#
+# The rule: whoever runs a campaign burst updates the row **before** the
+# burst. `xenith-bench verify` fails if a column is missing or blank, so a
+# forgotten row cannot reach CI green. A version that genuinely cannot be
+# pinned to one model says so in words (`auto-router`) — a fact, not a blank.
+codex	codex-cli 0.147.0	2026-08-13	`codex exec` names no model; the CLI default answers and does not self-report which.
+grok	grok-4.6 (grok-cli 1.0.3)	2026-08-13	The 4.5 -> 4.6 move that motivated design/0016 §2. Cells measured before it are not comparable.
+agy	agy-cli 1.1.12	2026-08-13	`agy --print` names no model; the CLI default answers and does not self-report which.
+opencode	openai/gpt-5.6-terra (opencode 1.18.16)	2026-08-13	Model pinned by invoke.ps1; the CLI default is a video model, so it is always named.
+opencode-deepseek	opencode/deepseek-v4-flash-free (opencode 1.18.16)	2026-08-13	Same CLI binary as `opencode`, different model family — one --version cannot separate them.
+opencode-nemotron	opencode/nemotron-3-ultra-free (opencode 1.18.16)	2026-08-13	Same CLI binary as `opencode`, different model family.
+cursor	auto-router (cursor-agent 3.14.7)	2026-08-13	Auto mode routes each call; the cell measures the router as deployed, not one model.

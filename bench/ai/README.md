@@ -95,13 +95,14 @@ compiler's own syntax tree — deterministic ordering, generator version and con
 the header, never hand-edited. `verify` regenerates every dump and fails on drift, then
 checks the golden gate: every provided-module surface the reference solution consumes
 must appear in the dump (0011 §7 — no measuring against a broken map). With the six
-project references, `verify` covers 24 references (the two tier-6 closure tasks of
+project references, `verify` covers 26 references (the two tier-6 closure tasks of
 design/0014 §6 joined in 2026-08: t6-01 is a pure map/filter/fold transform, t6-02
 asks for one output line per item — the temptation is `xs.map(|x| io.write(...))`,
 the correct shape is a while loop, and the statement deliberately does not warn.
 Their arms `t6-plain` / `t6-teach` clone the v3 none pair byte-for-byte except the
 teaching flag, write their own ledgers, and are tier-fenced both ways so no frozen
-cell can absorb them on resume).
+cell can absorb them on resume; the two tier-7 task-structure tasks of design/0016
+followed on the same pattern — see below).
 
 **Reading (252/252 runs, 2026-08-08).** The family split is the finding — a double
 dissociation the pooled table hides:
@@ -128,6 +129,66 @@ lifts green 6/14 → 10/14; the XN7008 temptation never fired in 252 runs (no
 model ever attempted a cross-boundary write — a null observation point); and
 zero greens bypassed the provided API.
 
+### Task-structure conditions (0016 tier-7)
+
+The pair of [design/0016](../../design/0016-measurement-tier7.md), over the two frozen
+tier-7 tasks — `t7-01` fan-out (two pure children whose results the parent combines and
+prints once) and `t7-02` pure boundary (the parent needs an effect per item, so the
+`uses {}` contract of design/0015 refuses the obvious placement). Both arms clone the
+`v3-plain` / `v3-teach` assembly byte for byte — no docs beyond the field guide, teaching
+off/on — and are tier-fenced both ways, so no frozen cell absorbs them on resume:
+
+| Condition | Diagnostic teaching in feedback | Ledger |
+| --- | --- | --- |
+| `t7-plain` | no | `{model}-t7-plain.json` |
+| `t7-teach` | yes | `{model}-t7-teach.json` |
+| `t7-sample` | compiler default (yes) | `{model}-t7-sample.json` — **step 0, not a campaign arm** |
+
+**The usage audit is the point (0016 §0).** Four independent reviews of the draft found
+the same hole: the hidden expectation is stdout, and a *sequential* program prints the
+same bytes as a task program, so "green" cannot mean "the model reached for the feature".
+Every submitted program is therefore machine-audited — `scope`, `spawn`, `.await`, whether
+each spawned callee's `uses` set is empty, awaits against spawns, and which `List`
+combinators appear — and the audit is recorded per round in the ledger beside
+`diag_codes`. Each run then falls in exactly one class:
+
+- **used-green** — task syntax present and stdout matched. **The tier-7 pass@1 column
+  counts only these.**
+- **used-wrong** — task syntax present, but diagnostics or the wrong bytes.
+- **bypassed-green** — stdout matched with no task syntax at all. A result about the
+  prior distribution, reported in its own column, never as aptitude.
+
+(Plus **bypassed-red** — neither — which the RFC does not name but the crossing produces,
+printed so the columns sum to the runs; and **no program**, a CLI failure with nothing to
+audit.) `summarize` reports all of them, the rounds-to-used-green distribution, and a
+**delivery audit**: of the failing rounds, how many raised an XN6xxx task diagnostic and
+how many of those carried the canonical task teach. That last column is design/0012's
+discipline made standing — an effect attributed to teaching needs the teaching to have
+been delivered, and `t7-plain`'s zero is the control, not a fault.
+
+**Step 0 before the freeze is trusted.** 0016 §1 requires the tier-7 tasks to be sampled
+across all seven columns under the compiler's current defaults *before* the campaign is
+read, because fixing a battery to one model's three runs is how the last null was
+produced. That is the `t7-sample` condition: same tasks, same prompt bytes, its own
+ledger, and `summarize` keeps it out of every campaign table — it appears only as a
+coverage section.
+
+```bash
+cargo run --manifest-path compiler/Cargo.toml -p xenith-bench -- run --model grok --condition t7-sample
+```
+
+### Model versions (0016 §2)
+
+[`model-versions.tsv`](model-versions.tsv) records what actually answered each column, and
+`xenith-bench run` stamps the matching version into every result file it writes as
+`model_version`. It exists because grok moved 4.5 → 4.6 in the middle of this project and
+no result file said so. The table is hand-maintained rather than probed: `opencode`,
+`opencode-deepseek` and `opencode-nemotron` are one binary with three `--model` flags, so
+one `--version` string cannot separate them; `cursor` is the Auto router, which has no
+single answering model; and the event this defends against was a *model* swap behind an
+unchanged CLI invocation, which is exactly what a CLI probe cannot see. `verify` fails on
+a missing or blank row, and `summarize` prints the table under the tables it qualifies.
+
 ### Docs v2 (2026-08)
 
 [`field-guide.md`](field-guide.md) and [`api-table.md`](api-table.md) were frozen while the
@@ -145,10 +206,14 @@ documents, and must say so.
 - **rounds-to-green** — attempts until passing (cap 4)
 - **outcome classes per round** — `diagnostics` / `runtime failure` / `wrong output` / `pass`,
   so the failure *mode* is visible, not just the rate
+- **usage classes per run** (tier-7 only, 0016 §0) — `used-green` / `used-wrong` /
+  `bypassed-green`, from a machine audit of the submitted source. Where a tier measures a
+  *shape*, stdout alone cannot say whether the shape was used, and pass@1 counts
+  `used-green` only
 
 ## Tasks
 
-`tasks/*.toml` — ten tasks across three tiers, each carrying a prompt, the expected stdout, and a
+`tasks/*.toml` — the single-file battery, each task carrying a prompt, the expected stdout, and a
 **reference solution**. References are not decoration:
 
 ```bash

@@ -338,6 +338,7 @@ dependencies = [
  "serde",
  "serde_json",
  "toml",
+ "xenith-diag",
  "xenith-driver",
  "xenith-syntax",
 ]
@@ -395,6 +396,18 @@ dependencies = [
  "xenith-diag",
  "xenith-sema",
  "xenith-syntax",
+]
+
+[[package]]
+name = "xenith-wasm"
+version = "0.0.0"
+dependencies = [
+ "serde_json",
+ "xenith-diag",
+ "xenith-driver",
+ "xenith-sema",
+ "xenith-syntax",
+ "xenith-vm",
 ]
 
 [[package]]

@@ -33,6 +33,16 @@
 //! teaching off/on), run over the two frozen tier-6 closure tasks only.
 //! Both arms record per-round diagnostic codes and feedback verbatim, the
 //! raw material for the XN4005/XN4006 misuse-rate analysis.
+//! `t7-plain` / `t7-teach` — the 0016 tier-7 task-structure pair, the same
+//! clone one tier further on, plus the **usage audit** (`mod usage`): every
+//! submitted program is machine-read for `scope` / `spawn` / `.await`, and a
+//! green run counts toward tier-7 pass@1 only when the program that printed
+//! the right bytes actually spawned something (0016 §0 — stdout alone cannot
+//! tell a task solution from a sequential one).
+//! `t7-sample` — step 0 of 0016 §1: the same two tasks under the compiler's
+//! current defaults, for exploratory sampling across all seven models before
+//! the freeze is trusted. It writes `{model}-t7-sample.json` and `summarize`
+//! keeps it out of every campaign table.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -41,7 +51,10 @@ use std::time::Instant;
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::Deserialize;
 
+use usage::{RunClass, UsageAudit};
+
 mod t5;
+mod usage;
 
 #[derive(Parser)]
 #[command(name = "xenith-bench", about = "AI benchmark harness for Xenith")]
@@ -188,7 +201,26 @@ enum Condition {
     T6Plain,
     #[value(name = "t6-teach")]
     T6Teach,
+    // The 0016 tier-7 pair. Same clone lineage as t6 — the v3 no-docs
+    // assembly, teaching off/on — over the two frozen tier-7 task-structure
+    // tasks, with the usage audit recorded per round.
+    #[value(name = "t7-plain")]
+    T7Plain,
+    #[value(name = "t7-teach")]
+    T7Teach,
+    // Step 0 (0016 §1): the tier-7 tasks under the compiler's current
+    // defaults, for exploratory sampling before the freeze is trusted. It is
+    // deliberately in no summary array — its ledger is separate and stays
+    // out of the campaign tables.
+    #[value(name = "t7-sample")]
+    T7Sample,
 }
+
+/// Every tier some condition is fenced to. A fenced tier is drawn only by
+/// its own arms and is invisible to the legacy conditions. Pinned against
+/// [`Condition::tier_fence`] in a test, so a new fence that forgets this
+/// list fails loudly instead of leaking tasks into a frozen cell.
+const FENCED_TIERS: [u32; 2] = [6, 7];
 
 impl Condition {
     const ALL: [Condition; 3] = [Condition::Bare, Condition::FullPack, Condition::HoleGuided];
@@ -223,6 +255,10 @@ impl Condition {
     /// The 0014 §6 pair: the v3 no-docs assembly over the tier-6 closure
     /// tasks, teaching off/on. Order is the summary-table column order.
     const T6: [Condition; 2] = [Condition::T6Plain, Condition::T6Teach];
+    /// The 0016 tier-7 campaign pair. `T7Sample` is deliberately absent:
+    /// step-0 sampling is not an arm of the campaign, and every summary
+    /// table is built from these arrays.
+    const T7: [Condition; 2] = [Condition::T7Plain, Condition::T7Teach];
 
     fn name(self) -> &'static str {
         match self {
@@ -247,6 +283,9 @@ impl Condition {
             Condition::T5V2NoneOff => "t5v2-none-off",
             Condition::T6Plain => "t6-plain",
             Condition::T6Teach => "t6-teach",
+            Condition::T7Plain => "t7-plain",
+            Condition::T7Teach => "t7-teach",
+            Condition::T7Sample => "t7-sample",
         }
     }
 
@@ -281,18 +320,35 @@ impl Condition {
         self.t5_docs().is_some()
     }
 
-    /// The 0014 §6 arms draw only the frozen tier-6 closure tasks, and every
-    /// other single-file condition excludes them — a legacy cell re-run must
-    /// keep measuring the task set its ledger recorded, not silently absorb
-    /// tasks that did not exist when it was written.
-    fn tier6_tasks_only(self) -> bool {
-        matches!(self, Condition::T6Plain | Condition::T6Teach)
+    /// The one tier a condition is fenced to, or `None` for the legacy
+    /// conditions, which run tiers 1–4. The fence points both ways on
+    /// purpose (design/0014 §6, extended by 0016): a tier-7 arm never draws
+    /// the closure tasks, and re-running a frozen tier-4 cell never absorbs
+    /// tasks that did not exist when its ledger was written.
+    fn tier_fence(self) -> Option<u32> {
+        match self {
+            Condition::T6Plain | Condition::T6Teach => Some(6),
+            Condition::T7Plain | Condition::T7Teach | Condition::T7Sample => Some(7),
+            _ => None,
+        }
     }
 
     /// The single-file task filter implied by the condition. Tier-5 arms
     /// never reach this — they load project tasks through the t5 module.
     fn runs_tier(self, tier: u32) -> bool {
-        (tier == 6) == self.tier6_tasks_only()
+        match self.tier_fence() {
+            Some(fenced) => tier == fenced,
+            // Every fenced tier is invisible to the legacy conditions, so a
+            // new tier is excluded by construction rather than by an edit
+            // someone has to remember to make here.
+            None => !FENCED_TIERS.contains(&tier),
+        }
+    }
+
+    /// The tier-7 arms — campaign pair plus the step-0 sampler. These are
+    /// the conditions whose rounds carry the 0016 §0 usage audit.
+    fn is_t7(self) -> bool {
+        self.tier_fence() == Some(7)
     }
 
     /// The docs factor: these arms carry the std API table. For the tier-5
@@ -338,6 +394,7 @@ impl Condition {
                 | Condition::T5NoneOff
                 | Condition::T5V2NoneOff
                 | Condition::T6Plain
+                | Condition::T7Plain
         )
     }
 
@@ -346,7 +403,10 @@ impl Condition {
     /// Teach-off rounds are recorded too: they are the oracle's control text.
     /// The 0014 §6 arms record the same fields: the closure misuse-rate
     /// analysis reads XN4005/XN4006 (and the XN1009–XN1012 parse family)
-    /// straight out of `diag_codes`.
+    /// straight out of `diag_codes`. The 0016 tier-7 arms add the delivery
+    /// audit on top — `summarize` counts failing rounds whose feedback
+    /// carried an XN6xxx diagnostic and the canonical task teach, which is
+    /// readable only from these two fields.
     fn records_feedback(self) -> bool {
         matches!(
             self,
@@ -356,7 +416,7 @@ impl Condition {
                 | Condition::V3DocsTeach
                 | Condition::T6Plain
                 | Condition::T6Teach
-        )
+        ) || self.is_t7()
     }
 }
 
@@ -468,6 +528,34 @@ fn summarize(paths: &Paths) -> ExitCode {
         table.push_str(&t6_block);
     }
 
+    // The 0016 tier-7 campaign: its own matrix (pass@1 counts used-green
+    // only), the outcome classes, and the delivery audit.
+    let (t7_block, measured) = t7_matrix_block(paths);
+    if measured {
+        table.push_str(
+            "\n## Task structure (0016 tier-7)\n\n\
+             The design/0016 pair: the v3-plain/v3-teach prompt assembly (no docs,\n\
+             diagnostic teaching off/on) over the two frozen tier-7 tasks — t7-01 fan-out,\n\
+             t7-02 pure boundary. **Cells are `pass@1 · used-green/tasks (mean\n\
+             rounds-to-used-green)`, and both heads count used-green only**: a run whose green\n\
+             program never spawned anything is a bypass, not aptitude (0016 §0). The\n\
+             classes below account for every run, and the delivery column is the 0012\n\
+             discipline standing — an effect claimed for teaching needs the teaching to\n\
+             have been delivered.\n\n",
+        );
+        table.push_str(&t7_block);
+        table.push_str(&t7_classes_block(paths));
+    }
+
+    // Step 0 (0016 §1) is exploratory sampling, not a campaign arm: it is
+    // reported as coverage — which columns have been sampled — and never
+    // folded into a table above.
+    table.push_str(&t7_sample_block(paths));
+
+    // design/0016 §2: the versions the tables were measured at, printed
+    // where the tables are read.
+    table.push_str(&model_versions_block(paths));
+
     let out = paths.results.join("summary.md");
     if let Err(e) = std::fs::write(&out, &table) {
         eprintln!("cannot write {}: {e}", out.display());
@@ -497,10 +585,7 @@ fn matrix_block(paths: &Paths, conditions: &[Condition]) -> (String, bool) {
     for model in Model::ALL {
         table.push_str(&format!("| `{}` |", model.name()));
         for (i, condition) in conditions.iter().enumerate() {
-            let file = paths
-                .results
-                .join(format!("{}-{}.json", model.name(), condition.name()));
-            let reports = load_prior_reports(&file);
+            let reports = load_prior_reports(&cell_file(paths, model, *condition));
             if reports.is_empty() {
                 table.push_str(" — |");
                 continue;
@@ -538,6 +623,311 @@ fn matrix_block(paths: &Paths, conditions: &[Condition]) -> (String, bool) {
     (table, measured)
 }
 
+// ------------------------------------------------------------ tier-7 summary
+
+/// The 0016 §0 class of one run: the classifier applied to the last program
+/// the model actually submitted and the run's green verdict. It reads the
+/// recorded source rather than the recorded audit on purpose — the audit is
+/// the ledger's evidence, the text is the ground truth, and a test pins
+/// them equal. `None` when the model never submitted a program at all
+/// (every round a model error or an empty reply): there is nothing to
+/// audit, and calling that a bypass would blame the language for a CLI
+/// failure.
+fn run_class_of(report: &TaskReport) -> Option<RunClass> {
+    let submitted = report
+        .rounds
+        .iter()
+        .rev()
+        .find_map(|round| round.submitted.as_deref())?;
+    Some(usage::classify(submitted, report.passed))
+}
+
+/// Is this a task diagnostic — the XN6xxx family of design/0015 and 0017?
+fn is_task_code(code: &str) -> bool {
+    code.strip_prefix("XN")
+        .and_then(|digits| digits.parse::<u32>().ok())
+        .is_some_and(|number| (6000..7000).contains(&number))
+}
+
+/// The tier-7 matrix. Deliberately not [`matrix_block`]: that one's pass@1
+/// is `pass_at_1`, which counts a first-round sequential solution as a
+/// first-round success. Here both heads count used-green only (0016 §0),
+/// which is the whole point of the tier.
+fn t7_matrix_block(paths: &Paths) -> (String, bool) {
+    let mut table = String::from("| model |");
+    for condition in Condition::T7 {
+        table.push_str(&format!(" {} |", condition.name()));
+    }
+    table.push_str("\n| --- |");
+    for _ in Condition::T7 {
+        table.push_str(" --- |");
+    }
+    table.push('\n');
+
+    let mut measured = false;
+    let mut totals = [(0u32, 0u32, 0u32); Condition::T7.len()];
+    for model in Model::ALL {
+        table.push_str(&format!("| `{}` |", model.name()));
+        for (i, condition) in Condition::T7.iter().enumerate() {
+            let reports = load_prior_reports(&cell_file(paths, model, *condition));
+            if reports.is_empty() {
+                table.push_str(" — |");
+                continue;
+            }
+            measured = true;
+            let used_green: Vec<&TaskReport> = reports
+                .iter()
+                .filter(|r| run_class_of(r) == Some(RunClass::UsedGreen))
+                .collect();
+            let tasks = reports.len() as u32;
+            let pass1 = used_green.iter().filter(|r| r.pass_at_1).count() as u32;
+            let green = used_green.len() as u32;
+            totals[i].0 += pass1;
+            totals[i].1 += green;
+            totals[i].2 += tasks;
+            if used_green.is_empty() {
+                table.push_str(&format!(" {pass1} · {green}/{tasks} |"));
+            } else {
+                let mean = used_green.iter().map(|r| r.rounds.len()).sum::<usize>() as f64
+                    / used_green.len() as f64;
+                table.push_str(&format!(" {pass1} · {green}/{tasks} ({mean:.1}) |"));
+            }
+        }
+        table.push('\n');
+    }
+    table.push_str("| **total** |");
+    for (pass1, green, tasks) in &totals {
+        if *tasks == 0 {
+            table.push_str(" — |");
+        } else {
+            table.push_str(&format!(" **{pass1} · {green}/{tasks}** |"));
+        }
+    }
+    table.push('\n');
+    (table, measured)
+}
+
+/// The counts a tier-7 cell contributes: the class tally, the
+/// rounds-to-used-green buckets, and the delivery audit.
+#[derive(Default)]
+struct T7Tally {
+    classes: [u32; 4],
+    no_program: u32,
+    buckets: [u32; 4],
+    censored: u32,
+    failing_rounds: u32,
+    task_diag_rounds: u32,
+    taught_rounds: u32,
+}
+
+impl T7Tally {
+    fn absorb(&mut self, report: &TaskReport) {
+        match run_class_of(report) {
+            Some(class) => {
+                self.classes[class.index()] += 1;
+                if class == RunClass::UsedGreen {
+                    self.buckets[report.rounds.len().clamp(1, 4) - 1] += 1;
+                } else {
+                    self.censored += 1;
+                }
+            }
+            None => {
+                self.no_program += 1;
+                self.censored += 1;
+            }
+        }
+        for round in &report.rounds {
+            if round.outcome == "pass" {
+                continue;
+            }
+            self.failing_rounds += 1;
+            let task_diag = round
+                .diag_codes
+                .as_ref()
+                .is_some_and(|codes| codes.iter().any(|code| is_task_code(code)));
+            if task_diag {
+                self.task_diag_rounds += 1;
+                // The delivery question, exactly: did the feedback the
+                // model actually saw carry the canonical task teach?
+                if round
+                    .feedback_text
+                    .as_deref()
+                    .is_some_and(|text| text.contains(xenith_diag::TASK_PLAN_TEACH))
+                {
+                    self.taught_rounds += 1;
+                }
+            }
+        }
+    }
+}
+
+/// The class-count table header, one column per [`RunClass`] in its own
+/// declared order plus the un-auditable case. Generated rather than typed,
+/// so the columns and the numbers under them cannot drift apart.
+fn class_table_header(leading: &[&str]) -> String {
+    let mut out = String::from("|");
+    for name in leading {
+        out.push_str(&format!(" {name} |"));
+    }
+    for class in RunClass::ALL {
+        out.push_str(&format!(" {} |", class.label()));
+    }
+    out.push_str(" no program |\n|");
+    for _ in leading.iter().chain(std::iter::once(&"no program")) {
+        out.push_str(" --- |");
+    }
+    for _ in RunClass::ALL {
+        out.push_str(" --- |");
+    }
+    out.push('\n');
+    out
+}
+
+/// The counts of one tally, in the header's column order.
+fn class_table_row(tally: &T7Tally) -> String {
+    let mut out = String::new();
+    for class in RunClass::ALL {
+        out.push_str(&format!(" {} |", tally.classes[class.index()]));
+    }
+    out.push_str(&format!(" {} |\n", tally.no_program));
+    out
+}
+
+/// Class counts, rounds-to-used-green, and the delivery audit, pooled over
+/// models for each arm.
+fn t7_classes_block(paths: &Paths) -> String {
+    let tallies: Vec<T7Tally> = Condition::T7
+        .iter()
+        .map(|condition| {
+            let mut tally = T7Tally::default();
+            for model in Model::ALL {
+                for report in load_prior_reports(&cell_file(paths, model, *condition)) {
+                    tally.absorb(&report);
+                }
+            }
+            tally
+        })
+        .collect();
+
+    let mut out = String::from(
+        "\nOutcome classes (0016 §0), all models pooled — every run falls in exactly one\n\
+         column, so the row sums to the runs measured. `bypassed-green` is a result about\n\
+         the prior, not a score; `no program` is a CLI failure with nothing to audit.\n\n",
+    );
+    out.push_str(&class_table_header(&["condition"]));
+    for (condition, tally) in Condition::T7.iter().zip(&tallies) {
+        out.push_str(&format!("| {} |", condition.name()));
+        out.push_str(&class_table_row(tally));
+    }
+
+    out.push_str(
+        "\nRounds to used-green — how many runs reached used-green after exactly N rounds\n\
+         (censored = never used-green within the cap, whatever the stdout said):\n\n\
+         | condition | 1 | 2 | 3 | 4+ | censored |\n\
+         | --- | --- | --- | --- | --- | --- |\n",
+    );
+    for (condition, tally) in Condition::T7.iter().zip(&tallies) {
+        out.push_str(&format!(
+            "| {} | {} | {} | {} | {} | {} |\n",
+            condition.name(),
+            tally.buckets[0],
+            tally.buckets[1],
+            tally.buckets[2],
+            tally.buckets[3],
+            tally.censored,
+        ));
+    }
+
+    out.push_str(
+        "\nDelivery audit (design/0012's discipline, now standing; 0016 §4 H-delivery):\n\
+         failing rounds, how many raised a task diagnostic (XN6001–XN6011), and how many of\n\
+         those carried the canonical task teach. `t7-plain` compiles with\n\
+         `--diagnostic-teaching=off`, so its teach column is zero by construction — that is\n\
+         the control. A `t7-teach` teach column far below its XN6xxx column means the\n\
+         teaching was not delivered, and H2 is then **untested**, not confirmed.\n\n\
+         | condition | failing rounds | raised XN6xxx | carried the task teach |\n\
+         | --- | --- | --- | --- |\n",
+    );
+    for (condition, tally) in Condition::T7.iter().zip(&tallies) {
+        out.push_str(&format!(
+            "| {} | {} | {} | {} |\n",
+            condition.name(),
+            tally.failing_rounds,
+            tally.task_diag_rounds,
+            tally.taught_rounds,
+        ));
+    }
+    out
+}
+
+/// Step-0 coverage (0016 §1). Reported as its own section on purpose: these
+/// runs are exploratory input to the freeze, and mixing them into a campaign
+/// table would be the "measure the pilot, report it as the study" error.
+fn t7_sample_block(paths: &Paths) -> String {
+    let mut rows = String::new();
+    let mut sampled = 0;
+    for model in Model::ALL {
+        let reports = load_prior_reports(&cell_file(paths, model, Condition::T7Sample));
+        if reports.is_empty() {
+            continue;
+        }
+        sampled += 1;
+        let mut tally = T7Tally::default();
+        for report in &reports {
+            tally.absorb(report);
+        }
+        rows.push_str(&format!("| `{}` | {} |", model.name(), reports.len()));
+        rows.push_str(&class_table_row(&tally));
+    }
+
+    let mut out = format!(
+        "\n## Step 0 sampling (0016 §1) — not a campaign table\n\n\
+         Exploratory sampling of the tier-7 tasks under the compiler's current defaults\n\
+         (`--condition t7-sample`), whose ledgers are `{{model}}-t7-sample.json`. These runs\n\
+         enter no pass@1 figure and no table above; 0016 §1 wants all seven columns sampled\n\
+         before the freeze is trusted, because fixing a battery to one model's three runs is\n\
+         how the last null was produced. **Sampled: {sampled} of {} columns.**\n\n",
+        Model::ALL.len()
+    );
+    if sampled == 0 {
+        out.push_str("No column has been sampled yet.\n");
+        return out;
+    }
+    out.push_str(&class_table_header(&["model", "runs"]));
+    out.push_str(&rows);
+    out
+}
+
+/// The 0016 §2 version record, printed where the tables are read.
+fn model_versions_block(paths: &Paths) -> String {
+    let mut out = String::from(
+        "\n## Model versions (0016 §2)\n\n\
+         From [`../model-versions.tsv`](../model-versions.tsv), the hand-maintained record of\n\
+         what answered each column. It exists because grok moved 4.5 → 4.6 mid-project and no\n\
+         result file said so; every result file now carries its column's `model_version`, and\n\
+         a table that spans a version move is comparing different models.\n\n",
+    );
+    match load_model_versions(&paths.model_versions) {
+        Ok(rows) => {
+            out.push_str("| model | version | recorded | note |\n| --- | --- | --- | --- |\n");
+            for row in rows {
+                out.push_str(&format!(
+                    "| `{}` | {} | {} | {} |\n",
+                    row.model, row.version, row.recorded, row.note
+                ));
+            }
+        }
+        Err(message) => out.push_str(&format!("Unreadable: {message}\n")),
+    }
+    out
+}
+
+fn cell_file(paths: &Paths, model: Model, condition: Condition) -> PathBuf {
+    paths
+        .results
+        .join(format!("{}-{}.json", model.name(), condition.name()))
+}
+
 // -------------------------------------------------------------------- layout
 
 struct Paths {
@@ -551,7 +941,14 @@ struct Paths {
     api_table: PathBuf,
     primer: PathBuf,
     invoke: PathBuf,
+    model_versions: PathBuf,
 }
+
+/// Point the harness at a compiler binary of your choosing. The default
+/// target directory is one of several in this repository, and a run that
+/// silently measured a stale binary would be a measurement bug of exactly
+/// the kind README.md records two of.
+const COMPILER_ENV: &str = "XENITH_BENCH_COMPILER";
 
 impl Paths {
     fn locate() -> Paths {
@@ -562,7 +959,10 @@ impl Paths {
             .expect("repository root")
             .to_path_buf();
         Paths {
-            xenith: root.join("compiler/target/debug/xenith.exe"),
+            xenith: match std::env::var_os(COMPILER_ENV) {
+                Some(path) => PathBuf::from(path),
+                None => root.join("compiler/target/debug/xenith.exe"),
+            },
             tasks: root.join("bench/ai/tasks"),
             tasks_t5: root.join("bench/ai/tasks-t5"),
             scratch: root.join("bench/ai/scratch"),
@@ -571,6 +971,7 @@ impl Paths {
             api_table: root.join("bench/ai/api-table.md"),
             primer: root.join("bench/ai/primer-syntax.md"),
             invoke: root.join("bench/ai/invoke.ps1"),
+            model_versions: root.join("bench/ai/model-versions.tsv"),
             root,
         }
     }
@@ -581,6 +982,14 @@ impl Paths {
         let unix = self.root.join("compiler/target/debug/xenith");
         if self.xenith.exists() {
             return Ok(&self.xenith);
+        }
+        // An explicit override that does not exist is a mistake worth
+        // reporting, not a reason to fall back to the default build.
+        if std::env::var_os(COMPILER_ENV).is_some() {
+            return Err(format!(
+                "{COMPILER_ENV} points at {}, which does not exist",
+                self.xenith.display()
+            ));
         }
         if unix.exists() {
             // Leak is fine: one path for the process lifetime.
@@ -605,6 +1014,88 @@ impl Paths {
         }
     }
 }
+
+// --------------------------------------------------------- model versions
+
+/// One row of `bench/ai/model-versions.tsv`.
+struct ModelVersion {
+    model: String,
+    version: String,
+    recorded: String,
+    note: String,
+}
+
+/// The recorded version of every column, read from the committed table.
+///
+/// **Why a table and not `grok --version`.** design/0016 §2 asks for
+/// versions on record because grok moved 4.5 → 4.6 mid-project. A CLI probe
+/// cannot answer that: the thing that moved was the *model behind an
+/// unchanged CLI invocation*, and `grok --version` reports the CLI. Three
+/// further columns make the probe worse than useless — `opencode`,
+/// `opencode-deepseek` and `opencode-nemotron` are one binary with three
+/// `--model` flags, so one version string cannot distinguish them, and
+/// `cursor` is the Auto router, which has no single answering model to
+/// version. A committed table is diffable, reviewable, and says in words
+/// what a probe cannot say at all; the cost is that a human must update it,
+/// which `verify` enforces by failing on a missing or blank row.
+fn load_model_versions(file: &Path) -> Result<Vec<ModelVersion>, String> {
+    let text = std::fs::read_to_string(file).map_err(|e| format!("{}: {e}", file.display()))?;
+    let mut rows = Vec::new();
+    for line in text.lines() {
+        let line = line.trim_end();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let mut fields = line.split('\t');
+        let (Some(model), Some(version)) = (fields.next(), fields.next()) else {
+            return Err(format!(
+                "{}: malformed row `{line}` (model <TAB> version <TAB> recorded <TAB> note)",
+                file.display()
+            ));
+        };
+        rows.push(ModelVersion {
+            model: model.trim().to_string(),
+            version: version.trim().to_string(),
+            recorded: fields.next().unwrap_or("").trim().to_string(),
+            note: fields.next().unwrap_or("").trim().to_string(),
+        });
+    }
+    Ok(rows)
+}
+
+/// What `run` stamps into a result file for this model. A missing row is
+/// loud but not fatal here — `verify` is the gate, and refusing to run a
+/// long model burst over a bookkeeping file would trade a real measurement
+/// for a clerical one.
+fn model_version_for(paths: &Paths, model: Model) -> String {
+    let rows = match load_model_versions(&paths.model_versions) {
+        Ok(rows) => rows,
+        Err(message) => {
+            eprintln!("warning: {message}");
+            return UNRECORDED_VERSION.to_string();
+        }
+    };
+    match rows
+        .iter()
+        .find(|row| row.model == model.name() && !row.version.is_empty())
+    {
+        Some(row) => row.version.clone(),
+        None => {
+            eprintln!(
+                "warning: {} has no version row for `{}` — the results file will say `{}` \
+                 (design/0016 §2 wants a real version on record)",
+                paths.model_versions.display(),
+                model.name(),
+                UNRECORDED_VERSION
+            );
+            UNRECORDED_VERSION.to_string()
+        }
+    }
+}
+
+/// The value a result file carries when the table could not answer. A word,
+/// not an empty string: absence has to be visible in the artifact.
+const UNRECORDED_VERSION: &str = "unrecorded";
 
 fn load_tasks(dir: &Path) -> Result<Vec<Task>, String> {
     let mut tasks = Vec::new();
@@ -682,6 +1173,38 @@ fn verify(paths: &Paths) -> ExitCode {
     // the consumed-surface golden gate, and the frozen shuffle order.
     let (t5_ok, t5_broken) = t5::verify_all(paths, &xenith);
     broken += t5_broken;
+
+    // design/0016 §2: the version table is a measurement artifact, so it is
+    // verified like one. A column with no row, or a row with a blank
+    // version, means the next campaign burst would stamp `unrecorded` — the
+    // exact silence 0016 §2 exists to end.
+    match load_model_versions(&paths.model_versions) {
+        Ok(rows) => {
+            for model in Model::ALL {
+                match rows.iter().find(|row| row.model == model.name()) {
+                    Some(row) if !row.version.is_empty() => {}
+                    Some(_) => {
+                        eprintln!(
+                            "BROKEN   model-versions.tsv: `{}` has a blank version",
+                            model.name()
+                        );
+                        broken += 1;
+                    }
+                    None => {
+                        eprintln!(
+                            "BROKEN   model-versions.tsv: no row for `{}` (design/0016 §2)",
+                            model.name()
+                        );
+                        broken += 1;
+                    }
+                }
+            }
+        }
+        Err(message) => {
+            eprintln!("BROKEN   {message}");
+            broken += 1;
+        }
+    }
 
     if broken > 0 {
         eprintln!("{broken} broken task(s) — a benchmark over broken tasks lies");
@@ -794,9 +1317,21 @@ fn run_models(
     // Tier-5 cells are project-mode: their own tasks, prompts, run order and
     // per-round records live in the t5 module; the ledger, the round cap,
     // the CLIs and the result-file shape are shared.
+    // design/0016 §2: the version behind the column, resolved once per
+    // burst and stamped into every write of this cell's ledger.
+    let model_version = model_version_for(paths, model);
     if condition.is_t5() {
         return t5::run_campaign(
-            paths, &xenith, &guide, &api_table, model, condition, only, rounds, timeout,
+            paths,
+            &xenith,
+            &guide,
+            &api_table,
+            model,
+            condition,
+            &model_version,
+            only,
+            rounds,
+            timeout,
         );
     }
     let tasks = match load_tasks(&paths.tasks) {
@@ -842,16 +1377,26 @@ fn run_models(
         let report = run_one_task(
             paths, &xenith, &guide, &api_table, task, model, condition, rounds, timeout,
         );
-        let verdict = if report.passed {
-            format!("PASS in {} round(s)", report.rounds.len())
-        } else {
-            "FAIL".to_string()
+        // In a tier-7 cell the console says which *kind* of pass it was.
+        // "PASS" on its own is precisely the signal design/0016 §0 found
+        // untrustworthy, and a burst is watched live.
+        let verdict = match (report.passed, run_class_of(&report)) {
+            (true, Some(class)) => {
+                format!(
+                    "PASS ({}) in {} round(s)",
+                    class.label(),
+                    report.rounds.len()
+                )
+            }
+            (true, None) => format!("PASS in {} round(s)", report.rounds.len()),
+            (false, Some(class)) => format!("FAIL ({})", class.label()),
+            (false, None) => "FAIL".to_string(),
         };
         println!("   -> {verdict}");
         reports.push(report);
         // Rewrite after every task: a run that dies mid-matrix keeps what it
         // measured instead of losing an hour of model time.
-        if let Err(e) = write_results(&file, model, condition, rounds, &reports) {
+        if let Err(e) = write_results(&file, model, condition, &model_version, rounds, &reports) {
             eprintln!("{}: {e}", file.display());
             return ExitCode::FAILURE;
         }
@@ -911,6 +1456,7 @@ fn load_prior_reports(file: &Path) -> Vec<TaskReport> {
                             submitted: r["submitted"].as_str().map(str::to_string),
                             fix_count: r["fix_count"].as_u64(),
                             teach_count: r["teach_count"].as_u64(),
+                            usage: usage_from_json(&r["usage"]),
                         })
                     })
                     .collect(),
@@ -923,6 +1469,7 @@ fn write_results(
     file: &Path,
     model: Model,
     condition: Condition,
+    model_version: &str,
     rounds: u32,
     reports: &[TaskReport],
 ) -> Result<(), String> {
@@ -934,6 +1481,10 @@ fn write_results(
         .unwrap_or(0);
     let summary = serde_json::json!({
         "model": model.name(),
+        // design/0016 §2: which model actually answered, on the artifact
+        // itself. A run whose column moved versions mid-campaign is only
+        // detectable later if each burst said so at the time.
+        "model_version": model_version,
         "condition": condition.name(),
         "rounds_limit": rounds,
         "unix_time": unix_time,
@@ -979,6 +1530,12 @@ struct RoundRecord {
     /// Tier-5 only: teach lines in the feedback (zero in every off arm by
     /// the 0009 byte-identity guarantee).
     teach_count: Option<u64>,
+    /// Tier-7 only (0016 §0): the usage audit of `submitted`. Recorded per
+    /// round, not just on the final one, so the analysis can watch a model
+    /// arrive at — or retreat from — the task vocabulary across repair
+    /// rounds. `None` everywhere else, so earlier result files keep their
+    /// exact shape.
+    usage: Option<UsageAudit>,
 }
 
 impl RoundRecord {
@@ -996,6 +1553,7 @@ impl RoundRecord {
             submitted: None,
             fix_count: None,
             teach_count: None,
+            usage: None,
         }
     }
 }
@@ -1044,7 +1602,48 @@ fn round_json(round: &RoundRecord) -> serde_json::Value {
     if let Some(count) = round.teach_count {
         json["teach_count"] = serde_json::json!(count);
     }
+    if let Some(audit) = &round.usage {
+        json["usage"] = usage_json(audit);
+    }
     json
+}
+
+/// The usage audit as recorded (0016 §0). Written field by field rather
+/// than derived, so the ledger's shape is visible here and does not move
+/// when the audit grows a field.
+fn usage_json(audit: &UsageAudit) -> serde_json::Value {
+    serde_json::json!({
+        "scope": audit.scope,
+        "spawns": audit.spawns,
+        "awaits": audit.awaits,
+        "spawned_callees": audit.spawned_callees,
+        "impure_callees": audit.impure_callees,
+        "unresolved_callees": audit.unresolved_callees,
+        "list_combinators": audit.list_combinators,
+    })
+}
+
+fn usage_from_json(value: &serde_json::Value) -> Option<UsageAudit> {
+    let strings = |key: &str| -> Vec<String> {
+        value[key]
+            .as_array()
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|item| item.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    Some(UsageAudit {
+        scope: value["scope"].as_bool()?,
+        spawns: value["spawns"].as_u64()? as usize,
+        awaits: value["awaits"].as_u64()? as usize,
+        spawned_callees: strings("spawned_callees"),
+        impure_callees: strings("impure_callees"),
+        unresolved_callees: strings("unresolved_callees"),
+        list_combinators: strings("list_combinators"),
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1119,6 +1718,11 @@ fn run_one_task(
 
         let judgement = judge(xenith, &file, task, condition);
         let done = judgement.feedback.is_none();
+        // Tier-7 rounds carry the submitted text and its usage audit
+        // (0016 §0). The text is what makes the audit re-derivable later —
+        // a recorded number nobody can recompute is a number nobody can
+        // check — and the audit is what `summarize` classifies from.
+        let audited = condition.is_t7().then(|| UsageAudit::of(&code));
         report.rounds.push(RoundRecord {
             attempt,
             outcome: judgement.outcome,
@@ -1126,9 +1730,10 @@ fn run_one_task(
             goals: judgement.goals,
             diag_codes: judgement.diag_codes,
             feedback_text: judgement.feedback_text,
-            submitted: None,
+            submitted: audited.is_some().then(|| code.clone()),
             fix_count: None,
             teach_count: None,
+            usage: audited,
         });
 
         if done {
@@ -1344,7 +1949,14 @@ fn first_prompt(guide: &str, api_table: &str, task: &Task, condition: Condition)
         | Condition::V3Docs
         | Condition::V3DocsTeach
         | Condition::T6Plain
-        | Condition::T6Teach => {
+        | Condition::T6Teach
+        // The 0016 tier-7 arms clone the same assembly one tier further on,
+        // and the step-0 sampler shares it too — step 0 must draw from the
+        // same population as the measurement layer (0016 §1), which means
+        // the same prompt bytes, not a free-form "use tasks" instruction.
+        | Condition::T7Plain
+        | Condition::T7Teach
+        | Condition::T7Sample => {
             let guide = if condition.has_api_table() {
                 format!("{guide}\n\n## std API reference\n\n{api_table}")
             } else {
@@ -1578,7 +2190,15 @@ mod tests {
                 RoundRecord::bare(2, "pass".into(), 2.0),
             ],
         }];
-        write_results(&file, Model::Codex, Condition::Query, 4, &written).unwrap();
+        write_results(
+            &file,
+            Model::Codex,
+            Condition::Query,
+            "test-version",
+            4,
+            &written,
+        )
+        .unwrap();
         let loaded = load_prior_reports(&file);
         std::fs::remove_file(&file).ok();
         assert_eq!(loaded.len(), 1);
@@ -1725,6 +2345,443 @@ mod tests {
         }
     }
 
+    // ------------------------------------------------------ tier-7 (0016)
+
+    /// A program that prints the required bytes without a task in it — the
+    /// bypass the whole tier exists to detect.
+    const SEQUENTIAL: &str = concat!(
+        "fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n",
+        "    io.write(text: \"820 40320\")?;\n",
+        "    return Ok(unit);\n",
+        "}\n"
+    );
+
+    /// The same answer through the task surface.
+    const WITH_TASKS: &str = concat!(
+        "fn plan(n: Int) -> Int {\n    n\n}\n\n",
+        "fn main(io: Io) -> Result<Unit, Error> uses {Io.write, Task.spawn} {\n",
+        "    let total = scope {\n",
+        "        let a = spawn plan(n: 1);\n",
+        "        let b = spawn plan(n: 2);\n",
+        "        a.await + b.await\n",
+        "    };\n",
+        "    io.write(text: total.to_text())?;\n",
+        "    return Ok(unit);\n",
+        "}\n"
+    );
+
+    /// A `Paths` whose results directory is empty and disposable, so the
+    /// summary functions can be exercised without reading — or writing —
+    /// the committed ledgers.
+    fn temp_paths(tag: &str) -> Paths {
+        let mut paths = Paths::locate();
+        let dir = std::env::temp_dir().join(format!("xenith-bench-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        paths.results = dir;
+        paths
+    }
+
+    /// One tier-7 round as the runner records it.
+    fn t7_round(attempt: u32, outcome: &str, source: &str) -> RoundRecord {
+        RoundRecord {
+            submitted: Some(source.to_string()),
+            usage: Some(UsageAudit::of(source)),
+            ..RoundRecord::bare(attempt, outcome.into(), 1.0)
+        }
+    }
+
+    fn t7_report(task: &str, passed: bool, rounds: Vec<RoundRecord>) -> TaskReport {
+        TaskReport {
+            task: task.into(),
+            tier: 7,
+            passed,
+            pass_at_1: passed && rounds.len() == 1,
+            rounds,
+        }
+    }
+
+    #[test]
+    fn t7_condition_names_match_result_files() {
+        let names: Vec<&str> = Condition::T7.iter().map(|c| c.name()).collect();
+        assert_eq!(names, ["t7-plain", "t7-teach"]);
+        assert_eq!(Condition::T7Sample.name(), "t7-sample");
+        for condition in Condition::T7.into_iter().chain([Condition::T7Sample]) {
+            let value = condition.to_possible_value().expect("hidden variant");
+            assert_eq!(value.get_name(), condition.name());
+        }
+        // Step 0 is not an arm: it must not appear in the array every
+        // campaign table is generated from.
+        assert!(!Condition::T7.contains(&Condition::T7Sample));
+    }
+
+    #[test]
+    fn t7_prompts_clone_the_v3_plain_assembly_byte_for_byte() {
+        // 0016 §1: step 0 draws from the same population as the campaign,
+        // which means the same prompt bytes — not a free-form instruction
+        // to use tasks. And as in v3, teaching is invisible in round 1.
+        for condition in Condition::T7.into_iter().chain([Condition::T7Sample]) {
+            assert_eq!(
+                separation_prompt(condition),
+                separation_prompt(Condition::V3Plain),
+                "{}",
+                condition.name()
+            );
+            let prompt = separation_prompt(condition);
+            assert!(!prompt.contains("## std API reference"));
+            // Over the stub guide, so this is about the *skeleton* and the
+            // statement: neither may name the feature. The real field
+            // guide's Tasks section is deliberately present — documenting
+            // the shipped language is the condition, not a nudge.
+            for word in ["spawn", "scope", "await", "task", "parallel"] {
+                assert!(
+                    !prompt.contains(word),
+                    "{} names `{word}`",
+                    condition.name()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn t7_teaching_follows_the_arm_and_the_sampler_keeps_the_default() {
+        assert!(!Condition::T7Plain.teaching());
+        assert!(Condition::T7Teach.teaching());
+        // Step 0 runs "with the current default settings" (0016 §1), and
+        // the compiler's default is teaching on.
+        assert!(Condition::T7Sample.teaching());
+        for condition in Condition::T7.into_iter().chain([Condition::T7Sample]) {
+            assert!(condition.is_t7(), "{}", condition.name());
+            assert!(!condition.is_t5(), "{}", condition.name());
+            assert!(!condition.has_api_table(), "{}", condition.name());
+            assert!(!condition.feeds_goals(), "{}", condition.name());
+            // The delivery audit reads diag_codes and the verbatim
+            // feedback; without both it cannot be computed at all.
+            assert!(condition.records_feedback(), "{}", condition.name());
+        }
+    }
+
+    #[test]
+    fn the_tier_fence_points_both_ways_for_every_condition() {
+        for condition in Condition::T7.into_iter().chain([Condition::T7Sample]) {
+            assert!(condition.runs_tier(7), "{}", condition.name());
+            for tier in [1, 2, 3, 4, 6] {
+                assert!(!condition.runs_tier(tier), "{}", condition.name());
+            }
+        }
+        // The tier-6 pair must not absorb the new tasks on a re-run.
+        for condition in Condition::T6 {
+            assert!(condition.runs_tier(6), "{}", condition.name());
+            assert!(!condition.runs_tier(7), "{}", condition.name());
+        }
+        for condition in Condition::ALL
+            .into_iter()
+            .chain(Condition::SEPARATION)
+            .chain(Condition::V3)
+        {
+            assert!(!condition.runs_tier(7), "{}", condition.name());
+        }
+        // Every fence a condition declares is listed, so a future tier
+        // cannot leak into the legacy conditions by omission.
+        for condition in Condition::ALL
+            .into_iter()
+            .chain(Condition::SEPARATION)
+            .chain(Condition::V3)
+            .chain(Condition::T5)
+            .chain(Condition::T5V2)
+            .chain(Condition::T6)
+            .chain(Condition::T7)
+            .chain([Condition::T7Sample])
+        {
+            if let Some(tier) = condition.tier_fence() {
+                assert!(
+                    FENCED_TIERS.contains(&tier),
+                    "{} is fenced to tier {tier}, which FENCED_TIERS omits",
+                    condition.name()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_frozen_tier7_tasks_are_two_and_never_warn_about_the_constraint() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repository root");
+        let tasks = load_tasks(&root.join("bench/ai/tasks")).unwrap();
+        let t7: Vec<&Task> = tasks.iter().filter(|t| t.tier == 7).collect();
+        assert_eq!(t7.len(), 2, "0016 §1 froze two tier-7 tasks");
+        assert_eq!(t7[0].name, "t7-01");
+        assert_eq!(t7[1].name, "t7-02");
+        for task in &t7 {
+            // The statement describes the outcome and nothing else: naming
+            // the feature would measure instruction-following, and warning
+            // about the purity rule would measure the warning.
+            let prompt = task.prompt.to_lowercase();
+            for word in [
+                "spawn",
+                "scope",
+                "await",
+                "task",
+                "parallel",
+                "concurren",
+                "pure",
+                "effect",
+                "uses",
+            ] {
+                assert!(!prompt.contains(word), "{} names `{word}`", task.name);
+            }
+            // And the reference is a task solution — the tier measures a
+            // shape, so its own answer key must have that shape.
+            let audit = UsageAudit::of(&task.reference);
+            assert!(audit.uses_tasks(), "{} reference never spawns", task.name);
+            assert_eq!(
+                audit.spawns, audit.awaits,
+                "{}: every spawned Join is awaited exactly once",
+                task.name
+            );
+            assert!(
+                audit.impure_callees.is_empty(),
+                "{}: a spawned child declares effects",
+                task.name
+            );
+            assert!(
+                audit.unresolved_callees.is_empty(),
+                "{}: a spawned callee is not declared in the file",
+                task.name
+            );
+        }
+    }
+
+    #[test]
+    fn tier7_pass_at_1_counts_used_green_only() {
+        // The four-reviewer finding, as an instrument test: two green runs,
+        // one of which never spawned. The tier-7 head must count one.
+        let paths = temp_paths("t7-matrix");
+        let reports = vec![
+            t7_report("t7-01", true, vec![t7_round(1, "pass", WITH_TASKS)]),
+            t7_report("t7-02", true, vec![t7_round(1, "pass", SEQUENTIAL)]),
+        ];
+        write_results(
+            &cell_file(&paths, Model::Codex, Condition::T7Plain),
+            Model::Codex,
+            Condition::T7Plain,
+            "test-version",
+            4,
+            &reports,
+        )
+        .unwrap();
+
+        let (matrix, measured) = t7_matrix_block(&paths);
+        assert!(measured);
+        assert!(
+            matrix.contains("| `codex` | 1 · 1/2 (1.0) |"),
+            "pass@1 counted the sequential green:\n{matrix}"
+        );
+        // The generic block still reports the raw stdout figure — the two
+        // numbers are different questions, and both stay available.
+        let (generic, _) = matrix_block(&paths, &[Condition::T7Plain]);
+        assert!(generic.contains("| `codex` | 2 · 2/2 (1.0) |"), "{generic}");
+
+        let classes = t7_classes_block(&paths);
+        assert!(
+            classes.contains("| t7-plain | 1 | 0 | 1 | 0 | 0 |"),
+            "{classes}"
+        );
+        // Rounds-to-used-green censors the bypass rather than crediting it.
+        assert!(
+            classes.contains("| t7-plain | 1 | 0 | 0 | 0 | 1 |"),
+            "{classes}"
+        );
+        std::fs::remove_dir_all(&paths.results).ok();
+    }
+
+    #[test]
+    fn the_delivery_audit_counts_task_diagnostics_and_the_teach_that_rode_with_them() {
+        let paths = temp_paths("t7-delivery");
+        let taught = RoundRecord {
+            diag_codes: Some(vec!["XN6002".into()]),
+            feedback_text: Some(format!(
+                "error[XN6002]: the spawned callee declares effects; {}",
+                xenith_diag::TASK_PLAN_TEACH
+            )),
+            ..t7_round(1, "diagnostics", WITH_TASKS)
+        };
+        let untaught = RoundRecord {
+            diag_codes: Some(vec!["XN2003".into()]),
+            feedback_text: Some("error[XN2003]: unknown method `shove`".into()),
+            ..t7_round(2, "diagnostics", WITH_TASKS)
+        };
+        let reports = vec![t7_report(
+            "t7-02",
+            false,
+            vec![taught, untaught, t7_round(3, "wrong output", SEQUENTIAL)],
+        )];
+        write_results(
+            &cell_file(&paths, Model::Grok, Condition::T7Teach),
+            Model::Grok,
+            Condition::T7Teach,
+            "test-version",
+            4,
+            &reports,
+        )
+        .unwrap();
+
+        let classes = t7_classes_block(&paths);
+        // Three failing rounds, one of them an XN6xxx, and that one carried
+        // the teach. The final program was the sequential one, so the run
+        // itself is a bypass that never went green.
+        assert!(classes.contains("| t7-teach | 3 | 1 | 1 |"), "{classes}");
+        // The class follows the program the run ended on — it retreated to
+        // the sequential shape and never went green, so: bypassed-red.
+        assert!(
+            classes.contains("| t7-teach | 0 | 0 | 0 | 1 | 0 |"),
+            "{classes}"
+        );
+        std::fs::remove_dir_all(&paths.results).ok();
+    }
+
+    #[test]
+    fn step_zero_samples_stay_out_of_every_campaign_table() {
+        let paths = temp_paths("t7-sample");
+        let reports = vec![t7_report(
+            "t7-01",
+            true,
+            vec![t7_round(1, "pass", WITH_TASKS)],
+        )];
+        write_results(
+            &cell_file(&paths, Model::Grok, Condition::T7Sample),
+            Model::Grok,
+            Condition::T7Sample,
+            "test-version",
+            4,
+            &reports,
+        )
+        .unwrap();
+
+        // The campaign matrix has not been measured at all…
+        let (matrix, measured) = t7_matrix_block(&paths);
+        assert!(
+            !measured,
+            "a sample ledger started a campaign table:\n{matrix}"
+        );
+        assert!(matrix.contains("| `grok` | — | — |"), "{matrix}");
+        // …and the sample section reports it, labelled as what it is.
+        let sample = t7_sample_block(&paths);
+        assert!(sample.contains("**Sampled: 1 of 7 columns.**"), "{sample}");
+        assert!(
+            sample.contains("| `grok` | 1 | 1 | 0 | 0 | 0 | 0 |"),
+            "{sample}"
+        );
+        assert!(sample.contains("not a campaign table"), "{sample}");
+        std::fs::remove_dir_all(&paths.results).ok();
+    }
+
+    #[test]
+    fn the_always_printed_sections_render_before_anything_is_measured() {
+        // Step-0 coverage and the version record are appended
+        // unconditionally: the first is a standing to-do for the
+        // coordinator, the second qualifies every table above it.
+        let paths = temp_paths("t7-empty");
+        let sample = t7_sample_block(&paths);
+        assert!(sample.contains("**Sampled: 0 of 7 columns.**"), "{sample}");
+        assert!(
+            sample.contains("No column has been sampled yet."),
+            "{sample}"
+        );
+        let versions = model_versions_block(&paths);
+        for model in Model::ALL {
+            assert!(
+                versions.contains(&format!("| `{}` |", model.name())),
+                "{versions}"
+            );
+        }
+        assert!(versions.contains("grok-4.6"), "{versions}");
+        std::fs::remove_dir_all(&paths.results).ok();
+    }
+
+    #[test]
+    fn an_unanswered_run_is_not_credited_as_a_bypass() {
+        // Every round a CLI failure: nothing was submitted, so there is no
+        // program to audit and no class to assign.
+        let report = TaskReport {
+            task: "t7-01".into(),
+            tier: 7,
+            passed: false,
+            pass_at_1: false,
+            rounds: vec![RoundRecord::bare(1, "empty reply".into(), 1.0)],
+        };
+        assert!(run_class_of(&report).is_none());
+        let mut tally = T7Tally::default();
+        tally.absorb(&report);
+        assert_eq!(tally.no_program, 1);
+        assert_eq!(tally.classes, [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn task_diagnostic_codes_are_the_xn6xxx_family_and_nothing_adjacent() {
+        for code in ["XN6001", "XN6002", "XN6011", "XN6999"] {
+            assert!(is_task_code(code), "{code}");
+        }
+        for code in ["XN5999", "XN7000", "XN2003", "XN60", "XN", "XN60a", ""] {
+            assert!(!is_task_code(code), "{code}");
+        }
+    }
+
+    #[test]
+    fn the_usage_audit_and_the_model_version_survive_the_results_round_trip() {
+        let paths = temp_paths("t7-roundtrip");
+        let file = cell_file(&paths, Model::Codex, Condition::T7Teach);
+        let reports = vec![t7_report(
+            "t7-01",
+            true,
+            vec![t7_round(1, "pass", WITH_TASKS)],
+        )];
+        write_results(
+            &file,
+            Model::Codex,
+            Condition::T7Teach,
+            "grok-4.6 (grok-cli 1.0.3)",
+            4,
+            &reports,
+        )
+        .unwrap();
+        let text = std::fs::read_to_string(&file).unwrap();
+        assert!(text.contains("\"model_version\": \"grok-4.6 (grok-cli 1.0.3)\""));
+
+        let loaded = load_prior_reports(&file);
+        std::fs::remove_dir_all(&paths.results).ok();
+        let round = &loaded[0].rounds[0];
+        let audit = round.usage.clone().expect("the audit round-trips");
+        assert_eq!(audit.spawns, 2);
+        assert_eq!(audit.awaits, 2);
+        assert_eq!(audit.spawned_callees, ["plan", "plan"]);
+        assert!(audit.list_combinators.is_empty());
+        // The ledger's audit is exactly a re-audit of the ledger's own
+        // source text: the recorded numbers stay recomputable, which is the
+        // only reason to trust them.
+        assert_eq!(audit, UsageAudit::of(round.submitted.as_deref().unwrap()));
+        assert_eq!(run_class_of(&loaded[0]), Some(RunClass::UsedGreen));
+    }
+
+    #[test]
+    fn every_column_has_a_recorded_model_version() {
+        // design/0016 §2. `verify` gates this too; the unit test makes the
+        // gate reachable without a compiler binary.
+        let paths = Paths::locate();
+        let rows = load_model_versions(&paths.model_versions).expect("the table parses");
+        for model in Model::ALL {
+            let row = rows
+                .iter()
+                .find(|row| row.model == model.name())
+                .unwrap_or_else(|| panic!("no version row for `{}`", model.name()));
+            assert!(!row.version.is_empty(), "{}", model.name());
+            assert!(!row.recorded.is_empty(), "{}", model.name());
+        }
+        assert_eq!(rows.len(), Model::ALL.len(), "an unknown column has a row");
+    }
+
     #[test]
     fn t6_condition_names_match_result_files() {
         let names: Vec<&str> = Condition::T6.iter().map(|c| c.name()).collect();
@@ -1785,7 +2842,7 @@ mod tests {
             .chain(Condition::SEPARATION)
             .chain(Condition::V3)
         {
-            assert!(!condition.tier6_tasks_only(), "{}", condition.name());
+            assert_eq!(condition.tier_fence(), None, "{}", condition.name());
             assert!(!condition.runs_tier(6), "{}", condition.name());
             for tier in [1, 2, 3, 4] {
                 assert!(condition.runs_tier(tier), "{}", condition.name());
@@ -1865,7 +2922,15 @@ mod tests {
                 },
             ],
         }];
-        write_results(&file, Model::Codex, Condition::T5ApiOn, 4, &written).unwrap();
+        write_results(
+            &file,
+            Model::Codex,
+            Condition::T5ApiOn,
+            "test-version",
+            4,
+            &written,
+        )
+        .unwrap();
         let loaded = load_prior_reports(&file);
         std::fs::remove_file(&file).ok();
         assert_eq!(loaded.len(), 1);
@@ -1954,7 +3019,15 @@ mod tests {
                 RoundRecord::bare(2, "pass".into(), 2.0),
             ],
         }];
-        write_results(&file, Model::Codex, Condition::V3Teach, 4, &written).unwrap();
+        write_results(
+            &file,
+            Model::Codex,
+            Condition::V3Teach,
+            "test-version",
+            4,
+            &written,
+        )
+        .unwrap();
         let loaded = load_prior_reports(&file);
         std::fs::remove_file(&file).ok();
         assert_eq!(loaded.len(), 1);

@@ -575,6 +575,7 @@ pub fn run_campaign(
     api_table: &str,
     model: Model,
     condition: Condition,
+    model_version: &str,
     only: &[String],
     rounds: u32,
     timeout: u64,
@@ -670,7 +671,7 @@ pub fn run_campaign(
         };
         println!("   -> {verdict}");
         reports.push(report);
-        if let Err(e) = write_results(&file, model, condition, rounds, &reports) {
+        if let Err(e) = write_results(&file, model, condition, model_version, rounds, &reports) {
             eprintln!("{}: {e}", file.display());
             return ExitCode::FAILURE;
         }
@@ -788,6 +789,9 @@ fn run_one_task(
             submitted: Some(code.clone()),
             fix_count: feedback.as_deref().map(count_fix_lines),
             teach_count: feedback.as_deref().map(count_teach_lines),
+            // The 0016 usage audit is a tier-7 record; tier-5 ledgers keep
+            // the shape their campaign wrote.
+            usage: None,
         });
 
         if done {

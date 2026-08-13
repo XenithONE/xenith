@@ -18,3 +18,7 @@ toml = { workspace = true }
 # own — one grammar, one truth.
 xenith-driver = { workspace = true }
 xenith-syntax = { workspace = true }
+# The tier-7 delivery audit (design/0016 §4) asks whether the feedback a
+# model saw carried the canonical task teach. That sentence has exactly one
+# definition, in the compiler; a copy here would drift the day it is reworded.
+xenith-diag = { workspace = true }

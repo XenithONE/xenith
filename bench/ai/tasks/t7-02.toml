@@ -1,0 +1,39 @@
+name = "t7-02"
+tier = 7
+prompt = '''
+Write a complete Xenith program. For each of the whole numbers 12, 30, 7 in that order, add up
+every whole number from 1 up to and including it, and print one line of the form n: total,
+where n is the number and total is that sum. Every line ends with a newline, including the
+last one.
+'''
+expected_stdout = "12: 78\n30: 465\n7: 28\n"
+reference = '''
+fn sum_to(limit: Int) -> Int {
+    var total = 0;
+    var i = 1;
+    while i <= limit {
+        total = total + i;
+        i = i + 1;
+    }
+    total
+}
+
+fn render(label: Int, total: Int) -> String {
+    label.to_text().concat(other: ": ").concat(other: total.to_text()).concat(other: "\n")
+}
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write, Task.spawn} {
+    scope {
+        let a = spawn sum_to(limit: 12);
+        let b = spawn sum_to(limit: 30);
+        let c = spawn sum_to(limit: 7);
+        let first = a.await;
+        let second = b.await;
+        let third = c.await;
+        io.write(text: render(label: 12, total: first))?;
+        io.write(text: render(label: 30, total: second))?;
+        io.write(text: render(label: 7, total: third))?;
+    }
+    return Ok(unit);
+}
+'''

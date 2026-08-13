@@ -1,0 +1,41 @@
+name = "t7-01"
+tier = 7
+prompt = '''
+Write a complete Xenith program. Work out two numbers: the sum of every whole number from 1
+to 40, and the product of every whole number from 1 to 8. Print the sum, then a single space,
+then the product, and nothing else.
+'''
+expected_stdout = "820 40320"
+reference = '''
+fn sum_to(limit: Int) -> Int {
+    var total = 0;
+    var i = 1;
+    while i <= limit {
+        total = total + i;
+        i = i + 1;
+    }
+    total
+}
+
+fn product_to(limit: Int) -> Int {
+    var total = 1;
+    var i = 2;
+    while i <= limit {
+        total = total * i;
+        i = i + 1;
+    }
+    total
+}
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write, Task.spawn} {
+    let line = scope {
+        let a = spawn sum_to(limit: 40);
+        let b = spawn product_to(limit: 8);
+        let sum = a.await;
+        let product = b.await;
+        sum.to_text().concat(other: " ").concat(other: product.to_text())
+    };
+    io.write(text: line)?;
+    return Ok(unit);
+}
+'''
