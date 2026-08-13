@@ -196,6 +196,8 @@ pub enum DiagCode {
     PropertyNotSatisfied,
     /// XN3011 — a struct or enum contains itself by value.
     InfiniteSizeType,
+    /// XN3012 — a `const` initializer is not a constant expression.
+    NotConstant,
 
     /// XN4001 — a call performs an effect the enclosing function does not declare.
     EffectNotPermitted,
@@ -293,6 +295,7 @@ impl DiagCode {
         DiagCode::AssignmentToImmutable,
         DiagCode::PropertyNotSatisfied,
         DiagCode::InfiniteSizeType,
+        DiagCode::NotConstant,
         DiagCode::EffectNotPermitted,
         DiagCode::CapabilityCapture,
         DiagCode::EffectInClosure,
@@ -361,6 +364,7 @@ impl DiagCode {
             DiagCode::AssignmentToImmutable => "XN3009",
             DiagCode::PropertyNotSatisfied => "XN3010",
             DiagCode::InfiniteSizeType => "XN3011",
+            DiagCode::NotConstant => "XN3012",
             DiagCode::EffectNotPermitted => "XN4001",
             DiagCode::CapabilityCapture => "XN4005",
             DiagCode::EffectInClosure => "XN4006",
@@ -771,6 +775,23 @@ impl DiagCode {
                  Values are values in Xenith: a struct holds its fields                  directly, an enum holds its payloads directly. A type that                  reaches itself that way — directly, or through a chain of                  other types, across modules or not — would need infinite                  space.
 
                  The containers break the chain: `Option`, `List` and `Map`                  hold their contents indirectly, so `next: Option<Node>` is                  the ordinary way to write a recursive shape. The message                  names the cycle; put one of them on any link in it."
+            }
+            DiagCode::NotConstant => {
+                "A `const` initializer must be a constant expression, and this \
+                 one is not.\n\n\
+                 A constant expression in 0.0 is a literal, or arithmetic \
+                 (`+ - * / %`, unary `-`, unary `!`) over literals — nothing \
+                 else. No calls, no other names, no struct or list literals, \
+                 not even another `const`: the value is decided while the \
+                 module is being checked, so anything that would have to *run* \
+                 first cannot appear. Keeping references out also means a const \
+                 cannot depend on a const, so there is no initialization order \
+                 and no initialization cycle to diagnose.\n\n\
+                 The arithmetic is folded during the check, which is why an \
+                 overflow or a division by zero in an initializer is this error \
+                 rather than a trap at every use.\n\n\
+                 Where a value has to be computed, write a function returning \
+                 it and call that."
             }
             DiagCode::EffectNotPermitted => {
                 "This call performs an effect the enclosing function does not \
@@ -1483,6 +1504,7 @@ mod tests {
                 | DiagCode::AssignmentToImmutable
                 | DiagCode::PropertyNotSatisfied
                 | DiagCode::InfiniteSizeType
+                | DiagCode::NotConstant
                 | DiagCode::EffectNotPermitted
                 | DiagCode::CapabilityCapture
                 | DiagCode::EffectInClosure
@@ -1509,8 +1531,8 @@ mod tests {
                 | DiagCode::CrossModuleAssignment => seen += 1,
             }
         }
-        assert_eq!(seen, 63, "update DiagCode::ALL when adding a variant");
-        assert_eq!(DiagCode::ALL.len(), 63);
+        assert_eq!(seen, 64, "update DiagCode::ALL when adding a variant");
+        assert_eq!(DiagCode::ALL.len(), 64);
     }
 
     #[test]

@@ -223,6 +223,233 @@ fn a_named_function_cannot_ride_into_a_combinator() {
     assert_eq!(codes_of(source), ["XN1008", "XN3005"]);
 }
 
+// ------------------------------------------------------------------- consts
+//
+// `const` parsed and resolved to nothing before; it now enters the table,
+// types its references, and folds its initializer at check time. The fold's
+// grammar is the whole contract: a literal, or arithmetic over literals.
+
+#[test]
+fn a_const_resolves_and_carries_its_declared_type() {
+    expect_clean(
+        "const LIMIT: Int = 1_000;\n\
+         const NAME: String = \"ada\";\n\
+         const ON: Bool = !false;\n\
+         fn cap(n: Int) -> Int { if n > LIMIT { LIMIT } else { n } }\n\
+         fn label() -> String { NAME }\n\
+         fn flag() -> Bool { ON }",
+    );
+}
+
+#[test]
+fn a_const_is_a_value_wherever_a_value_goes() {
+    // Including inside a closure body: a const is a module-level item, so
+    // no capture rule applies to it (design/0014 §1 is about bindings).
+    expect_clean(
+        "const STEP: Int = 2;\n\
+         fn scaled(xs: List<Int>) -> List<Int> { xs.map(f: |x| x * STEP) }",
+    );
+}
+
+#[test]
+fn arithmetic_over_literals_folds_but_a_call_does_not() {
+    expect_clean("const HALF: Int = 1_000 / 2;\nfn f() -> Int { HALF }");
+    let found = diagnostics_of("fn one() -> Int { 1 }\nconst C: Int = one();");
+    let codes: Vec<&str> = found.iter().map(|(c, _)| c.as_str()).collect();
+    assert_eq!(codes, ["XN3012"], "{found:#?}");
+    assert!(
+        found[0].1.contains("arithmetic over literals"),
+        "{found:#?}"
+    );
+}
+
+#[test]
+fn a_const_may_not_name_another_const() {
+    // The exclusion that keeps initialization order — and therefore the
+    // initialization cycle design/0010 §5 reserves a diagnostic for — from
+    // existing at all.
+    assert_eq!(codes_of("const A: Int = 1;\nconst B: Int = A;"), ["XN3012"]);
+}
+
+#[test]
+fn a_const_initializer_is_checked_against_its_annotation() {
+    assert_eq!(codes_of("const NAME: String = 5;"), ["XN3001"]);
+    assert_eq!(codes_of("const MIXED: Int = 1 + 1.0;"), ["XN3001"]);
+}
+
+#[test]
+fn overflow_and_division_by_zero_are_refused_at_the_declaration() {
+    // Trapping arithmetic (design/0003) turned into a diagnostic: folding at
+    // check time is the one place where it can be.
+    let found = diagnostics_of("const OVER: Int = 9_223_372_036_854_775_807 + 1;");
+    assert_eq!(found[0].0, "XN3012");
+    assert!(found[0].1.contains("overflow"), "{found:#?}");
+    let found = diagnostics_of("const ZERO: Int = 1 / 0;");
+    assert_eq!(found[0].0, "XN3012");
+    assert!(found[0].1.contains("division by zero"), "{found:#?}");
+}
+
+#[test]
+fn a_non_arithmetic_operator_is_not_folded() {
+    assert_eq!(codes_of("const CMP: Bool = 1 < 2;"), ["XN3012"]);
+}
+
+#[test]
+fn a_hole_cannot_be_a_const_value() {
+    assert_eq!(codes_of("const GAP: Int = ??later;"), ["XN3012"]);
+}
+
+#[test]
+fn a_const_collides_with_a_const_or_a_fn_of_the_same_name() {
+    assert_eq!(
+        codes_of("const DUP: Int = 1;\nconst DUP: Int = 2;"),
+        ["XN2005"]
+    );
+    assert_eq!(
+        codes_of("fn thing() -> Int { 1 }\nconst thing: Int = 2;"),
+        ["XN2005"]
+    );
+}
+
+#[test]
+fn a_local_binding_shadows_a_const_the_way_it_shadows_anything() {
+    expect_clean("const LIMIT: Int = 5;\nfn f() -> String { let LIMIT = \"x\"; LIMIT }");
+}
+
+// --------------------------------------------- generic literal construction
+//
+// The expected type seeds a user struct literal and a payload-less variant
+// of a generic user enum, exactly as it seeds `Ok(..)` and `None`. Both were
+// unconstructible in any position before; where nothing determines the
+// arguments, the refusal names them and reports once.
+
+const PAIR_AND_WRAP: &str = "struct Pair<T> {\n    a: T,\n    b: T,\n}\n\n\
+     enum Wrap<T> {\n    Hollow,\n    Full(T),\n}\n\n";
+
+#[test]
+fn a_generic_struct_literal_takes_its_arguments_from_the_annotation() {
+    expect_clean(&format!(
+        "{PAIR_AND_WRAP}fn f() -> Int {{ let p: Pair<Int> = Pair {{ a: 1, b: 2 }}; p.a }}"
+    ));
+}
+
+#[test]
+fn a_generic_struct_literal_takes_its_arguments_from_the_return_type() {
+    // No annotation in sight: the function's own return type is the
+    // expectation, and it reaches the literal.
+    expect_clean(&format!(
+        "{PAIR_AND_WRAP}fn f() -> Pair<String> {{ Pair {{ a: \"x\", b: \"y\" }} }}"
+    ));
+}
+
+#[test]
+fn a_generic_struct_literal_takes_its_arguments_from_an_argument_position() {
+    expect_clean(&format!(
+        "{PAIR_AND_WRAP}fn take(p: Pair<Int>) -> Int {{ p.b }}\n\
+         fn f() -> Int {{ take(p: Pair {{ a: 1, b: 2 }}) }}"
+    ));
+}
+
+#[test]
+fn an_undetermined_generic_struct_literal_names_its_parameters_once() {
+    // One diagnostic, not one per field: the unbound parameter becomes
+    // poison, so the fields report nothing further (design/0006 §2).
+    let found = diagnostics_of(&format!(
+        "{PAIR_AND_WRAP}fn f() -> Int {{ let p = Pair {{ a: 1, b: 2 }}; 1 }}"
+    ));
+    let codes: Vec<&str> = found.iter().map(|(c, _)| c.as_str()).collect();
+    assert_eq!(codes, ["XN3005"], "{found:#?}");
+    assert!(found[0].1.contains("`T` of `Pair`"), "{found:#?}");
+}
+
+#[test]
+fn a_generic_struct_literal_in_the_wrong_position_reports_only_the_mismatch() {
+    // The expectation is concrete and names another type: that is the one
+    // mistake, and "annotate the binding" would name the wrong repair.
+    let codes = codes_of(&format!(
+        "{PAIR_AND_WRAP}struct Plain {{\n    x: Int,\n}}\n\
+         fn f() -> Int {{ let q: Plain = Pair {{ a: 1, b: 2 }}; q.x }}"
+    ));
+    assert_eq!(codes, ["XN3001"]);
+}
+
+#[test]
+fn a_non_generic_struct_literal_is_unaffected_by_the_expectation() {
+    expect_clean("struct Plain {\n    x: Int,\n}\nfn f() -> Plain { Plain { x: 3 } }");
+}
+
+#[test]
+fn a_payload_less_variant_of_a_generic_enum_takes_its_arguments_from_context() {
+    expect_clean(&format!(
+        "{PAIR_AND_WRAP}fn f() -> Wrap<Int> {{ Wrap.Hollow }}\n\
+         fn g() -> Int {{ let w: Wrap<Int> = Wrap.Hollow; 1 }}\n\
+         fn h(w: Wrap<Int>) -> Int {{ 1 }}\n\
+         fn i() -> Int {{ h(w: Wrap.Hollow) }}"
+    ));
+}
+
+#[test]
+fn a_payload_carrying_variant_of_a_generic_enum_still_binds_from_its_payload() {
+    expect_clean(&format!(
+        "{PAIR_AND_WRAP}fn f() -> Wrap<Int> {{ Wrap.Full(5) }}"
+    ));
+}
+
+#[test]
+fn an_undetermined_generic_variant_names_its_parameters() {
+    let found = diagnostics_of(&format!(
+        "{PAIR_AND_WRAP}fn f() -> Int {{ let w = Wrap.Hollow; 1 }}"
+    ));
+    let codes: Vec<&str> = found.iter().map(|(c, _)| c.as_str()).collect();
+    assert_eq!(codes, ["XN3005"], "{found:#?}");
+    assert!(found[0].1.contains("`T` of `Wrap`"), "{found:#?}");
+}
+
+#[test]
+fn a_generic_variant_in_the_wrong_position_reports_only_the_mismatch() {
+    let codes = codes_of(&format!(
+        "{PAIR_AND_WRAP}struct Plain {{\n    x: Int,\n}}\n\
+         fn f() -> Int {{ let v: Plain = Wrap.Hollow; v.x }}"
+    ));
+    assert_eq!(codes, ["XN3001"]);
+}
+
+#[test]
+fn a_hole_annotation_over_a_generic_literal_reports_nothing() {
+    // A hole is a deliberate gap, not a mistake: the position offers no
+    // concrete expectation, so neither the seeding failure nor a mismatch
+    // is a thing to report (design/0006 §2).
+    expect_clean(&format!(
+        "{PAIR_AND_WRAP}fn f() -> Int {{ let h: ?? = Pair {{ a: 1, b: 2 }}; 1 }}"
+    ));
+    expect_clean(&format!(
+        "{PAIR_AND_WRAP}fn f() -> Int {{ let h: ?? = Wrap.Hollow; 1 }}"
+    ));
+}
+
+#[test]
+fn a_generic_constructor_used_as_a_value_is_still_refused() {
+    // `Wrap.Full` uncalled would be a fn value, which does not ship — so
+    // this reports wherever it appears, expectation or not.
+    let codes = codes_of(&format!(
+        "{PAIR_AND_WRAP}fn f() -> Int {{ let c: Wrap<Int> = Wrap.Full; 1 }}"
+    ));
+    assert_eq!(codes, ["XN3005"]);
+}
+
+#[test]
+fn a_generic_literal_is_matched_and_read_like_any_other_value() {
+    expect_clean(&format!(
+        "{PAIR_AND_WRAP}fn f() -> String {{\n\
+         let w: Wrap<Int> = Wrap.Hollow;\n\
+         match w {{\n\
+         Wrap.Hollow => \"none\",\n\
+         Wrap.Full(v) => \"some\",\n\
+         }}\n\
+         }}"
+    ));
+}
+
 // ------------------------------------------------------------ option, result
 
 #[test]

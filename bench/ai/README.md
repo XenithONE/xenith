@@ -159,9 +159,11 @@ runs every reference through `xenith check` and `xenith run` and compares output
 CI.** A task whose reference fails is a broken task, and measuring models against broken tasks
 produces numbers that lie.
 
-Tasks deliberately stay within the provisional prelude (no lists, no maps — nothing constructs
-them yet) and cover: loops and arithmetic, string building, struct field mutation, enums with
-payloads and guards, `checked_add`/`to_result`/`?` plumbing, effect declarations, recursion.
+These tier-1–3 tasks were written before the container surface existed, so they deliberately
+stay within the scalar part of the provisional prelude (no lists, no maps) — a fact about this
+task battery's vintage, not a limit of the language, which constructs both. They cover: loops
+and arithmetic, string building, struct field mutation, enums with payloads and guards,
+`checked_add`/`to_result`/`?` plumbing, effect declarations, recursion.
 
 ## Running the benchmark
 

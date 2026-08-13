@@ -1,0 +1,8 @@
+pub const CEILING: Int = 999;
+pub const LABEL: String = "cap";
+
+const SLACK: Int = 1;
+
+pub fn headroom(score: Int) -> Int {
+    CEILING - score + SLACK
+}

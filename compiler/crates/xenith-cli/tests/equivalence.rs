@@ -33,14 +33,14 @@ fn cli_check_json(dir: &Path, path: &str) -> Value {
     serde_json::from_str(&stdout).expect("the CLI emits JSON")
 }
 
-/// One MCP `check` call with `root` as the workspace root, parsed payload.
-fn mcp_check(root: &Path, path: &str) -> (bool, Value) {
+/// One MCP tool call with `root` as the workspace root, parsed payload.
+fn mcp_call(root: &Path, tool: &str, arguments: Value) -> (bool, Value) {
     let reply = handle_message(
         &json!({
             "jsonrpc": "2.0",
             "id": 1,
             "method": "tools/call",
-            "params": { "name": "check", "arguments": { "path": path } },
+            "params": { "name": tool, "arguments": arguments },
         }),
         root,
     )
@@ -53,6 +53,11 @@ fn mcp_check(root: &Path, path: &str) -> (bool, Value) {
     } else {
         (false, serde_json::from_str(text).expect("payload is JSON"))
     }
+}
+
+/// One MCP `check` call with `root` as the workspace root, parsed payload.
+fn mcp_check(root: &Path, path: &str) -> (bool, Value) {
+    mcp_call(root, "check", json!({ "path": path }))
 }
 
 /// The normalized form of one diagnostic (design/0013 §1): root-relative
@@ -184,6 +189,172 @@ fn a_single_file_outside_any_manifest_reports_identically_on_both_surfaces() {
     let mcp_diagnostics = sorted(mcp_normalized(&mcp));
     assert!(!cli_diagnostics.is_empty(), "the fixture mistypes");
     assert_eq!(cli_diagnostics, mcp_diagnostics);
+}
+
+// ------------------------------------------- goals and query (design/0013 §1)
+//
+// `check` and `run` were project-aware from the start; `goals` and
+// `query type-at` / `query producers` analysed the named file alone, so
+// inside a project their answers degraded — a cross-module type read as
+// `<unknown>` and a qualified type had no producers at all. They now walk the
+// same ProjectSnapshot pipeline, and these tests hold the two surfaces to the
+// same answer.
+//
+// Compared field by field, minus the two each surface legitimately spells its
+// own way: `file` (the name the caller used) and `project_root` (root-relative
+// for the confined server, as-given for the unconfined CLI). `analysis_mode`
+// is compared — that a project ran is exactly the claim under test.
+
+/// `xenith <args…>` from `dir`, stdout parsed as JSON.
+fn cli_json(dir: &Path, args: &[&str]) -> Value {
+    let output = Command::new(env!("CARGO_BIN_EXE_xenith"))
+        .current_dir(dir)
+        .args(args)
+        .output()
+        .expect("the compiler binary runs");
+    let stdout = String::from_utf8(output.stdout).expect("stdout is UTF-8");
+    serde_json::from_str(&stdout)
+        .unwrap_or_else(|e| panic!("the CLI emits JSON ({e}); stdout was:\n{stdout}"))
+}
+
+/// Drop the two path-spelling fields, at the top level and inside each entry
+/// of an array — everything left must match between the surfaces.
+fn scrub(value: &Value) -> Value {
+    let strip = |value: &Value| -> Value {
+        let mut value = value.clone();
+        if let Some(map) = value.as_object_mut() {
+            map.remove("file");
+            map.remove("project_root");
+        }
+        value
+    };
+    match value {
+        Value::Array(entries) => Value::Array(entries.iter().map(strip).collect()),
+        other => strip(other),
+    }
+}
+
+#[test]
+fn project_goals_answer_identically_on_both_surfaces() {
+    // A hole whose expected type lives in another module: single-file
+    // analysis renders it `<unknown>` and offers no candidates, so this
+    // fixture only agrees when both surfaces really ran the project.
+    let root = fixture_root("holed");
+    let cli = cli_json(&root, &["goals", "--json", "src/main.xn"]);
+    let (is_error, mcp) = mcp_call(&root, "goals", json!({ "path": "src/main.xn" }));
+    assert!(!is_error, "{mcp}");
+
+    let entries = cli.as_array().expect("goals are an array");
+    assert_eq!(entries.len(), 1, "one hole in the fixture: {cli}");
+    assert_eq!(entries[0]["analysis_mode"], "project");
+    assert_eq!(
+        entries[0]["expected"], "game.player.Player",
+        "the cross-module type must resolve: {cli}"
+    );
+    assert_eq!(
+        entries[0]["candidates"][0]["expression"], "game.player.fresh(name: ??)",
+        "candidates come from the other module too: {cli}"
+    );
+    assert_eq!(scrub(&cli), scrub(&mcp));
+}
+
+#[test]
+fn project_goals_agree_on_a_project_with_no_holes() {
+    let root = fixture_root("vertical");
+    let cli = cli_json(&root, &["goals", "--json", "src/main.xn"]);
+    let (is_error, mcp) = mcp_call(&root, "goals", json!({ "path": "src/main.xn" }));
+    assert!(!is_error, "{mcp}");
+    assert_eq!(cli.as_array().expect("array").len(), 0, "{cli}");
+    assert_eq!(scrub(&cli), scrub(&mcp));
+}
+
+#[test]
+fn project_type_at_answers_identically_on_both_surfaces() {
+    // `src/main.xn:5:17` is the `game.player.Player` struct literal; in
+    // single-file mode the type reads `<unknown>` and the enclosing function
+    // is unqualified.
+    let root = fixture_root("vertical");
+    let cli = cli_json(
+        &root,
+        &["query", "type-at", "src/main.xn", "--at", "5:17", "--json"],
+    );
+    let (is_error, mcp) = mcp_call(
+        &root,
+        "type_at",
+        json!({ "path": "src/main.xn", "line": 5, "column": 17 }),
+    );
+    assert!(!is_error, "{mcp}");
+
+    assert_eq!(cli["analysis_mode"], "project");
+    assert_eq!(cli["type"], "game.player.Player", "{cli}");
+    assert_eq!(cli["enclosing_function"], "main.main", "{cli}");
+    assert_eq!(scrub(&cli), scrub(&mcp));
+}
+
+#[test]
+fn project_producers_answer_identically_on_both_surfaces() {
+    // A qualified type has no producers at all in single-file mode — the
+    // type does not even resolve, which is an error rather than an answer.
+    let root = fixture_root("vertical");
+    let cli = cli_json(
+        &root,
+        &[
+            "query",
+            "producers",
+            "src/main.xn",
+            "game.player.Player",
+            "--json",
+        ],
+    );
+    let (is_error, mcp) = mcp_call(
+        &root,
+        "producers",
+        json!({ "path": "src/main.xn", "type": "game.player.Player" }),
+    );
+    assert!(!is_error, "{mcp}");
+
+    let entries = cli.as_array().expect("producers are an array");
+    assert!(!entries.is_empty(), "{cli}");
+    assert_eq!(entries[0]["analysis_mode"], "project");
+    assert!(
+        entries.iter().any(|p| p["symbol"] == "game.player.award"
+            || p["signature"]
+                .as_str()
+                .is_some_and(|s| s.contains("game.player.award"))),
+        "the other module's producer must be listed: {cli}"
+    );
+    assert_eq!(scrub(&cli), scrub(&mcp));
+}
+
+#[test]
+fn a_file_outside_any_project_still_answers_in_single_file_mode() {
+    // The other half of the contract: no manifest, no project mode, and the
+    // response says so rather than claiming one.
+    let root = manifest_dir().join("tests/fixtures/diag");
+    let cli = cli_json(&root, &["goals", "--json", "xn3001_mismatch.xn"]);
+    let (is_error, mcp) = mcp_call(&root, "goals", json!({ "path": "xn3001_mismatch.xn" }));
+    assert!(!is_error, "{mcp}");
+    assert_eq!(scrub(&cli), scrub(&mcp));
+
+    let cli = cli_json(
+        &root,
+        &[
+            "query",
+            "type-at",
+            "xn3001_mismatch.xn",
+            "--at",
+            "2:5",
+            "--json",
+        ],
+    );
+    assert_eq!(cli["analysis_mode"], "single_file", "{cli}");
+    let (is_error, mcp) = mcp_call(
+        &root,
+        "type_at",
+        json!({ "path": "xn3001_mismatch.xn", "line": 2, "column": 5 }),
+    );
+    assert!(!is_error, "{mcp}");
+    assert_eq!(scrub(&cli), scrub(&mcp));
 }
 
 #[test]

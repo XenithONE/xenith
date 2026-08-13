@@ -9,6 +9,7 @@
 
 pub mod candidates;
 pub mod check;
+pub mod constants;
 pub mod def;
 mod exhaustive;
 pub mod project;

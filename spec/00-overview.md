@@ -37,8 +37,11 @@ tiebreak and the draft follows the compiler.
 - **Front end** — total parser (recovery everywhere), canonical formatter that verifies its
   own output ([01](01-lexical-and-syntax.md)).
 - **Types** — local-only bidirectional checking, no implicit conversions, sealed structural
-  properties (`Eq` `Ord` `Hash` `Copy` `Text`) instead of traits, generic functions and
-  enums, exhaustive `match` with counter-example witnesses ([02](02-types-and-inference.md)).
+  properties (`Eq` `Ord` `Hash` `Copy` `Text`) instead of traits, generic functions, structs
+  and enums — constructed from the expected type — exhaustive `match` with counter-example
+  witnesses ([02](02-types-and-inference.md)).
+- **Constants** — `const NAME: T = <literal, or arithmetic over literals>;`, folded while the
+  module is checked, `pub` like any other item ([01 §5](01-lexical-and-syntax.md#5-items)).
 - **Typed holes** — `??` / `??name` in expression and type position; a partial program is a
   normal, queryable state ([02 §7](02-types-and-inference.md#7-typed-holes)).
 - **Effects and capabilities** — checked `uses { … }` sets, subset rule at every call edge,
@@ -89,15 +92,6 @@ reaches it).
 - A named function used as a value — named functions are resolved, never passed; wrap the
   call in a closure.
 
-**Parsed but inert:**
-
-- `const` items parse, but a reference to a `const` name does not resolve (`XN2002`). Do not
-  use `const` yet.
-- Generic user **struct literals** cannot be constructed in any position (`XN3005`,
-  annotation or not); declaring the generic struct is legal. Payload-less variants of generic
-  user **enums** (`Wrap.Hollow`) are likewise not constructible yet — payload-carrying
-  variants and the whole prelude (`None`, `Ok(…)`) work.
-
 **Designed, no syntax reserved:**
 
 - The design/0003 kernel's affine layer: moves with use-after-move errors, explicit
@@ -106,6 +100,11 @@ reaches it).
   rules are designed to layer later (design/0007 D1).
 - `sorted_by` and an `Ordering` type — deferred until function-typed parameters in user-facing
   signatures are designed (design/0007 D3); until then aggregates have no sort spelling.
+- Constant expressions wider than literals and arithmetic over them: a `const` naming another
+  `const`, or calling anything. The exclusion is what keeps 0.0 free of const initialization
+  order — and therefore of the initialization-cycle diagnostic design/0010 §5 reserves for it.
+  Widening the grammar is the change that has to answer that question, not the const surface
+  itself ([01 §5](01-lexical-and-syntax.md#5-items)).
 - Let-bound closures, fn values in general positions, partial application, effectful fn
   types (design/0014 §5).
 - Further capabilities (`Fs`, `Net`, clocks) and `std` as real modules; item-level `use`

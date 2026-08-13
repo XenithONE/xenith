@@ -1,0 +1,11 @@
+use game.limits;
+
+const GREETING: String = "room: ";
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    io.write(text: GREETING)?;
+    io.write(text: game.limits.headroom(score: 900).to_text())?;
+    io.write(text: game.limits.LABEL)?;
+    io.write(text: game.limits.CEILING.to_text())?;
+    return Ok(unit);
+}

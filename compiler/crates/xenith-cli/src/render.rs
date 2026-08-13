@@ -72,10 +72,40 @@ pub fn diagnostic(path: &Path, source: &str, index: &LineIndex, diagnostic: &Dia
     out
 }
 
-pub fn goals_json(reports: &[(PathBuf, String, Vec<Goal>, usize)]) -> String {
+/// One file's goals as `xenith goals` reports them, with what it took to
+/// produce them: `project_root` is `Some` exactly when the file was analysed
+/// as part of a project, which is what the entry's `analysis_mode` reports.
+pub struct GoalReport {
+    /// The path as this run spells it — for a project file, `<root>/src/…`.
+    pub path: PathBuf,
+    pub source: String,
+    pub goals: Vec<Goal>,
+    /// How many diagnostics the same analysis produced, for the note that
+    /// sends the reader to `xenith check`.
+    pub problems: usize,
+    pub project_root: Option<String>,
+}
+
+/// The flat array of goal entries, one per hole, across every report.
+///
+/// Every entry carries the `analysis_mode` that actually ran, the way the
+/// MCP responses do — a response says what it *did*, never only what the
+/// tool could do (design/0013 §1).
+pub fn goals_json(reports: &[GoalReport]) -> String {
     let mut rendered: Vec<serde_json::Value> = Vec::new();
-    for (path, source, goals, _) in reports {
-        let value = xenith_driver::wire::goals(&path.display().to_string(), source, goals);
+    for report in reports {
+        let mut value = xenith_driver::wire::goals(
+            &report.path.display().to_string(),
+            &report.source,
+            &report.goals,
+        );
+        let root = report.project_root.as_deref();
+        let mode = if root.is_some() {
+            "project"
+        } else {
+            "single_file"
+        };
+        xenith_driver::wire::stamp_mode(&mut value, mode, root);
         if let serde_json::Value::Array(entries) = value {
             rendered.extend(entries);
         }

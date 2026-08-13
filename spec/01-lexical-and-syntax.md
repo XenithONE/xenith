@@ -98,8 +98,15 @@ fn rank_of(score: Int) -> Rank uses {} {
   `Empty`. Payloads are unnamed by design; constructor calls stay positional (§7).
 - **`use`** — a module dependency declaration (`use game.player;`), meaningful only inside a
   project ([05 §3](05-modules-and-projects.md#3-use-declares-a-dependency)).
-- **`const`** — parses as an item, but a reference to a `const` name does not resolve in 0.0
-  (see [00 §3](00-overview.md#3-adopted-but-not-shipped)). Do not use it yet.
+- **`const`** — `const CEILING: Int = 999;`. The type is written out like every other
+  declaration, and the initializer is a **constant expression**: a literal, or arithmetic
+  (`+ - * / %`, unary `-`, unary `!`) over literals. Nothing else — no calls, no other names,
+  **not even another `const`** — so there is no initialization order to reason about and no
+  initialization cycle to diagnose. Anything wider is `XN3012`. The arithmetic is folded while
+  the module is checked, which is why an overflow or a division by zero in an initializer is
+  that same error rather than a trap at every use
+  ([04 §3](04-evaluation.md#3-arithmetic-traps)). `pub const` is readable across modules and
+  appears in the API surface ([05 §6](05-modules-and-projects.md#6-the-api-surface)).
 
 One file may declare any number of items. Top-level names are unique per module — no
 overloading, no shadowing between declarations (`XN2005`): when two functions share a name,

@@ -1,0 +1,10 @@
+use game.player;
+
+fn seeded() -> game.player.Player {
+    ??seed
+}
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    io.write(text: seeded().name)?;
+    return Ok(unit);
+}

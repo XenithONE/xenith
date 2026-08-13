@@ -53,6 +53,33 @@ fn the_vertical_proof_project_checks_and_runs() {
 }
 
 #[test]
+fn a_project_using_consts_checks_runs_and_shows_them_in_its_api() {
+    // `const` used to parse and resolve to nothing (XN2002 at every use).
+    // The whole pipe now: a private const consumed by its own module, two
+    // `pub` ones read across the boundary, and the surface listing them.
+    let entry = fixture("consts", "src/main.xn");
+    let (stdout, _, code) = xenith(&["check", &entry]);
+    assert_eq!(stdout, "", "no diagnostics expected:\n{stdout}");
+    assert_eq!(code, Some(0));
+    let (stdout, _, code) = xenith(&["run", &entry]);
+    assert_eq!(stdout, "room: 100cap999");
+    assert_eq!(code, Some(0));
+
+    let (stdout, _, code) = xenith(&["api", "tests/fixtures/projects/consts"]);
+    assert_eq!(code, Some(0));
+    assert!(stdout.contains("pub const CEILING: Int"), "{stdout}");
+    assert!(stdout.contains("pub const LABEL: String"), "{stdout}");
+    assert!(
+        !stdout.contains("SLACK"),
+        "private consts stay out:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("GREETING"),
+        "a private const of the entry module stays out:\n{stdout}"
+    );
+}
+
+#[test]
 fn a_cross_module_field_assignment_is_refused() {
     let entry = fixture("refused", "src/main.xn");
     let (stdout, _, code) = xenith(&["check", &entry]);

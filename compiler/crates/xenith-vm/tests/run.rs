@@ -204,6 +204,75 @@ fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
 }
 
 #[test]
+fn consts_evaluate_to_their_folded_value() {
+    // The checker proved the initializer is a literal or arithmetic over
+    // literals and folded the integers; the interpreter reads the value off
+    // the initializer the same way it reads any literal.
+    let source = r#"
+const LIMIT: Int = 1_000;
+const HALF: Int = 1_000 / 2;
+const NEG: Int = -5;
+const NAME: String = "ada";
+const ON: Bool = !false;
+
+fn cap(n: Int) -> Int {
+    if n > LIMIT {
+        LIMIT
+    } else {
+        n
+    }
+}
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    io.write(text: cap(n: 5000).to_text())?;
+    io.write(text: HALF.to_text())?;
+    io.write(text: NEG.to_text())?;
+    io.write(text: NAME)?;
+    if ON {
+        io.write(text: "!")?;
+    }
+    return Ok(unit);
+}
+"#;
+    assert_eq!(stdout_of(source), "1000500-5ada!");
+}
+
+#[test]
+fn generic_struct_literals_and_payload_less_generic_variants_run() {
+    // They check now (the expected type seeds the arguments), and the
+    // interpreter erases the arguments entirely — so the proof that they
+    // are *constructible* has to run, not merely check.
+    let source = r#"
+struct Pair<T> {
+    a: T,
+    b: T,
+}
+
+enum Wrap<T> {
+    Hollow,
+    Full(T),
+}
+
+fn labelled(w: Wrap<Int>) -> String {
+    match w {
+        Wrap.Hollow => "hollow",
+        Wrap.Full(v) => v.to_text(),
+    }
+}
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    let p: Pair<Int> = Pair { a: 1, b: 2 };
+    let names: Pair<String> = Pair { a: "x", b: "y" };
+    io.write(text: p.a.to_text().concat(other: names.b))?;
+    io.write(text: labelled(w: Wrap.Hollow))?;
+    io.write(text: labelled(w: Wrap.Full(7)))?;
+    return Ok(unit);
+}
+"#;
+    assert_eq!(stdout_of(source), "1yhollow7");
+}
+
+#[test]
 fn option_result_and_question_mark_run() {
     let source = r#"
 enum ScoreError {

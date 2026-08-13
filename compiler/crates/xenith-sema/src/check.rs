@@ -287,6 +287,8 @@ pub(crate) fn infinite_size_diagnostic(cycle: &[String], span: Span) -> Diagnost
 enum QualifiedLookup {
     NotModule,
     Fn(String),
+    /// A `pub const` of another module, with its type.
+    Const(Type),
     Variant(crate::ty::DefId, String),
     Type(crate::ty::DefId),
     /// A module reference that failed; the diagnostic is already out.
@@ -809,7 +811,9 @@ impl<'a> Checker<'a> {
         if self.ctx.is_some() {
             match self.qualified_ref(&segments, path.span) {
                 QualifiedLookup::Fn(key) => return Some(key),
-                QualifiedLookup::Variant(..) | QualifiedLookup::Type(_) => {
+                QualifiedLookup::Const(_)
+                | QualifiedLookup::Variant(..)
+                | QualifiedLookup::Type(_) => {
                     return refuse(
                         self,
                         format!(
@@ -1423,6 +1427,19 @@ impl<'a> Checker<'a> {
         self.defs.lookup(name)
     }
 
+    /// The type of a bare `const` name: this module's own first, exactly as
+    /// bare function and type names resolve.
+    fn const_type(&self, bare: &str) -> Option<Type> {
+        if let Some(ctx) = self.ctx {
+            if !ctx.prefix.is_empty() {
+                if let Some(info) = self.defs.const_named(&def::qualified(&ctx.prefix, bare)) {
+                    return Some(info.ty.clone());
+                }
+            }
+        }
+        self.defs.const_named(bare).map(|info| info.ty.clone())
+    }
+
     /// The table key for a bare function name: the current module's own
     /// function shadows nothing — prelude functions stay reachable because
     /// modules cannot redeclare them.
@@ -1493,6 +1510,18 @@ impl<'a> Checker<'a> {
                             }
                             return QualifiedLookup::Fn(dotted);
                         }
+                        if let Some(info) = self.defs.const_named(&dotted) {
+                            let ty = info.ty.clone();
+                            if !info.is_pub {
+                                self.error(
+                                    DiagCode::PrivateItemAccess,
+                                    span,
+                                    format!("`{dotted}` is private to `{module}`"),
+                                );
+                                return QualifiedLookup::Reported;
+                            }
+                            return QualifiedLookup::Const(ty);
+                        }
                         if let Some(def) = self.defs.lookup(&dotted) {
                             if !self.defs.def(def).is_pub {
                                 self.error(
@@ -1513,6 +1542,14 @@ impl<'a> Checker<'a> {
                     }
                     [enum_name, variant] => {
                         let dotted = format!("{module}.{enum_name}");
+                        // `game.limits.CEILING.to_text()` — a const followed
+                        // by a method, not an enum followed by a variant.
+                        // Hand it back to the ordinary reading, where the
+                        // const resolves as a value and the method applies
+                        // to it.
+                        if self.defs.const_named(&dotted).is_some() {
+                            return QualifiedLookup::NotModule;
+                        }
                         let Some(def) = self.defs.lookup(&dotted) else {
                             self.error(
                                 DiagCode::UnknownName,
@@ -1588,6 +1625,14 @@ impl<'a> Checker<'a> {
             QualifiedLookup::Fn(key) => Some(self.call_named_fn(&key, args, expected, span)),
             QualifiedLookup::Variant(def, variant) => {
                 Some(self.call_variant(def, &variant, args, expected, span))
+            }
+            QualifiedLookup::Const(_) => {
+                let message = format!("`{}` is a const, not a fn", segments.join("."));
+                self.error(DiagCode::NotCallable, span, message);
+                for arg in args {
+                    let _ = self.synth(&arg.value);
+                }
+                Some(Type::Error)
             }
             QualifiedLookup::Type(def) => {
                 let message = format!(
@@ -2061,6 +2106,26 @@ impl<'a> Checker<'a> {
                 self.require_compatible(&found, expected, expr.span);
             }
 
+            // A user struct literal takes its type arguments from the
+            // expected type, exactly as constructor calls do:
+            // `let p: Pair<Int> = Pair { a: 1, b: 2 };` binds `T` with no
+            // further annotation.
+            ast::ExprKind::StructLit { path, fields } => {
+                let ty = self.struct_lit(path, fields, expr.span, Some(expected));
+                self.maybe_probe(expr.span, &ty);
+                self.require_compatible(&ty, expected, expr.span);
+            }
+
+            // `Wrap.Hollow` — a payload-less variant of a generic enum reads
+            // the enum's arguments from context, the same seeding `None`
+            // already gets. Ordinary field access is unaffected: only
+            // `variant_ref` consults the expectation.
+            ast::ExprKind::Field { receiver, name } => {
+                let ty = self.field(receiver, name, expr.span, Some(expected));
+                self.maybe_probe(expr.span, &ty);
+                self.require_compatible(&ty, expected, expr.span);
+            }
+
             // Constructors gain their type parameters from the expected type:
             // `check(Ok(x), Result<Player, ScoreError>)` binds T and E with no
             // annotation. This is the payoff of bidirectionality.
@@ -2168,7 +2233,7 @@ impl<'a> Checker<'a> {
                 args,
             } => self.method_call(receiver, method, args, expr.span),
 
-            ast::ExprKind::Field { receiver, name } => self.field(receiver, name, expr.span),
+            ast::ExprKind::Field { receiver, name } => self.field(receiver, name, expr.span, None),
 
             ast::ExprKind::Await(inner) => {
                 if !self.closures.is_empty() {
@@ -2430,6 +2495,13 @@ impl<'a> Checker<'a> {
             return ty;
         }
 
+        // A `const` of this module. Module-level, so no capture rule applies
+        // — the value is a literal decided at check time, not something a
+        // closure could hold a stale copy of.
+        if let Some(ty) = self.const_type(name) {
+            return ty;
+        }
+
         // A module function used as a value. Named functions are resolved,
         // never captured or passed (design/0014 §1 rule (b), §5: no fn-value
         // spelling for named fns) — an effectful one riding into `map` would
@@ -2551,14 +2623,22 @@ impl<'a> Checker<'a> {
         Type::Error
     }
 
-    /// `receiver.name` — a struct field, or `Enum.Variant`.
-    fn field(&mut self, receiver: &ast::Expr, name: &ast::Ident, span: Span) -> Type {
+    /// `receiver.name` — a struct field, or `Enum.Variant`. `expected` is
+    /// the checking-position type when there is one; only the variant
+    /// reading consults it (a generic enum's arguments come from context).
+    fn field(
+        &mut self,
+        receiver: &ast::Expr,
+        name: &ast::Ident,
+        span: Span,
+        expected: Option<&Type>,
+    ) -> Type {
         // `Rank.Gold`: the receiver is a type name, not a value.
         if let ast::ExprKind::Path(path) = &receiver.kind {
             if let [single] = path.segments.as_slice() {
                 if self.lookup(&single.name).is_none() {
                     if let Some(def) = self.lookup_type_name(&single.name) {
-                        return self.variant_ref(def, name, span);
+                        return self.variant_ref(def, name, span, expected);
                     }
                 }
             }
@@ -2586,9 +2666,12 @@ impl<'a> Checker<'a> {
                             );
                             return Type::Error;
                         }
+                        // `game.limits.CEILING` — a `pub const` of another
+                        // module reads as the value it names.
+                        QualifiedLookup::Const(ty) => return ty,
                         QualifiedLookup::Variant(def, variant) => {
                             let ident = ast::Ident::new(variant, name.span);
-                            return self.variant_ref(def, &ident, span);
+                            return self.variant_ref(def, &ident, span, expected);
                         }
                         QualifiedLookup::Type(_) => {
                             self.error(
@@ -2645,8 +2728,15 @@ impl<'a> Checker<'a> {
     }
 
     /// `Enum.Variant` as a value: unit variants make the enum, payload
-    /// variants make a constructor function.
-    fn variant_ref(&mut self, def: crate::ty::DefId, name: &ast::Ident, span: Span) -> Type {
+    /// variants make a constructor function. `expected` is the checking
+    /// position's type, which is where a generic enum's arguments come from.
+    fn variant_ref(
+        &mut self,
+        def: crate::ty::DefId,
+        name: &ast::Ident,
+        span: Span,
+        expected: Option<&Type>,
+    ) -> Type {
         let info = self.defs.def(def);
         let generic_count = info.generics.len();
         let Some(variant) = self.defs.variant_named(def, &name.name) else {
@@ -2656,18 +2746,60 @@ impl<'a> Checker<'a> {
         };
 
         if generic_count > 0 {
-            // Rank-style enums are the ones referenced this way in practice;
-            // generic ones need the expected type, which check() supplies at
-            // constructor calls. Bare references stay conservative.
-            self.error(
-                DiagCode::AnnotationRequired,
-                span,
-                format!(
-                    "`{}.{}` needs the enum's type arguments to be known here",
-                    info.name, name.name
-                ),
-            );
-            return Type::Error;
+            let payload_less = variant.payload.is_empty();
+            // `let e: Wrap<Int> = Wrap.Hollow;` — a payload-less variant
+            // takes the enum's arguments from the expectation, the same
+            // seeding `None` gets (design/0006 §1).
+            if payload_less {
+                if let Some(Type::Named {
+                    def: expected_def,
+                    args,
+                }) = expected
+                {
+                    if *expected_def == def && args.len() == generic_count {
+                        return Type::Named {
+                            def,
+                            args: args.clone(),
+                        };
+                    }
+                }
+            }
+            // Nothing fixed the arguments. For a payload-less variant,
+            // report only where the position offered no expectation at all:
+            // a concrete one of another type makes this a mismatch the
+            // caller reports, and a hole or poison is not a mistake to
+            // report at all (design/0006 §2). A payload-carrying variant
+            // read as a value is never usable, so it always reports. Name
+            // what is undetermined rather than restate that it is generic.
+            if expected.is_none() || !payload_less {
+                let undetermined = info
+                    .generics
+                    .iter()
+                    .map(|g| format!("`{g}`"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                self.error(
+                    DiagCode::AnnotationRequired,
+                    span,
+                    format!(
+                        "nothing here determines {undetermined} of `{}`; annotate \
+                         the surrounding binding, as `let x: {}<..> = {}.{};`",
+                        info.name, info.name, info.name, name.name
+                    ),
+                );
+            }
+            // A poisoned instantiation rather than bare poison, so a
+            // wrong-type position still reports its mismatch against a named
+            // type. A payload-carrying variant read this way would be a
+            // function value, which does not ship, so it stays poison.
+            return if payload_less {
+                Type::Named {
+                    def,
+                    args: vec![Type::Error; generic_count],
+                }
+            } else {
+                Type::Error
+            };
         }
 
         let enum_ty = Type::Named {
@@ -3721,24 +3853,50 @@ impl<'a> Checker<'a> {
             .map(|f| (f.name.clone(), f.ty.clone(), Span::EMPTY))
             .collect();
 
+        // The expected type seeds the type arguments — the bidirectional
+        // payoff constructor calls already take (design/0006 §1), extended
+        // to struct literals so `let p: Pair<Int> = Pair { .. };` checks.
         let mut bindings: Vec<(String, Type)> = Vec::new();
+        let mut seeded = false;
         if let Some(Type::Named {
             def: expected_def,
             args,
         }) = expected
         {
-            if *expected_def == def {
+            if *expected_def == def && args.len() == generics.len() {
                 for (generic, ty) in generics.iter().zip(args.iter()) {
                     bindings.push((generic.clone(), ty.clone()));
                 }
+                seeded = true;
             }
         }
-        if !generics.is_empty() && bindings.is_empty() {
+        // Report only where the position offered no expectation at all. A
+        // concrete one naming a different type makes this a mismatch the
+        // checking caller reports — "annotate the binding" on top of that
+        // would name the wrong repair — and a hole or poison expectation is
+        // not a mistake to report at all (design/0006 §2).
+        if !generics.is_empty() && !seeded && expected.is_none() {
+            let undetermined = generics
+                .iter()
+                .map(|g| format!("`{g}`"))
+                .collect::<Vec<_>>()
+                .join(", ");
             self.error(
                 DiagCode::AnnotationRequired,
                 span,
-                format!("`{name}` is generic; annotate the surrounding binding"),
+                format!(
+                    "nothing here determines {undetermined} of `{name}`; annotate \
+                     the surrounding binding, as `let x: {name}<..> = {name} {{ .. }};`"
+                ),
             );
+        }
+        // Whatever stayed unbound becomes poison, so the fields report
+        // nothing further: one missing annotation is one diagnostic, not one
+        // per field (design/0006 §2).
+        for generic in &generics {
+            if !bindings.iter().any(|(n, _)| n == generic) {
+                bindings.push((generic.clone(), Type::Error));
+            }
         }
 
         // Every declared field, exactly once.

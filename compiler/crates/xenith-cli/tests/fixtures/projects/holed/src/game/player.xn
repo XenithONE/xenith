@@ -1,0 +1,8 @@
+pub struct Player {
+    name: String,
+    var score: Int,
+}
+
+pub fn fresh(name: String) -> Player {
+    Player { name: name, score: 0 }
+}

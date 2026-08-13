@@ -655,7 +655,7 @@ fn call_tool(name: &str, arguments: &Value, workspace_root: &Path) -> Result<Str
             match DiagCode::from_id(&normalised) {
                 Some(found) => Ok(format!("{}\n\n{}", found.id(), found.explain())),
                 None => Err(format!(
-                    "unknown diagnostic code `{code}`; codes run XN0001–XN4001"
+                    "unknown diagnostic code `{code}`; codes run XN0001–XN7008"
                 )),
             }
         }

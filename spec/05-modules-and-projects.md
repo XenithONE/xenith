@@ -130,11 +130,19 @@ which is what makes import cycles harmless and diagnostics deterministically ord
 `run` on any file in the project runs the project, entering `src/main.xn`; one diagnostic
 anywhere refuses the run ([04 §5](04-evaluation.md#5-entry-and-exit)).
 
-**CLI project-awareness in 0.0, honestly:** `check`, `run` and `api` are project-aware.
-`goals` and `query type-at` / `query producers` still analyse the named file in single-file
-mode — inside a project their answers degrade (module references read as unknown). The MCP
-server's `goals` / `type_at` / `producers` are the project-aware versions, taking an explicit
-`mode` ([08 §7](08-diagnostics-and-tooling.md#7-the-mcp-server)).
+**Every project-aware command, on both surfaces:** `check`, `run`, `api`, `goals` and
+`query type-at` / `query producers` all resolve a path through the one pipeline, so the CLI
+and the MCP server answer the same question the same way (design/0013 §1). Inside a project,
+`goals` reports the whole project's holes — the named file's first, the rest in path order —
+and both queries answer with every module's declarations in view, so a cross-module type
+renders qualified instead of reading as unknown. The MCP tools additionally take an explicit
+`mode` ([08 §7](08-diagnostics-and-tooling.md#7-the-mcp-server)); the CLI, which has no such
+flag, always asks for `auto`.
+
+One difference remains, and it follows from that missing flag. A project whose **layout** is
+invalid is a discovery failure: the MCP tools refuse it and point at `mode: "single_file"`.
+The CLI has no single-file escape hatch to point at, so it states each layout problem on
+stderr and answers from the modules that did load — degraded, and never silently so.
 
 ## 6. The API surface
 

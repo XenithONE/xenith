@@ -115,6 +115,21 @@ pub enum UsesInsertion {
     Nowhere,
 }
 
+/// One `const` item, once its type is lowered and its initializer folded.
+///
+/// The value is deliberately absent: a constant expression is a literal or
+/// arithmetic over literals ([`crate::constants`]), so the interpreter reads
+/// the value straight off the initializer the same way it reads any other
+/// literal. What the table owes the checker is the *type* and the
+/// visibility — the two things a reference needs.
+pub struct ConstInfo {
+    /// Qualified name in project mode ("game.limits.CEILING"); bare otherwise.
+    pub name: String,
+    /// Readable across module boundaries (design/0010 §4).
+    pub is_pub: bool,
+    pub ty: Type,
+}
+
 pub struct FnSig {
     /// Qualified name in project mode ("game.scores.best"); bare otherwise.
     pub name: String,
@@ -154,6 +169,8 @@ pub struct DefTable {
     by_name: HashMap<String, DefId>,
     pub fns: Vec<FnSig>,
     fn_by_name: HashMap<String, usize>,
+    pub consts: Vec<ConstInfo>,
+    const_by_name: HashMap<String, usize>,
     /// Every module path in the project, dotted, sorted. Empty in
     /// single-file mode.
     pub modules: Vec<String>,
@@ -206,6 +223,10 @@ impl DefTable {
 
     pub fn fn_named(&self, name: &str) -> Option<&FnSig> {
         self.fn_by_name.get(name).map(|&i| &self.fns[i])
+    }
+
+    pub fn const_named(&self, name: &str) -> Option<&ConstInfo> {
+        self.const_by_name.get(name).map(|&i| &self.consts[i])
     }
 
     pub fn name_of(&self, id: DefId) -> String {
@@ -998,6 +1019,8 @@ pub fn collect_units(units: &[CollectUnit]) -> (DefTable, Vec<(usize, Diagnostic
         by_name,
         fns: Vec::new(),
         fn_by_name: HashMap::new(),
+        consts: Vec::new(),
+        const_by_name: HashMap::new(),
         modules,
         list,
         option,
@@ -1280,6 +1303,92 @@ pub fn collect_units(units: &[CollectUnit]) -> (DefTable, Vec<(usize, Diagnostic
                 is_async: f.is_async,
                 name_span: f.name.span,
                 uses_insertion,
+            });
+        }
+        diagnostics.extend(unit_diagnostics.into_iter().map(|d| (index, d)));
+    }
+
+    // ----- pass B: consts -----
+    //
+    // After the signatures, so a `const` sharing a name with a function is
+    // caught wherever the two were written. A constant expression names
+    // nothing (see `crate::constants`), so this pass needs no ordering
+    // between units and no fixed point.
+    for (index, unit) in units.iter().enumerate() {
+        let resolver = ResolveCtx {
+            prefix: unit.prefix,
+            uses: unit.uses,
+            used: unit.used,
+        };
+        let resolve = (!unit.prefix.is_empty()).then_some(&resolver);
+        let mut unit_diagnostics = Vec::new();
+        for item in &unit.module.items {
+            let ast::ItemKind::Const(c) = &item.kind else {
+                continue;
+            };
+            if c.name.name.is_empty() {
+                continue; // parser recovery
+            }
+            let key = qualified(unit.prefix, &c.name.name);
+            if table.const_by_name.contains_key(&key)
+                || table.const_by_name.contains_key(&c.name.name)
+                || table.fn_by_name.contains_key(&key)
+            {
+                unit_diagnostics.push(Diagnostic::error(
+                    DiagCode::DuplicateDefinition,
+                    c.name.span,
+                    format!("`{}` is declared more than once", c.name.name),
+                ));
+                continue;
+            }
+
+            let declared = lower_type(&c.ty, &table, &[], &mut unit_diagnostics, resolve);
+
+            // Public API closure (design/0010 §4): a `pub const`'s type is
+            // its surface, so no private type may hide in one.
+            if c.is_pub {
+                if let Some(private) = private_mention(&table, &declared) {
+                    unit_diagnostics.push(Diagnostic::error(
+                        DiagCode::PubApiPrivateType,
+                        c.name.span,
+                        format!(
+                            "`pub const {}` exposes the private type `{private}`",
+                            c.name.name
+                        ),
+                    ));
+                }
+            }
+
+            match crate::constants::fold(&c.value) {
+                Ok(folded) => {
+                    let found = folded.ty();
+                    if !found.is_compatible_with(&declared) {
+                        let name_of = |id: DefId| table.name_of(id);
+                        let shown = |ty: &Type| {
+                            crate::ty::TypeName {
+                                ty,
+                                name_of: &name_of,
+                            }
+                            .to_string()
+                        };
+                        unit_diagnostics.push(Diagnostic::error(
+                            DiagCode::TypeMismatch,
+                            c.value.span,
+                            format!("expected `{}`, found `{}`", shown(&declared), shown(&found)),
+                        ));
+                    }
+                }
+                // The fold's refusal is the whole story; the const still
+                // enters the table so references to it resolve against the
+                // declared type instead of piling XN2002 on top.
+                Err(diagnostic) => unit_diagnostics.push(diagnostic),
+            }
+
+            table.const_by_name.insert(key.clone(), table.consts.len());
+            table.consts.push(ConstInfo {
+                name: key,
+                is_pub: c.is_pub,
+                ty: declared,
             });
         }
         diagnostics.extend(unit_diagnostics.into_iter().map(|d| (index, d)));

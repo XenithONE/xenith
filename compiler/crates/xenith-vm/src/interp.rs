@@ -227,6 +227,17 @@ fn find_fn<'a>(module: &'a ast::Module, name: &str) -> Option<&'a ast::FnItem> {
     })
 }
 
+/// A `const` item of `module`. Its value is the initializer expression,
+/// evaluated here like any other literal: the checker already proved it is a
+/// literal or arithmetic over literals, and folded the integer part to catch
+/// overflow, so this evaluation cannot fail on a checked program.
+fn find_const<'a>(module: &'a ast::Module, name: &str) -> Option<&'a ast::ConstItem> {
+    module.items.iter().find_map(|item| match &item.kind {
+        ast::ItemKind::Const(c) if c.name.name == name => Some(c),
+        _ => None,
+    })
+}
+
 fn capability_name(ty: &ast::Type) -> Option<&'static str> {
     if let ast::TypeKind::Named { path, args } = &ty.kind {
         if args.is_empty() && path.segments.len() == 1 {
@@ -329,6 +340,7 @@ struct Interp<'a> {
 /// checker enforced it, and `run` refuses files with diagnostics.
 enum RuntimeRef {
     Fn(usize, String),
+    Const(usize, String),
     Variant(DefId, String),
 }
 
@@ -358,7 +370,11 @@ impl<'a> Interp<'a> {
                 let rest = &segments[split..];
                 return match rest {
                     [item] => find_fn(self.modules[index].1, item)
-                        .map(|_| RuntimeRef::Fn(index, item.clone())),
+                        .map(|_| RuntimeRef::Fn(index, item.clone()))
+                        .or_else(|| {
+                            find_const(self.modules[index].1, item)
+                                .map(|_| RuntimeRef::Const(index, item.clone()))
+                        }),
                     [enum_name, variant] => {
                         let def = self.table.lookup(&format!("{module}.{enum_name}"))?;
                         self.table
@@ -387,6 +403,17 @@ impl<'a> Interp<'a> {
             is_async: f.is_async,
             home,
         })
+    }
+
+    /// A `const` of `home` as a value. Constant expressions name nothing, so
+    /// the initializer evaluates in an empty environment and the module it
+    /// was written in never has to be swapped in.
+    fn const_value(&mut self, home: usize, name: &str, span: Span) -> Eval<'a, Value<'a>> {
+        let Some(item) = find_const(self.modules[home].1, name) else {
+            return trap(span, format!("no const `{name}` at runtime"));
+        };
+        let mut env = Env::new();
+        self.eval(&item.value, &mut env)
     }
 
     // ----- blocks and statements -----
@@ -550,6 +577,9 @@ impl<'a> Interp<'a> {
                         match self.runtime_ref(&segments) {
                             Some(RuntimeRef::Fn(home, bare)) => {
                                 return self.fn_value(home, &bare, expr.span);
+                            }
+                            Some(RuntimeRef::Const(home, bare)) => {
+                                return self.const_value(home, &bare, expr.span);
                             }
                             Some(RuntimeRef::Variant(def, variant)) => {
                                 return self.variant_ref(def, &variant, expr.span);
@@ -773,6 +803,9 @@ impl<'a> Interp<'a> {
         let name = &path.segments[0].name;
         if let Some(value) = env.get(name) {
             return Ok(value.clone());
+        }
+        if find_const(self.current_module(), name).is_some() {
+            return self.const_value(self.current, name, span);
         }
         if let Some(f) = find_fn(self.current_module(), name) {
             return Ok(Value::Fn {
@@ -1015,6 +1048,10 @@ impl<'a> Interp<'a> {
                         RuntimeRef::Fn(home, bare) => {
                             let callee = self.fn_value(home, &bare, span)?;
                             self.apply(callee, evaluated, span)
+                        }
+                        // A const is not callable; the checker refused it.
+                        RuntimeRef::Const(_, bare) => {
+                            trap(span, format!("`{bare}` is a const, not a fn"))
                         }
                         RuntimeRef::Variant(def, variant) => {
                             let ctor = self.variant_ref(def, &variant, span)?;

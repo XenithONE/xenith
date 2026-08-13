@@ -49,6 +49,32 @@ let missing: Option<Int> = None;
 Each of the four needs its annotation: an empty `[]` fixes no element type, `empty_map()` fixes
 neither `K` nor `V`, `Ok(9)` fixes `T` but not `E`, `None` fixes nothing.
 
+Seeding reaches **user** generic types on the same terms — a struct literal and a payload-less
+variant read their type arguments from whatever expectation the position carries, whether that
+is an annotation, a return type or a parameter:
+
+```xenith
+struct Pair<T> {
+    a: T,
+    b: T,
+}
+
+enum Wrap<T> {
+    Hollow,
+    Full(T),
+}
+
+fn take(p: Pair<Int>) -> Int {
+    p.b
+}
+
+fn f() -> Wrap<Int> {
+    let p: Pair<Int> = Pair { a: 1, b: 2 };
+    let n = take(p: Pair { a: 3, b: 4 });
+    Wrap.Hollow
+}
+```
+
 ## 4. When an annotation is required
 
 Where nothing determines a type, the checker refuses (`XN3005`) rather than invent one. **This
@@ -60,13 +86,16 @@ Positions that require an annotation today:
 - `let x = ??;` — a hole with nothing above it. Write `let x: Config = ??;`.
 - A call whose generic result nothing pins down: `xs.map(f: …)` with `U` undetermined, `Ok(5)`
   bound to an un-annotated `let`.
-- **Construction of a generic user struct — in every position.** `Pair { first: 1, second: 2 }`
-  is refused even under a matching annotation; expected-type seeding does not reach user struct
-  literals in 0.0. Declaring `struct Pair<T>` is legal; constructing one is not yet
-  ([00 §3](00-overview.md#3-adopted-but-not-shipped)).
-- **A payload-less variant of a generic user enum** — `let e: Wrap<Int> = Wrap.Hollow;` is
-  refused the same way. Payload-carrying variants construct fine (`Wrap.Full(5)` binds `T`
-  from the payload); the prelude's `None` is seeded and unaffected.
+- **A generic user struct literal in a position that fixes nothing** — `let p = Pair { a: 1,
+  b: 2 };`. The refusal names the undetermined parameters, and the fields report nothing
+  further: one missing annotation is one diagnostic (§5).
+- **A payload-less variant of a generic user enum, likewise** — `let w = Wrap.Hollow;`.
+  Payload-carrying variants need no help (`Wrap.Full(5)` binds `T` from the payload).
+
+A `const` is the one declaration whose initializer is not checked bidirectionally at all: it is
+folded, and its type comes out of the fold, so `const NAME: String = 5;` is an ordinary
+mismatch and `const N: Int = f();` is `XN3012`
+([01 §5](01-lexical-and-syntax.md#5-items)).
 
 ## 5. Two internal types, and the poison discipline
 

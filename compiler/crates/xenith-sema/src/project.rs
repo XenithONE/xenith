@@ -153,6 +153,16 @@ pub fn analyze_project_at(
             }
         }
     }
+    for info in &table.consts {
+        if info.is_pub {
+            if let Some((owner, bare)) = info.name.rsplit_once('.') {
+                pub_index
+                    .entry(bare.to_string())
+                    .or_default()
+                    .push(owner.to_string());
+            }
+        }
+    }
     for owners in pub_index.values_mut() {
         owners.sort();
         owners.dedup();

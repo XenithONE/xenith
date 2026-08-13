@@ -63,6 +63,28 @@ fn a_used_modules_pub_items_resolve_fully_qualified() {
 }
 
 #[test]
+fn a_qualified_generic_struct_and_unit_variant_construct_from_the_annotation() {
+    // Expected-type seeding reaches the qualified spellings too, so a
+    // generic type declared in one module is constructible from another.
+    let found = analyze(&[
+        (
+            "game.boxes",
+            "pub struct Boxed<T> {\n    item: T,\n}\n\n\
+             pub enum Slot<T> {\n    Empty,\n    Filled(T),\n}\n",
+        ),
+        (
+            "main",
+            "use game.boxes;\n\n\
+             fn main() -> Int {\n    \
+                 let b: game.boxes.Boxed<Int> = game.boxes.Boxed { item: 7 };\n    \
+                 let s: game.boxes.Slot<Int> = game.boxes.Slot.Empty;\n    \
+                 b.item\n}\n",
+        ),
+    ]);
+    assert!(found.iter().all(|per| per.is_empty()), "{found:#?}");
+}
+
+#[test]
 fn a_qualified_reference_without_use_names_the_missing_use() {
     let found = analyze(&[
         ("game.player", PLAYER),
@@ -135,6 +157,69 @@ fn a_pub_signature_may_not_mention_a_private_type() {
     let (code, message) = &found[0][0];
     assert_eq!(code, "XN7007");
     assert!(message.contains("game.player.Hidden"), "{message}");
+}
+
+#[test]
+fn a_pub_const_reads_across_the_boundary_and_a_private_one_does_not() {
+    let found = analyze(&[
+        (
+            "game.limits",
+            "pub const CEILING: Int = 999;\nconst SECRET: Int = 42;\n",
+        ),
+        (
+            "main",
+            "use game.limits;\n\nfn main() -> Int {\n    game.limits.CEILING\n}\n",
+        ),
+    ]);
+    assert!(found[1].is_empty(), "{:#?}", found[1]);
+
+    let found = analyze(&[
+        (
+            "game.limits",
+            "pub const CEILING: Int = 999;\nconst SECRET: Int = 42;\n",
+        ),
+        (
+            "main",
+            "use game.limits;\n\nfn main() -> Int {\n    game.limits.SECRET\n}\n",
+        ),
+    ]);
+    let (code, message) = &found[1][0];
+    assert_eq!(code, "XN2008");
+    assert!(message.contains("private to `game.limits`"), "{message}");
+}
+
+#[test]
+fn a_const_takes_a_method_call_across_the_boundary() {
+    // `game.limits.CEILING.to_text()` reads as const-then-method, not as
+    // enum-then-variant — the two spellings are the same shape.
+    let found = analyze(&[
+        ("game.limits", "pub const CEILING: Int = 999;\n"),
+        (
+            "main",
+            "use game.limits;\n\nfn main() -> String {\n    game.limits.CEILING.to_text()\n}\n",
+        ),
+    ]);
+    assert!(found[1].is_empty(), "{:#?}", found[1]);
+}
+
+#[test]
+fn a_bare_pub_const_earns_the_use_fix() {
+    let found = analyze(&[
+        ("game.limits", "pub const CEILING: Int = 999;\n"),
+        ("main", "fn main() -> Int {\n    CEILING\n}\n"),
+    ]);
+    let (code, message) = &found[1][0];
+    assert_eq!(code, "XN2002");
+    assert!(message.contains("use game.limits;"), "{message}");
+}
+
+#[test]
+fn a_pub_const_may_not_mention_a_private_type() {
+    let found = analyze(&[(
+        "game.limits",
+        "struct Hidden {\n    value: Int,\n}\n\npub const H: Hidden = 1;\n",
+    )]);
+    assert!(codes(&found[0]).contains(&"XN7007"), "{:#?}", found[0]);
 }
 
 #[test]

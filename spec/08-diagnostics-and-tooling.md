@@ -33,17 +33,17 @@ broken.xn:2:14: error[XN1002]: expected `;`
 ## 2. Code families
 
 **Codes are never reused or renumbered** — a model that learned what `XN0002` means must keep
-being right. Numbering has gaps for the same reason; 0.0 ships 53 codes across these families:
+being right. Numbering has gaps for the same reason; 0.0 ships 64 codes across these families:
 
 | Range | Area |
 | --- | --- |
 | `XN0xxx` | lexical |
 | `XN1xxx` | syntax — including the closure form rules (`XN1009`–`XN1012`) and `XN1008`, the "parsed but not shipped" refusal |
 | `XN2xxx` | name resolution — unknown names/types/methods/modules, visibility, `use` hygiene |
-| `XN3xxx` | types — mismatches, argument shape, annotation-required, sealed properties, value-sized recursion |
+| `XN3xxx` | types — mismatches, argument shape, annotation-required, sealed properties, value-sized recursion, non-constant `const` initializers (`XN3012`) |
 | `XN4xxx` | capabilities and effects — `XN4001` effect-not-permitted; `XN4005`–`XN4008` the closure pillars |
 | `XN5xxx` | exhaustiveness |
-| `XN6xxx` | concurrency (`Transfer` / `ShareSafe`) — **reserved, no codes shipped** |
+| `XN6xxx` | task structure — `XN6001`–`XN6010`, the design/0015 rules ([04 §7](04-evaluation.md#7-task-structure)); the `Transfer` / `ShareSafe` half of design/0004 is still reserved |
 | `XN7xxx` | modules and project layout |
 
 The registry is executable, not documentary: `xenith explain` with no argument lists every
@@ -172,16 +172,18 @@ may ignore what it does not read.
 | --- | --- | --- |
 | `xenith check <paths…> [--json] [--diagnostic-teaching=on\|off]` | parse + full analysis; project-aware ([05 §5](05-modules-and-projects.md#5-checking-and-running-a-project)) | 0 clean; 1 on any error |
 | `xenith run <path> [--diagnostic-teaching=…]` | check, then execute `fn main` | 0 / 1 / 2 / 101 ([04 §5](04-evaluation.md#5-entry-and-exit)) |
-| `xenith goals <paths…> [--json]` | every hole: expected type, scope, effect budget, candidates, blocked symbols | 0 unless a file was unreadable |
-| `xenith query type-at <path> --at L:C [--json]` | the type at a position, with scope and effect budget — a query is a hole the author did not have to write, riding the same traversal | |
-| `xenith query producers <path> "<Type>" [--json]` | everything in scope that can produce the type: functions, methods, variants. The anti-hallucination query — ask, instead of guessing a name. An unknown type is an error, not an empty list | |
+| `xenith goals <paths…> [--json]` | every hole: expected type, scope, effect budget, candidates, blocked symbols; project-aware | 0 unless a path was unreadable |
+| `xenith query type-at <path> --at L:C [--json]` | the type at a position, with scope and effect budget — a query is a hole the author did not have to write, riding the same traversal; project-aware | |
+| `xenith query producers <path> "<Type>" [--json]` | everything in scope that can produce the type: functions, methods, variants. The anti-hallucination query — ask, instead of guessing a name. An unknown type is an error, not an empty list; project-aware | |
 | `xenith fmt <paths…> [--check]` | canonical form ([01 §10](01-lexical-and-syntax.md#10-canonical-form)); `--check` lists files that would change, exit 1 | |
 | `xenith explain [CODE]` | the rule behind a code; no argument lists all | |
 | `xenith api <project> [--module M] [--json]` | the public API surface ([05 §6](05-modules-and-projects.md#6-the-api-surface)) | |
 
-`goals` and `query` analyse single files in 0.0 ([05 §5](05-modules-and-projects.md#5-checking-and-running-a-project));
-`type-at` positions are one-based and count characters, and answer for partial programs like
-any others.
+Every command in the table resolves its path through the one pipeline, so a path inside a
+project is analysed as that project and a path outside one is analysed alone
+([05 §5](05-modules-and-projects.md#5-checking-and-running-a-project)); the `--json` answers
+carry the `analysis_mode` that actually ran, and `project_root` with it. `type-at` positions
+are one-based and count characters, and answer for partial programs like any others.
 
 ```console
 $ xenith query producers scores.xn "Result<Player, ScoreError>"

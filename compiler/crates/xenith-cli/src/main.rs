@@ -411,37 +411,71 @@ fn explain(code: Option<&str>) -> ExitCode {
     }
 }
 
+/// `xenith goals`, project-aware: a path inside a project reports the whole
+/// project's holes — the requested file first, the rest in path order — with
+/// every module's declarations in view, the same answer the MCP `goals` tool
+/// gives (design/0013 §1). Outside a project nothing changes.
 fn goals(paths: &[PathBuf], json: bool) -> ExitCode {
     let mut failed = false;
-    let mut reports = Vec::new();
+    let mut reports: Vec<render::GoalReport> = Vec::new();
+    let mut roots_done: Vec<PathBuf> = Vec::new();
 
     for path in paths {
-        let Some(source) = read(path, &mut failed) else {
-            continue;
-        };
-        let analysis = xenith_driver::analyze_source(&source);
-        reports.push((
-            path.clone(),
-            source,
-            analysis.goals,
-            analysis.diagnostics.len(),
-        ));
+        match snapshot_of(path) {
+            Ok(xenith_driver::project::ProjectSnapshot::Project { project, requested }) => {
+                if roots_done.contains(&project.root) {
+                    continue;
+                }
+                roots_done.push(project.root.clone());
+                note_layout(&project);
+                let analyzed = xenith_driver::project::analyze(&project);
+                let root = project.root.display().to_string();
+                for index in prioritized(&project, requested) {
+                    let file = &project.files[index];
+                    reports.push(render::GoalReport {
+                        path: shown_path(&project, &file.rel),
+                        source: file.source.clone(),
+                        goals: analyzed.goals[index].clone(),
+                        problems: analyzed.diagnostics[index].len(),
+                        project_root: Some(root.clone()),
+                    });
+                }
+            }
+            Ok(xenith_driver::project::ProjectSnapshot::SingleFile { source, .. }) => {
+                let analysis = xenith_driver::analyze_source(&source);
+                reports.push(render::GoalReport {
+                    path: path.clone(),
+                    source,
+                    goals: analysis.goals,
+                    problems: analysis.diagnostics.len(),
+                    project_root: None,
+                });
+            }
+            Err(error) => {
+                eprintln!("{error}");
+                failed = true;
+            }
+        }
     }
 
     if json {
         println!("{}", render::goals_json(&reports));
     } else {
         let mut total = 0usize;
-        for (path, source, goals, problems) in &reports {
-            total += goals.len();
-            let index = LineIndex::new(source);
-            for goal in goals {
-                print!("{}", render::goal(path, source, &index, goal));
+        for report in &reports {
+            total += report.goals.len();
+            let index = LineIndex::new(&report.source);
+            for goal in &report.goals {
+                print!(
+                    "{}",
+                    render::goal(&report.path, &report.source, &index, goal)
+                );
             }
-            if *problems > 0 {
+            if report.problems > 0 {
                 eprintln!(
-                    "note: {} has {problems} diagnostic(s); run `xenith check` to see them",
-                    path.display()
+                    "note: {} has {} diagnostic(s); run `xenith check` to see them",
+                    report.path.display(),
+                    report.problems
                 );
             }
         }
@@ -457,25 +491,53 @@ fn goals(paths: &[PathBuf], json: bool) -> ExitCode {
     }
 }
 
+/// `xenith query type-at`, project-aware: inside a project the file is
+/// checked with every module's declarations in view, so a cross-module type
+/// answers qualified instead of reading as unknown (design/0013 §1).
 fn type_at(path: &Path, at: &str, json: bool) -> ExitCode {
-    let mut failed = false;
-    let Some(source) = read(path, &mut failed) else {
-        return ExitCode::FAILURE;
-    };
-
     let Some((line, column)) = parse_position(at) else {
         eprintln!("--at takes line:column, one-based — for example --at 59:5");
         return ExitCode::FAILURE;
     };
-    let index = LineIndex::new(&source);
-    let Some(offset) = xenith_driver::wire::position_to_offset(&source, &index, line, column)
-    else {
-        eprintln!("{}:{line}:{column} is outside the file", path.display());
-        return ExitCode::FAILURE;
+
+    let snapshot = match snapshot_of(path) {
+        Ok(snapshot) => snapshot,
+        Err(error) => {
+            eprintln!("{error}");
+            return ExitCode::FAILURE;
+        }
     };
 
-    let parsed = parse(&source);
-    let Some(probe) = xenith_sema::type_at(&parsed.module, offset) else {
+    let (probe, root) = match &snapshot {
+        xenith_driver::project::ProjectSnapshot::Project { project, requested } => {
+            note_layout(project);
+            let Some(file) = *requested else {
+                eprintln!(
+                    "`{}` is not a module source of the project at `{}`",
+                    path.display(),
+                    project.root.display()
+                );
+                return ExitCode::FAILURE;
+            };
+            let source = &project.files[file].source;
+            let Some(offset) = offset_at(path, source, line, column) else {
+                return ExitCode::FAILURE;
+            };
+            (
+                xenith_driver::project::type_at(project, file, offset),
+                Some(project.root.display().to_string()),
+            )
+        }
+        xenith_driver::project::ProjectSnapshot::SingleFile { source, .. } => {
+            let Some(offset) = offset_at(path, source, line, column) else {
+                return ExitCode::FAILURE;
+            };
+            let parsed = parse(source);
+            (xenith_sema::type_at(&parsed.module, offset), None)
+        }
+    };
+
+    let Some(probe) = probe else {
         eprintln!(
             "{}:{line}:{column} is not inside an expression — try a position on a value",
             path.display()
@@ -484,8 +546,9 @@ fn type_at(path: &Path, at: &str, json: bool) -> ExitCode {
     };
 
     if json {
-        let rendered =
+        let mut rendered =
             xenith_driver::wire::probe(&path.display().to_string(), line, column, &probe);
+        xenith_driver::wire::stamp_mode(&mut rendered, snapshot.analysis_mode(), root.as_deref());
         println!(
             "{}",
             serde_json::to_string_pretty(&rendered).unwrap_or_default()
@@ -512,14 +575,41 @@ fn type_at(path: &Path, at: &str, json: bool) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// `xenith query producers`, project-aware: inside a project the scope is
+/// the file's own — its items, the pub items of the modules it `use`s, and
+/// the prelude (design/0010 §6, design/0013 §1).
 fn producers(path: &Path, type_text: &str, json: bool) -> ExitCode {
-    let mut failed = false;
-    let Some(source) = read(path, &mut failed) else {
-        return ExitCode::FAILURE;
+    let snapshot = match snapshot_of(path) {
+        Ok(snapshot) => snapshot,
+        Err(error) => {
+            eprintln!("{error}");
+            return ExitCode::FAILURE;
+        }
     };
-    let parsed = parse(&source);
 
-    let found = match xenith_sema::producers(&parsed.module, type_text) {
+    let (found, root) = match &snapshot {
+        xenith_driver::project::ProjectSnapshot::Project { project, requested } => {
+            note_layout(project);
+            let Some(file) = *requested else {
+                eprintln!(
+                    "`{}` is not a module source of the project at `{}`",
+                    path.display(),
+                    project.root.display()
+                );
+                return ExitCode::FAILURE;
+            };
+            (
+                xenith_driver::project::producers(project, file, type_text),
+                Some(project.root.display().to_string()),
+            )
+        }
+        xenith_driver::project::ProjectSnapshot::SingleFile { source, .. } => {
+            let parsed = parse(source);
+            (xenith_sema::producers(&parsed.module, type_text), None)
+        }
+    };
+
+    let found = match found {
         Ok(found) => found,
         Err(message) => {
             eprintln!("{message}");
@@ -528,7 +618,8 @@ fn producers(path: &Path, type_text: &str, json: bool) -> ExitCode {
     };
 
     if json {
-        let rendered = xenith_driver::wire::producers(&found);
+        let mut rendered = xenith_driver::wire::producers(&found);
+        xenith_driver::wire::stamp_mode(&mut rendered, snapshot.analysis_mode(), root.as_deref());
         println!(
             "{}",
             serde_json::to_string_pretty(&rendered).unwrap_or_default()
@@ -542,6 +633,68 @@ fn producers(path: &Path, type_text: &str, json: bool) -> ExitCode {
         }
     }
     ExitCode::SUCCESS
+}
+
+/// The one pipeline, as the unconfined CLI asks for it (design/0013 §1):
+/// project when a manifest governs the path, single-file otherwise, and
+/// never single-file because discovery failed.
+fn snapshot_of(
+    path: &Path,
+) -> Result<xenith_driver::project::ProjectSnapshot, xenith_driver::project::SnapshotError> {
+    xenith_driver::project::snapshot(&xenith_driver::project::ProjectRequest {
+        path,
+        mode: xenith_driver::project::ModeRequest::Auto,
+        containment: None,
+    })
+}
+
+/// A layout problem means the module map is only partly trustworthy. The
+/// CLI has no `mode` flag to fall back to, so the answer is given and the
+/// caveat is stated rather than withheld — never silently.
+fn note_layout(project: &xenith_driver::project::Project) {
+    for (rel, diagnostic) in &project.layout {
+        eprintln!(
+            "note: {}: {}: {} — the project's module map is incomplete; \
+             run `xenith check` for the full report",
+            rel,
+            diagnostic.code.id(),
+            diagnostic.message
+        );
+    }
+}
+
+/// Indices into `project.files`, the requested file first and the rest in
+/// path order — the same priority the project wire responses use.
+fn prioritized(project: &xenith_driver::project::Project, requested: Option<usize>) -> Vec<usize> {
+    let mut order: Vec<usize> = (0..project.files.len()).collect();
+    order.sort_by(|a, b| {
+        let a_first = Some(*a) == requested;
+        let b_first = Some(*b) == requested;
+        b_first
+            .cmp(&a_first)
+            .then_with(|| project.files[*a].rel.cmp(&project.files[*b].rel))
+    });
+    order
+}
+
+/// A project file's path as the CLI spells it: `<root>/src/<rel>`, with the
+/// host's separators — the same spelling `check` reports.
+fn shown_path(project: &xenith_driver::project::Project, rel: &str) -> PathBuf {
+    let mut shown = project.root.join("src");
+    for part in rel.split('/') {
+        shown.push(part);
+    }
+    shown
+}
+
+/// One-based line:column to a byte offset, reporting the out-of-file case.
+fn offset_at(path: &Path, source: &str, line: u32, column: u32) -> Option<u32> {
+    let index = LineIndex::new(source);
+    let offset = xenith_driver::wire::position_to_offset(source, &index, line, column);
+    if offset.is_none() {
+        eprintln!("{}:{line}:{column} is outside the file", path.display());
+    }
+    offset
 }
 
 /// One report entry per project file, layout problems included — a layout
