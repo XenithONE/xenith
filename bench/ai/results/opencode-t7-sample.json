@@ -1,0 +1,60 @@
+{
+  "condition": "t7-sample",
+  "model": "opencode",
+  "model_version": "openai/gpt-5.6-terra (opencode 1.18.16)",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 28.2,
+          "submitted": "fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    var sum = 0;\n    var n = 1;\n    while n <= 40 {\n        sum = sum + n;\n        n = n + 1;\n    }\n\n    var product = 1;\n    var factor = 1;\n    while factor <= 8 {\n        product = product * factor;\n        factor = factor + 1;\n    }\n\n    io.write(text: sum.to_text().concat(other: \" \").concat(other: product.to_text()))?;\n    return Ok(unit);\n}",
+          "usage": {
+            "awaits": 0,
+            "impure_callees": [],
+            "list_combinators": [],
+            "scope": false,
+            "spawned_callees": [],
+            "spawns": 0,
+            "unresolved_callees": []
+          }
+        }
+      ],
+      "task": "t7-01",
+      "tier": 7
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 16.1,
+          "submitted": "fn sum_to(n: Int) -> Int {\n    var total = 0;\n    var current = 1;\n    while current <= n {\n        total = total + current;\n        current = current + 1;\n    }\n    total\n}\n\nfn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    io.write(text: \"12: \".concat(other: sum_to(n: 12).to_text()).concat(other: \"\\n\"))?;\n    io.write(text: \"30: \".concat(other: sum_to(n: 30).to_text()).concat(other: \"\\n\"))?;\n    io.write(text: \"7: \".concat(other: sum_to(n: 7).to_text()).concat(other: \"\\n\"))?;\n    return Ok(unit);\n}",
+          "usage": {
+            "awaits": 0,
+            "impure_callees": [],
+            "list_combinators": [],
+            "scope": false,
+            "spawned_callees": [],
+            "spawns": 0,
+            "unresolved_callees": []
+          }
+        }
+      ],
+      "task": "t7-02",
+      "tier": 7
+    }
+  ],
+  "totals": {
+    "pass_at_1": 2,
+    "passed": 2,
+    "tasks": 2
+  },
+  "unix_time": 1786612433
+}

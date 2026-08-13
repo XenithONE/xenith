@@ -1,0 +1,27 @@
+{
+  "condition": "t7-sample",
+  "model": "grok",
+  "model_version": "grok-4.6 (grok-cli 1.0.3)",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "model error: no reply within 300s",
+          "seconds": 301.5
+        }
+      ],
+      "task": "t7-01",
+      "tier": 7
+    }
+  ],
+  "totals": {
+    "pass_at_1": 0,
+    "passed": 0,
+    "tasks": 1
+  },
+  "unix_time": 1786612679
+}

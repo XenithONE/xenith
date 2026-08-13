@@ -1,0 +1,50 @@
+{
+  "condition": "t7-sample",
+  "model": "opencode-nemotron",
+  "model_version": "opencode/nemotron-3-ultra-free (opencode 1.18.16)",
+  "rounds_limit": 4,
+  "tasks": [
+    {
+      "pass_at_1": false,
+      "passed": false,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "model error: no reply within 300s",
+          "seconds": 301.1
+        }
+      ],
+      "task": "t7-01",
+      "tier": 7
+    },
+    {
+      "pass_at_1": true,
+      "passed": true,
+      "rounds": [
+        {
+          "attempt": 1,
+          "outcome": "pass",
+          "seconds": 125.7,
+          "submitted": "fn sum_upto(n: Int) -> Int {\n    var total = 0;\n    var i = 1;\n    while i <= n {\n        total = total + i;\n        i = i + 1;\n    }\n    total\n}\n\nfn main(io: Io) -> Result<Unit, Error> uses {Io.write} {\n    let n1 = 12;\n    let s1 = sum_upto(n: n1);\n    io.write(text: n1.to_text().concat(other: \": \").concat(other: s1.to_text()).concat(other: \"\\n\"))?;\n\n    let n2 = 30;\n    let s2 = sum_upto(n: n2);\n    io.write(text: n2.to_text().concat(other: \": \").concat(other: s2.to_text()).concat(other: \"\\n\"))?;\n\n    let n3 = 7;\n    let s3 = sum_upto(n: n3);\n    io.write(text: n3.to_text().concat(other: \": \").concat(other: s3.to_text()).concat(other: \"\\n\"))?;\n\n    return Ok(unit);\n}",
+          "usage": {
+            "awaits": 0,
+            "impure_callees": [],
+            "list_combinators": [],
+            "scope": false,
+            "spawned_callees": [],
+            "spawns": 0,
+            "unresolved_callees": []
+          }
+        }
+      ],
+      "task": "t7-02",
+      "tier": 7
+    }
+  ],
+  "totals": {
+    "pass_at_1": 1,
+    "passed": 1,
+    "tasks": 2
+  },
+  "unix_time": 1786612827
+}
