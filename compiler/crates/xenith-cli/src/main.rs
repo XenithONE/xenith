@@ -91,6 +91,15 @@ enum Command {
         /// As on `check`: the refusal path renders the same diagnostics.
         #[arg(long = "diagnostic-teaching", value_enum, default_value_t = Teaching::On)]
         diagnostic_teaching: Teaching,
+        /// Run the children of a `scope` on this thread, one at a time, in
+        /// spawn order — the pre-0017 executor.
+        ///
+        /// Internal, and hidden for that reason: it exists as the
+        /// differential oracle the shipped parallel executor is tested
+        /// against (design/0017 §5), not as a knob programs may depend on.
+        /// `XENITH_EXECUTOR=sequential` does the same for every entry point.
+        #[arg(long, hide = true)]
+        sequential: bool,
     },
     /// Print a project's public API surface: per module, the pub functions,
     /// structs, enums and consts with their effect sets, in deterministic
@@ -167,7 +176,16 @@ fn main() -> ExitCode {
         Command::Run {
             path,
             diagnostic_teaching,
-        } => run(&path, diagnostic_teaching),
+            sequential,
+        } => run(
+            &path,
+            diagnostic_teaching,
+            if sequential {
+                xenith_vm::Executor::Sequential
+            } else {
+                xenith_vm::Executor::from_env()
+            },
+        ),
         Command::Api {
             project,
             module,
@@ -220,7 +238,7 @@ fn api(project_path: &Path, module: Option<&str>, json: bool) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn run(path: &Path, teaching: Teaching) -> ExitCode {
+fn run(path: &Path, teaching: Teaching, executor: xenith_vm::Executor) -> ExitCode {
     // A file inside a project runs as the project (design/0010 §2): the
     // entry is `src/main.xn`, whichever file was named. The one pipeline
     // decides which (design/0013 §1).
@@ -231,7 +249,7 @@ fn run(path: &Path, teaching: Teaching) -> ExitCode {
     };
     let source = match xenith_driver::project::snapshot(&request) {
         Ok(xenith_driver::project::ProjectSnapshot::Project { project, .. }) => {
-            return run_project(&project, teaching);
+            return run_project(&project, teaching, executor);
         }
         Ok(xenith_driver::project::ProjectSnapshot::SingleFile { source, .. }) => source,
         Err(error) => {
@@ -254,7 +272,7 @@ fn run(path: &Path, teaching: Teaching) -> ExitCode {
 
     let parsed = parse(&source);
     let (table, _) = xenith_sema::def::collect(&parsed.module);
-    let outcome = xenith_vm::run(&parsed.module, &table);
+    let outcome = xenith_vm::run_with(&parsed.module, &table, executor);
 
     use std::io::Write;
     let _ = std::io::stdout().write_all(&outcome.stdout);
@@ -725,7 +743,11 @@ fn project_findings(
 
 /// Check, then execute a whole project. Refusal mirrors the single-file
 /// rule: any diagnostic anywhere means nothing runs.
-fn run_project(project: &xenith_driver::project::Project, teaching: Teaching) -> ExitCode {
+fn run_project(
+    project: &xenith_driver::project::Project,
+    teaching: Teaching,
+    executor: xenith_vm::Executor,
+) -> ExitCode {
     let findings = project_findings(project, teaching);
     let mut any = false;
     for (path, source, diagnostics) in &findings {
@@ -749,7 +771,7 @@ fn run_project(project: &xenith_driver::project::Project, teaching: Teaching) ->
         .iter()
         .map(|file| (file.module.clone(), &file.parsed.module))
         .collect();
-    let outcome = xenith_vm::run_project(&modules, &table);
+    let outcome = xenith_vm::run_project_with(&modules, &table, executor);
 
     use std::io::Write;
     let _ = std::io::stdout().write_all(&outcome.stdout);

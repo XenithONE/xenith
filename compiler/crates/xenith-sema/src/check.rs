@@ -115,6 +115,7 @@ pub fn analyze_at(module: &ast::Module, offset: Option<u32>) -> (Analysis, Optio
             loop_depth: 0,
             initializing: Vec::new(),
             scope_depth: 0,
+            flights: Vec::new(),
             joins: Vec::new(),
             in_guard: false,
         };
@@ -178,6 +179,7 @@ pub(crate) fn check_module_bodies(
             loop_depth: 0,
             initializing: Vec::new(),
             scope_depth: 0,
+            flights: Vec::new(),
             joins: Vec::new(),
             in_guard: false,
         };
@@ -341,6 +343,26 @@ struct JoinInfo {
     created_loop_depth: u32,
 }
 
+/// One `scope { .. }` region being checked, for the in-flight rule
+/// (design/0017 §1).
+///
+/// A region is *in flight* from its first `spawn` until every task that
+/// spawn created has been consumed: the handles bound in it are all
+/// `Consumed`, and no statement-form spawn is outstanding. The statement
+/// form binds no handle, so the scope's closing brace is the only thing that
+/// joins it — which is why it keeps the region in flight to the end.
+#[derive(Default)]
+struct ScopeFlight {
+    /// Indices into [`Checker::joins`] of the handles spawned in this
+    /// region. Their consumption states live there, so branch snapshots and
+    /// merges already maintain them — no second dataflow.
+    joins: Vec<usize>,
+    /// Statement-form spawns of this region, joined only at its exit.
+    fired: u32,
+    /// Already reported here — one mistake, one diagnostic (design/0009).
+    reported: bool,
+}
+
 /// One closure body being checked (design/0014). The stack of these is what
 /// makes the two pillars positional: any scope below `boundary` is outside
 /// the closure, so referencing it is a capture, and a non-empty stack means
@@ -385,6 +407,9 @@ struct Checker<'a> {
     /// `scope { .. }` nesting depth (design/0015 §1) — `spawn` is legal only
     /// when this is non-zero.
     scope_depth: u32,
+    /// The enclosing `scope { .. }` regions, innermost last — one entry per
+    /// unit of `scope_depth`. Carries the in-flight state of design/0017 §1.
+    flights: Vec<ScopeFlight>,
     /// Every task handle of this function, in creation order. Branch merges
     /// snapshot and restore the states by index.
     joins: Vec<JoinInfo>,
@@ -516,6 +541,97 @@ impl<'a> Checker<'a> {
             Diagnostic::error(DiagCode::TaskInClosure, span, message)
                 .with_teach_note(format!("; {TASK_PLAN_TEACH}")),
         );
+    }
+
+    /// Check a `scope { .. }` body with its own flight region on the stack.
+    fn in_scope_region<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
+        self.scope_depth += 1;
+        self.flights.push(ScopeFlight::default());
+        let out = f(self);
+        self.flights.pop();
+        self.scope_depth -= 1;
+        out
+    }
+
+    /// Record a task the current region is now waiting on. A `let`-bound
+    /// handle names its index; the statement form has none and is joined by
+    /// the scope's exit instead (design/0017 §3).
+    fn note_spawned(&mut self, join: Option<usize>) {
+        let Some(flight) = self.flights.last_mut() else {
+            return; // spawn outside a scope: already XN6001
+        };
+        match join {
+            Some(index) => flight.joins.push(index),
+            None => flight.fired += 1,
+        }
+    }
+
+    /// Is some task spawned by an enclosing region still unconsumed? A
+    /// `Poisoned` handle is one a diagnostic already covered, so it does not
+    /// keep the parent silent as well.
+    fn tasks_in_flight(&self) -> bool {
+        self.flights.iter().any(|flight| {
+            flight.fired > 0
+                || flight
+                    .joins
+                    .iter()
+                    .any(|index| self.joins[*index].state == JoinState::Live)
+        })
+    }
+
+    /// XN6011 (design/0017 §1): the parent performs no effect between the
+    /// first `spawn` of a scope and the consumption of everything it
+    /// created. Returns whether the call was refused here, in which case the
+    /// declaration rule stays quiet — the repair is to move the effect, not
+    /// to widen `uses`.
+    ///
+    /// The teach is the canonical design/0015 sentence, unchanged: it always
+    /// said effects run in the parent *after* await; this rule is that
+    /// sentence finally checked rather than merely taught.
+    fn refuse_effect_in_flight(&mut self, needed: &EffectSet, span: Span) -> bool {
+        // A closure body has its own, stricter rule (XN4006), and cannot
+        // contain task structure at all.
+        if needed.is_empty() || !self.closures.is_empty() || !self.tasks_in_flight() {
+            return false;
+        }
+        let Some(position) = self.flights.iter().rposition(|flight| {
+            flight.fired > 0
+                || flight
+                    .joins
+                    .iter()
+                    .any(|i| self.joins[*i].state == JoinState::Live)
+        }) else {
+            return false;
+        };
+        if self.flights[position].reported {
+            return true;
+        }
+        self.flights[position].reported = true;
+
+        let listed: Vec<&str> = needed.iter().collect();
+        let waiting = self.flights[position]
+            .joins
+            .iter()
+            .find(|index| self.joins[**index].state == JoinState::Live)
+            .map(|index| self.joins[*index].name.clone());
+        let message = match waiting {
+            Some(name) => format!(
+                "this call uses {{{}}} while the task `{name}` is still in \
+                 flight; await `{name}` first",
+                listed.join(", ")
+            ),
+            None => format!(
+                "this call uses {{{}}} while a task spawned in this scope is \
+                 still in flight; the scope joins it at its closing brace, so \
+                 move the effect after the scope",
+                listed.join(", ")
+            ),
+        };
+        self.diagnostics.push(
+            Diagnostic::error(DiagCode::EffectWhileTasksInFlight, span, message)
+                .with_teach_note(format!("; {TASK_PLAN_TEACH}")),
+        );
+        true
     }
 
     /// The per-handle states, by index — what a branch snapshot holds.
@@ -678,7 +794,7 @@ impl<'a> Checker<'a> {
 
         // Spawning is itself an effect (design/0015 §5): the enclosing fn
         // declares `Task.spawn`, and the ordinary machinery carries the fix.
-        self.require_effects(&EffectSet::new(["Task.spawn".to_string()]), span);
+        self.require_effects_declared(&EffectSet::new(["Task.spawn".to_string()]), span);
 
         let mut bindings: Vec<(String, Type)> = Vec::new();
         let teach = Some(Teach::call_signature(
@@ -918,6 +1034,8 @@ impl<'a> Checker<'a> {
                     binding_span: pattern.span,
                     created_loop_depth: self.loop_depth,
                 });
+                // The parent now has a child in flight (design/0017 §1).
+                self.note_spawned(Some(index));
                 self.scopes
                     .last_mut()
                     .expect("at least one scope")
@@ -1686,6 +1804,17 @@ impl<'a> Checker<'a> {
     /// non-empty `uses`, a generic that turned out effectful. No fix is
     /// offered, because a `fn(..)` type has no clause to widen.
     fn require_effects(&mut self, needed: &EffectSet, span: Span) {
+        if self.refuse_effect_in_flight(needed, span) {
+            return;
+        }
+        self.require_effects_declared(needed, span);
+    }
+
+    /// [`Checker::require_effects`] without the in-flight rule — the form
+    /// `spawn` itself uses to charge `Task.spawn`. Spawning a second child
+    /// while the first is in flight is the shape design/0017 §1 blesses, so
+    /// the effect that opens a flight cannot be refused by it.
+    fn require_effects_declared(&mut self, needed: &EffectSet, span: Span) {
         if !self.closures.is_empty() {
             if !needed.is_empty() {
                 let listed: Vec<&str> = needed.iter().collect();
@@ -1845,6 +1974,10 @@ impl<'a> Checker<'a> {
                 // children with nothing to hand back (design/0015 §4).
                 if let ast::ExprKind::Spawn { path, args } = &expr.kind {
                     if let Some(result) = self.spawn_check(path, args, expr.span) {
+                        // No handle to consume: this child is joined by the
+                        // scope's exit, and keeps the region in flight until
+                        // then (design/0017 §3).
+                        self.note_spawned(None);
                         if !matches!(result, Type::Unit) && !result.is_unknown() {
                             let spelled = path
                                 .segments
@@ -2011,9 +2144,7 @@ impl<'a> Checker<'a> {
                     self.task_in_closure("`scope`", expr.span);
                     self.check_block(block, expected);
                 } else {
-                    self.scope_depth += 1;
-                    self.check_block(block, expected);
-                    self.scope_depth -= 1;
+                    self.in_scope_region(|this| this.check_block(block, expected));
                 }
             }
 
@@ -2360,10 +2491,7 @@ impl<'a> Checker<'a> {
                     self.task_in_closure("`scope`", expr.span);
                     return self.synth_block(block);
                 }
-                self.scope_depth += 1;
-                let ty = self.synth_block(block);
-                self.scope_depth -= 1;
-                ty
+                self.in_scope_region(|this| this.synth_block(block))
             }
 
             // A spawn anywhere other than `let j = spawn f(..);` or the

@@ -10,6 +10,8 @@
 //! span — a runtime error message with no position is a bug report nobody
 //! can act on.
 
+use std::sync::Arc;
+
 use xenith_diag::Span;
 use xenith_sema::def::{DefKind, DefTable};
 use xenith_sema::ty::DefId;
@@ -17,38 +19,52 @@ use xenith_syntax::ast;
 
 // ------------------------------------------------------------------- values
 
+/// A runtime value.
+///
+/// Every aggregate arm holds its payload behind an [`Arc`], and every write
+/// path goes through [`Arc::make_mut`] — copy-on-write (design/0017 §4).
+/// This is the "implementation may share storage under the hood" clause of
+/// spec/04 §1 taken up: a copy is O(1) until somebody writes, and the write
+/// uniquifies **the whole path** it walks, so reading a value out of a
+/// container still yields an independent value (D1). An implementation that
+/// uniquified only the outermost node and then wrote through a shared inner
+/// node would be a bug, not an optimisation.
+///
+/// The arms are also all `Send`, statically ([`VALUE_IS_SEND`]): design/0017
+/// §3 runs children on real threads, and the type system — not a comment —
+/// is what keeps `Rc` and interior mutability out.
 #[derive(Clone, Debug)]
 pub enum Value<'a> {
     Int(i64),
     Float(f64),
     Bool(bool),
-    Str(String),
+    Str(Arc<String>),
     Char(char),
     Unit,
     /// A `List<T>` value. Reads copy (design/0007 D1); only `push`, `pop`
     /// and `replace` write through the receiver in place.
-    List(Vec<Value<'a>>),
+    List(Arc<Vec<Value<'a>>>),
     /// A `Map<K, V>` value in insertion order — the order is normative
     /// (design/0007 §3), so pairs beat a hash table at this scale.
-    Map(Vec<(Value<'a>, Value<'a>)>),
+    Map(Arc<Vec<(Value<'a>, Value<'a>)>>),
     /// A value of the opaque prelude `Error` type. The message exists for
     /// debug rendering; nothing in the language reads it back out.
-    ErrorValue(String),
+    ErrorValue(Arc<String>),
     Struct {
         def: DefId,
         /// Field values in declaration order.
-        fields: Vec<Value<'a>>,
+        fields: Arc<Vec<Value<'a>>>,
     },
     Enum {
         def: DefId,
         variant: usize,
-        payload: Vec<Value<'a>>,
+        payload: Arc<Vec<Value<'a>>>,
     },
     /// A function value: a lambda, a named function, or reference thereto.
     Fn {
-        params: Vec<String>,
+        params: Arc<Vec<String>>,
         body: Body<'a>,
-        captured: Vec<(String, Value<'a>)>,
+        captured: Arc<Vec<(String, Value<'a>)>>,
         is_async: bool,
         /// Index of the module whose bare names the body resolves against.
         home: usize,
@@ -61,9 +77,66 @@ pub enum Value<'a> {
     },
     /// A capability handed to `main`. The name is the prelude type ("Io").
     Capability(&'static str),
-    /// The result of calling an `async fn`. Single-threaded for now: the body
-    /// has already run; `.await` unwraps.
-    Task(Box<Value<'a>>),
+    /// The result of calling an `async fn`, and the handle the sequential
+    /// executor hands back from `spawn`: the body has already run, and
+    /// `.await` unwraps.
+    Task(Arc<Value<'a>>),
+    /// The handle the parallel executor hands back from `spawn`: the
+    /// child's position in the run's spawn order. `.await` commits every
+    /// outcome up to and including it (design/0017 §3).
+    Pending {
+        index: usize,
+    },
+}
+
+/// `Value` crosses thread boundaries in the parallel executor (design/0017
+/// §3), so `Send` is a compile-time obligation, not a review note. An `Rc`
+/// or a `Cell` smuggled into any arm breaks this line.
+const VALUE_IS_SEND: () = {
+    const fn assert_send<T: Send>() {}
+    assert_send::<Value<'static>>();
+};
+const _: () = VALUE_IS_SEND;
+
+impl<'a> Value<'a> {
+    /// Wrap an owned `String` as a value. The `Arc` is the sharing, not the
+    /// semantics: `String` has no mutating method in the language.
+    fn str(text: impl Into<String>) -> Value<'a> {
+        Value::Str(Arc::new(text.into()))
+    }
+
+    fn list(items: Vec<Value<'a>>) -> Value<'a> {
+        Value::List(Arc::new(items))
+    }
+
+    fn map(entries: Vec<(Value<'a>, Value<'a>)>) -> Value<'a> {
+        Value::Map(Arc::new(entries))
+    }
+
+    fn error_value(message: impl Into<String>) -> Value<'a> {
+        Value::ErrorValue(Arc::new(message.into()))
+    }
+
+    fn structure(def: DefId, fields: Vec<Value<'a>>) -> Value<'a> {
+        Value::Struct {
+            def,
+            fields: Arc::new(fields),
+        }
+    }
+
+    fn enumeration(def: DefId, variant: usize, payload: Vec<Value<'a>>) -> Value<'a> {
+        Value::Enum {
+            def,
+            variant,
+            payload: Arc::new(payload),
+        }
+    }
+}
+
+/// Take the owned payload out of an `Arc`, copying only when it is shared.
+/// The copy is what keeps D1 honest when a value is consumed by move.
+fn owned<T: Clone>(shared: Arc<T>) -> T {
+    Arc::try_unwrap(shared).unwrap_or_else(|shared| (*shared).clone())
 }
 
 #[derive(Clone, Debug)]
@@ -77,7 +150,15 @@ enum Control<'a> {
     Return(Value<'a>),
     Break,
     Continue,
-    Trap { message: String, span: Span },
+    Trap {
+        message: String,
+        span: Span,
+    },
+    /// A child was told to stop: a sibling's trap already decided the
+    /// program's fate, and this task's result can no longer matter
+    /// (design/0017 §3). Only a child interpreter ever raises this; it never
+    /// escapes the task it belongs to.
+    Cancelled,
 }
 
 type Eval<'a, T> = Result<T, Control<'a>>;
@@ -99,20 +180,74 @@ pub struct Outcome {
     pub error: Option<(String, Span)>,
 }
 
+/// Which executor runs the children of a `scope` (design/0017).
+///
+/// `Sequential` is the pre-0017 engine — a child runs to completion at its
+/// spawn point, on this thread. It is kept deliberately: it is the
+/// differential oracle the parallel executor is tested against (design/0017
+/// §5), not dead code. `Parallel` is the shipped default.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Executor {
+    Parallel,
+    Sequential,
+}
+
+impl Executor {
+    /// The internal switch. `XENITH_EXECUTOR=sequential` picks the oracle;
+    /// anything else (including absence) is the shipped executor.
+    pub fn from_env() -> Executor {
+        match std::env::var("XENITH_EXECUTOR").as_deref() {
+            Ok("sequential") => Executor::Sequential,
+            _ => Executor::Parallel,
+        }
+    }
+}
+
+/// How many OS threads may run children at once.
+///
+/// A fixed pool, not one thread per `spawn` (design/0017 §3): the number of
+/// simultaneously live children is already bounded lexically — a `Join`
+/// cannot be stored or escape, so it is capped by the unconsumed `let`
+/// bindings written in the source — but a cap that does not depend on the
+/// program is the belt to that braces. Excess children queue in submission
+/// order, which is also the order their outcomes commit in, so the cap
+/// cannot change what a program does.
+const MAX_TASK_THREADS: usize = 4;
+
+/// Stack for a task thread. Deep recursion inside a child would otherwise
+/// meet a smaller stack than the main thread's; host exhaustion is outside
+/// the determinism promise (design/0017 §4), but there is no reason to make
+/// a child fail where the same call chain succeeds in the parent.
+const TASK_STACK_BYTES: usize = 16 * 1024 * 1024;
+
 /// Run `fn main` of a checked module. The caller is responsible for having
 /// refused a module with diagnostics; holes type-check clean and are allowed
 /// through — reaching one is a precise trap, which is the workflow.
 pub fn run(module: &ast::Module, table: &DefTable) -> Outcome {
+    run_with(module, table, Executor::from_env())
+}
+
+/// [`run`] with the executor named explicitly — the differential harness.
+pub fn run_with(module: &ast::Module, table: &DefTable, executor: Executor) -> Outcome {
     let units = [(String::new(), module)];
-    run_units(&units, table, 0)
+    run_units(&units, table, 0, executor)
 }
 
 /// Run a project: the entry is the `main` module (design/0010 §2). A
 /// project without one is a library — it checks, and running it is this
 /// precise refusal rather than a hunt for a stray `fn main`.
 pub fn run_project<'a>(modules: &'a [(String, &'a ast::Module)], table: &'a DefTable) -> Outcome {
+    run_project_with(modules, table, Executor::from_env())
+}
+
+/// [`run_project`] with the executor named explicitly.
+pub fn run_project_with<'a>(
+    modules: &'a [(String, &'a ast::Module)],
+    table: &'a DefTable,
+    executor: Executor,
+) -> Outcome {
     match modules.iter().position(|(path, _)| path == "main") {
-        Some(entry) => run_units(modules, table, entry),
+        Some(entry) => run_units(modules, table, entry, executor),
         None => Outcome {
             exit: 101,
             stdout: Vec::new(),
@@ -124,16 +259,68 @@ pub fn run_project<'a>(modules: &'a [(String, &'a ast::Module)], table: &'a DefT
     }
 }
 
+/// Might any function in the set spawn? `spawn` is the effect `Task.spawn`,
+/// which its enclosing function must declare (design/0015 §5), and `run`
+/// refuses a program with diagnostics — so a program with no such clause
+/// cannot reach a `spawn`, and never gets a thread.
+///
+/// A false negative would cost nothing but speed: a `spawn` with no pool
+/// falls back to running the child in place, which is the sequential
+/// executor.
+fn may_spawn(modules: &[(String, &ast::Module)]) -> bool {
+    modules.iter().any(|(_, module)| {
+        module.items.iter().any(|item| match &item.kind {
+            ast::ItemKind::Fn(f) => f.effects.as_ref().is_some_and(|set| {
+                set.effects
+                    .iter()
+                    .any(|path| path.segments.first().is_some_and(|s| s.name == "Task"))
+            }),
+            _ => false,
+        })
+    })
+}
+
 fn run_units<'a>(
     modules: &'a [(String, &'a ast::Module)],
     table: &'a DefTable,
     entry: usize,
+    executor: Executor,
+) -> Outcome {
+    if executor == Executor::Sequential || !may_spawn(modules) {
+        return enter_main(modules, table, entry, None);
+    }
+    // One thread scope for the whole run: the workers borrow the syntax tree
+    // and the definition table, both of which outlive it.
+    std::thread::scope(|threads| {
+        let Some((pool, workers)) = Pool::start(threads) else {
+            return enter_main(modules, table, entry, None);
+        };
+        let outcome = enter_main(modules, table, entry, Some(pool));
+        // Dropping the last sender is the shutdown signal; the scope joins
+        // the workers on the way out. A child still running because nobody
+        // cancelled it keeps the process alive — which is exactly what the
+        // sequential executor does when a child diverges.
+        drop(workers);
+        outcome
+    })
+}
+
+fn enter_main<'a>(
+    modules: &'a [(String, &'a ast::Module)],
+    table: &'a DefTable,
+    entry: usize,
+    pool: Option<Pool<'a>>,
 ) -> Outcome {
     let mut interp = Interp {
         table,
         modules,
         current: entry,
         stdout: Vec::new(),
+        pool,
+        cancel: None,
+        children: Vec::new(),
+        committed: 0,
+        regions: Vec::new(),
     };
 
     let Some(main) = find_fn(modules[entry].1, "main") else {
@@ -204,7 +391,110 @@ fn run_units<'a>(
                 Span::EMPTY,
             )),
         },
+        // Only a child is ever cancelled, and a child's `Cancelled` is
+        // consumed by the job that ran it.
+        Err(Control::Cancelled) => Outcome {
+            exit: 101,
+            stdout: interp.stdout,
+            error: Some((
+                "the main program was cancelled — interpreter gap".to_string(),
+                Span::EMPTY,
+            )),
+        },
     }
+}
+
+// ------------------------------------------------------------- task threads
+
+/// One unit of child work handed to the pool.
+type Job<'a> = Box<dyn FnOnce() + Send + 'a>;
+
+/// What a child handed back. Its stdout is provably empty — a child declares
+/// `uses {}` and no capability crosses the boundary (design/0015 §2) — but
+/// it is carried and appended in commit order anyway, so that a checker gap
+/// would produce a wrong answer deterministically rather than a racy one.
+struct ChildOutcome<'a> {
+    stdout: Vec<u8>,
+    result: ChildResult<'a>,
+}
+
+enum ChildResult<'a> {
+    Value(Value<'a>),
+    /// Only the message: the trap is reported at the *spawn site*, which is
+    /// where the sequential executor reports it too.
+    Trap(String),
+    Cancelled,
+}
+
+/// The submission side of the task pool.
+#[derive(Clone)]
+struct Pool<'a> {
+    jobs: std::sync::mpsc::Sender<Job<'a>>,
+    /// Set when a committed child trap has decided the program's fate. Every
+    /// child polls it at its safe points and unwinds (design/0017 §3).
+    stop: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl<'a> Pool<'a> {
+    /// Start up to [`MAX_TASK_THREADS`] workers on `threads`. The returned
+    /// sender is the shutdown handle: dropping every clone ends the workers.
+    /// `None` means the host would not give us a single thread, and the
+    /// caller falls back to the sequential executor.
+    #[allow(clippy::type_complexity)]
+    fn start<'s>(
+        threads: &'s std::thread::Scope<'s, 'a>,
+    ) -> Option<(Pool<'a>, std::sync::mpsc::Sender<Job<'a>>)>
+    where
+        'a: 's,
+    {
+        let (tx, rx) = std::sync::mpsc::channel::<Job<'a>>();
+        let rx = Arc::new(std::sync::Mutex::new(rx));
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let mut started = 0;
+        for _ in 0..MAX_TASK_THREADS {
+            let rx = Arc::clone(&rx);
+            let spawned = std::thread::Builder::new()
+                .stack_size(TASK_STACK_BYTES)
+                .spawn_scoped(threads, move || {
+                    loop {
+                        // The queue is FIFO and only one worker waits on it
+                        // at a time, so jobs start in submission order —
+                        // which is what makes the cap unobservable.
+                        let job = rx.lock().expect("task queue").recv();
+                        match job {
+                            Ok(job) => job(),
+                            Err(_) => break,
+                        }
+                    }
+                });
+            if spawned.is_err() {
+                break;
+            }
+            started += 1;
+        }
+        if started == 0 {
+            return None;
+        }
+        Some((
+            Pool {
+                jobs: tx.clone(),
+                stop,
+            },
+            tx,
+        ))
+    }
+}
+
+/// One child submitted to the pool.
+struct Child<'a> {
+    /// The callee as written, for trap attribution.
+    name: String,
+    /// The spawn site, so a child trap points where the sequential executor
+    /// pointed.
+    span: Span,
+    outcome: std::sync::mpsc::Receiver<ChildOutcome<'a>>,
+    /// Filled once committed, taken by `.await`.
+    value: Option<Value<'a>>,
 }
 
 /// The dotted names of a pure field chain, for module-path resolution.
@@ -334,6 +624,25 @@ struct Interp<'a> {
     /// it to the callee's home for the duration of the call.
     current: usize,
     stdout: Vec<u8>,
+    /// Where children run. `None` is the sequential executor: a child runs
+    /// to completion at its spawn point, on this thread.
+    pool: Option<Pool<'a>>,
+    /// Set in a child interpreter only. Polled at safe points; when it is
+    /// raised a sibling's trap has already decided the program, and this
+    /// task unwinds so a diverging child can be reclaimed (design/0017 §3).
+    cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
+    /// Every child submitted and not yet retired, in **spawn order** — one
+    /// list for the whole interpreter, not one per region, because spawn
+    /// order is global. A child spawned in an outer scope was spawned before
+    /// one spawned in a nested scope, and sequentially its fate was sealed
+    /// first; committing per region would let the inner one's trap overtake
+    /// it (design/0017 §3).
+    children: Vec<Child<'a>>,
+    /// `children[..committed]` have had their fate resolved.
+    committed: usize,
+    /// Open `scope { .. }` regions, innermost last: where each one's own
+    /// children start in `children`.
+    regions: Vec<usize>,
 }
 
 /// What a dotted chain resolved to at runtime. No `use` gate here: the
@@ -345,6 +654,169 @@ enum RuntimeRef {
 }
 
 impl<'a> Interp<'a> {
+    // ----- the parallel executor (design/0017 §3) -----
+
+    /// A safe point. Only a child ever has a cancel flag, so the parent
+    /// walks straight through this.
+    fn safe_point(&self) -> Eval<'a, ()> {
+        match &self.cancel {
+            Some(flag) if flag.load(std::sync::atomic::Ordering::Relaxed) => {
+                Err(Control::Cancelled)
+            }
+            _ => Ok(()),
+        }
+    }
+
+    /// A committed trap ends the program, so every child still outstanding
+    /// can stop where it is — including one that would otherwise never
+    /// finish. This is not a language-level cancel (`P7` is still unshipped);
+    /// it is how the executor makes the program's end reachable.
+    fn cancel_children(&self) {
+        if let Some(pool) = &self.pool {
+            pool.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+
+    /// Hand a child to the pool. The handle it returns names a position in
+    /// the current region; nothing about the child's progress is readable
+    /// through it, which is what keeps `spawn` order the only order.
+    fn submit_child(
+        &mut self,
+        callee: Value<'a>,
+        args: Vec<Value<'a>>,
+        name: String,
+        span: Span,
+    ) -> Eval<'a, Value<'a>> {
+        let pool = self.pool.as_ref().expect("checked by the caller");
+        let (tx, rx) = std::sync::mpsc::channel::<ChildOutcome<'a>>();
+        let table = self.table;
+        let modules = self.modules;
+        let home = self.current;
+        let stop = Arc::clone(&pool.stop);
+        let job: Job<'a> = Box::new(move || {
+            let cancelled = stop.load(std::sync::atomic::Ordering::Relaxed);
+            let outcome = if cancelled {
+                // Already decided before this one even started.
+                ChildOutcome {
+                    stdout: Vec::new(),
+                    result: ChildResult::Cancelled,
+                }
+            } else {
+                let mut child = Interp {
+                    table,
+                    modules,
+                    current: home,
+                    stdout: Vec::new(),
+                    // A child cannot spawn: its `uses` set is empty, and
+                    // spawning is an effect (design/0015 §2).
+                    pool: None,
+                    cancel: Some(stop),
+                    children: Vec::new(),
+                    committed: 0,
+                    regions: Vec::new(),
+                };
+                let result = match child.apply(callee, args, span) {
+                    Ok(value) | Err(Control::Return(value)) => ChildResult::Value(value),
+                    Err(Control::Trap { message, .. }) => ChildResult::Trap(message),
+                    Err(Control::Cancelled) => ChildResult::Cancelled,
+                    Err(Control::Break) | Err(Control::Continue) => ChildResult::Trap(
+                        "`break` or `continue` escaped every loop — checker gap".to_string(),
+                    ),
+                };
+                ChildOutcome {
+                    stdout: child.stdout,
+                    result,
+                }
+            };
+            // The parent may already have dropped the region; nobody is
+            // waiting, and that is fine.
+            let _ = tx.send(outcome);
+        });
+        if pool.jobs.send(job).is_err() {
+            // Every worker is gone. Nothing can run the child, so say so
+            // rather than wait for an answer that will never come.
+            return trap(
+                span,
+                format!("task `{name}` could not start — executor gap"),
+            );
+        }
+        let index = self.children.len();
+        self.children.push(Child {
+            name,
+            span,
+            outcome: rx,
+            value: None,
+        });
+        Ok(Value::Pending { index })
+    }
+
+    /// Resolve the outcomes of children `committed..=upto`, in spawn order.
+    ///
+    /// Spawn order is the sequential executor's order of fate: sequentially,
+    /// child *i* ran to completion at its spawn statement, which is before
+    /// child *i+1* existed. So a diverging child 1 hangs the program even
+    /// though child 2 already trapped — exactly as it hangs sequentially —
+    /// and a trapping child 2 after a fine child 1 reports child 2's trap.
+    /// Committing in arrival order instead is what would make the two
+    /// executors disagree (design/0017 §3).
+    fn commit_through(&mut self, upto: usize) -> Eval<'a, ()> {
+        while self.committed <= upto {
+            let index = self.committed;
+            let received = self.children[index].outcome.recv();
+            self.committed += 1;
+            let (name, span) = (self.children[index].name.clone(), self.children[index].span);
+            let outcome = match received {
+                Ok(outcome) => outcome,
+                // The worker vanished without answering. Never expected; a
+                // precise trap beats a silent hang.
+                Err(_) => {
+                    self.cancel_children();
+                    return trap(span, format!("task `{name}` never reported — executor gap"));
+                }
+            };
+            // A child performs no effects, so this is empty; appending it in
+            // commit order keeps it deterministic if that ever stops holding.
+            self.stdout.extend_from_slice(&outcome.stdout);
+            match outcome.result {
+                ChildResult::Value(value) => self.children[index].value = Some(value),
+                ChildResult::Trap(message) => {
+                    // This trap ends the program: reclaim the siblings, and
+                    // let nothing commit after it — a later child's trap must
+                    // not overtake the one whose fate was sealed first.
+                    self.cancel_children();
+                    return Err(Control::Trap {
+                        message: format!("task `{name}` trapped: {message}"),
+                        span,
+                    });
+                }
+                // Only reachable once a trap has committed, and that trap
+                // stops every later commit — including this one.
+                ChildResult::Cancelled => {
+                    return trap(span, format!("task `{name}` was cancelled — executor gap"));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Has a committed child trap already decided the program?
+    fn fate_sealed(&self) -> bool {
+        self.pool
+            .as_ref()
+            .is_some_and(|pool| pool.stop.load(std::sync::atomic::Ordering::Relaxed))
+    }
+
+    /// Everything a region still owes, in spawn order — the scope's closing
+    /// brace joins what nothing awaited (design/0017 §3). Once a child trap
+    /// has committed the program is over and nothing is left to decide:
+    /// draining then could only replace the first trap with a later one.
+    fn drain_region(&mut self, start: usize) -> Eval<'a, ()> {
+        if self.fate_sealed() || self.children.len() <= start {
+            return Ok(());
+        }
+        self.commit_through(self.children.len() - 1)
+    }
+
     fn current_module(&self) -> &'a ast::Module {
         self.modules[self.current].1
     }
@@ -397,9 +869,9 @@ impl<'a> Interp<'a> {
             return trap(span, format!("`{name}` has no body"));
         };
         Ok(Value::Fn {
-            params: f.params.iter().map(|p| p.name.name.clone()).collect(),
+            params: Arc::new(f.params.iter().map(|p| p.name.name.clone()).collect()),
             body: Body::Block(body),
-            captured: Vec::new(),
+            captured: Arc::new(Vec::new()),
             is_async: f.is_async,
             home,
         })
@@ -436,6 +908,11 @@ impl<'a> Interp<'a> {
     }
 
     fn stmt(&mut self, stmt: &'a ast::Stmt, env: &mut Env<'a>) -> Eval<'a, ()> {
+        // Safe point (design/0017 §3): statement boundaries, loop iterations
+        // and calls are where a cancelled child notices and unwinds. Every
+        // way a Xenith program can diverge — `while`, recursion — passes
+        // through one of the three, so a diverging sibling is reclaimable.
+        self.safe_point()?;
         match &stmt.kind {
             ast::StmtKind::Let { pattern, init, .. } => {
                 let value = self.eval(init, env)?;
@@ -457,6 +934,7 @@ impl<'a> Interp<'a> {
             ast::StmtKind::Continue => Err(Control::Continue),
             ast::StmtKind::While { cond, body } => {
                 loop {
+                    self.safe_point()?;
                     match self.eval(cond, env)? {
                         Value::Bool(true) => {}
                         Value::Bool(false) => break,
@@ -501,7 +979,7 @@ impl<'a> Interp<'a> {
                     Err(_) => trap(expr.span, "float literal does not parse"),
                 }
             }
-            ast::ExprKind::Str(raw) => Ok(Value::Str(unescape(raw, expr.span)?)),
+            ast::ExprKind::Str(raw) => Ok(Value::str(unescape(raw, expr.span)?)),
             ast::ExprKind::Char(raw) => {
                 let text = unescape(raw, expr.span)?;
                 let mut chars = text.chars();
@@ -593,19 +1071,53 @@ impl<'a> Interp<'a> {
             }
 
             ast::ExprKind::Await(inner) => match self.eval(inner, env)? {
-                Value::Task(value) => Ok(*value),
+                // The sequential executor's handle: the body already ran.
+                Value::Task(value) => Ok(owned(value)),
+                // The parallel executor's handle: commit every earlier
+                // child of this region first, then take this one's value.
+                Value::Pending { index } => {
+                    self.commit_through(index)?;
+                    match self.children[index].value.take() {
+                        Some(value) => Ok(value),
+                        // XN6006 refuses a second await; reaching this is a
+                        // checker gap, reported as one.
+                        None => trap(expr.span, "this task was already awaited — checker gap"),
+                    }
+                }
                 _ => trap(expr.span, "`.await` needs a Task"),
             },
 
-            // The task region (design/0015): just a block at runtime — every
-            // child inside already ran to completion at its spawn point.
-            ast::ExprKind::Scope(block) => self.block(block, env),
+            // The task region (design/0015 §1). Under the parallel executor
+            // it is also the join point: the closing brace resolves, in
+            // spawn order, every child nothing awaited (design/0017 §3).
+            ast::ExprKind::Scope(block) => {
+                if self.pool.is_none() {
+                    return self.block(block, env);
+                }
+                let start = self.children.len();
+                self.regions.push(start);
+                let body = self.block(block, env);
+                let drained = self.drain_region(start);
+                self.regions.pop();
+                // Retire this region's children: a handle cannot outlive its
+                // scope, so the list stays bounded even when the scope sits
+                // inside a loop.
+                self.children.truncate(start);
+                self.committed = self.committed.min(start);
+                // A child's fate was sealed at its spawn statement, which is
+                // before anything the parent did afterwards — so a child
+                // trap outranks whatever the parent was carrying out of the
+                // block. That is what the sequential executor reports, and
+                // reporting anything else here would be the difference.
+                drained?;
+                body
+            }
 
             // `spawn f(args)`: evaluate the arguments here, in normal order,
-            // exactly once — then run the child to completion on the spot
-            // (design/0015 §3). The handle is a ready box; `.await` moves
-            // the result out. A trap inside the child surfaces at the spawn
-            // site, carrying the child's name for context.
+            // exactly once (design/0015 §1). Then hand the child to the pool
+            // — or, with no pool, run it to completion on the spot, which is
+            // the sequential executor. A trap inside the child surfaces at
+            // the spawn site either way, carrying the child's name.
             ast::ExprKind::Spawn { path, args } => {
                 let segments: Vec<String> = path.segments.iter().map(|s| s.name.clone()).collect();
                 let shown = segments.join(".");
@@ -623,8 +1135,11 @@ impl<'a> Interp<'a> {
                 for arg in args {
                     evaluated.push(self.eval(&arg.value, env)?);
                 }
+                if self.pool.is_some() && !self.regions.is_empty() {
+                    return self.submit_child(callee, evaluated, shown, expr.span);
+                }
                 match self.apply(callee, evaluated, expr.span) {
-                    Ok(value) => Ok(Value::Task(Box::new(value))),
+                    Ok(value) => Ok(Value::Task(Arc::new(value))),
                     Err(Control::Trap { message, .. }) => Err(Control::Trap {
                         message: format!("task `{shown}` trapped: {message}"),
                         span: expr.span,
@@ -639,10 +1154,10 @@ impl<'a> Interp<'a> {
                     Value::Enum {
                         def,
                         variant,
-                        mut payload,
+                        payload,
                     } if def == self.table.result => {
                         if variant == ok_index() {
-                            Ok(payload.remove(0))
+                            Ok(owned(payload).remove(0))
                         } else {
                             // Propagate the whole Err to the caller.
                             Err(Control::Return(Value::Enum {
@@ -655,16 +1170,16 @@ impl<'a> Interp<'a> {
                     Value::Enum {
                         def,
                         variant,
-                        mut payload,
+                        payload,
                     } if def == self.table.option => {
                         if variant == some_index() {
-                            Ok(payload.remove(0))
+                            Ok(owned(payload).remove(0))
                         } else {
-                            Err(Control::Return(Value::Enum {
+                            Err(Control::Return(Value::enumeration(
                                 def,
-                                variant: none_index(),
-                                payload: Vec::new(),
-                            }))
+                                none_index(),
+                                Vec::new(),
+                            )))
                         }
                     }
                     _ => trap(expr.span, "`?` needs a Result or Option"),
@@ -725,7 +1240,7 @@ impl<'a> Interp<'a> {
                 for element in elements {
                     items.push(self.eval(element, env)?);
                 }
-                Ok(Value::List(items))
+                Ok(Value::list(items))
             }
 
             ast::ExprKind::StructLit { path, fields } => {
@@ -770,10 +1285,7 @@ impl<'a> Interp<'a> {
                         }
                     }
                 }
-                Ok(Value::Struct {
-                    def,
-                    fields: ordered,
-                })
+                Ok(Value::structure(def, ordered))
             }
 
             // Creation-time snapshot (design/0014 §2): the closure copies
@@ -781,9 +1293,9 @@ impl<'a> Interp<'a> {
             // that what the body actually touches is CaptureSafe and not a
             // `var`, so copying the superset is observationally identical.
             ast::ExprKind::Lambda { params, body } => Ok(Value::Fn {
-                params: params.iter().map(|p| p.name.name.clone()).collect(),
+                params: Arc::new(params.iter().map(|p| p.name.name.clone()).collect()),
                 body: Body::Expr(body),
-                captured: env.snapshot(),
+                captured: Arc::new(env.snapshot()),
                 is_async: false,
                 home: self.current,
             }),
@@ -809,12 +1321,12 @@ impl<'a> Interp<'a> {
         }
         if let Some(f) = find_fn(self.current_module(), name) {
             return Ok(Value::Fn {
-                params: f.params.iter().map(|p| p.name.name.clone()).collect(),
+                params: Arc::new(f.params.iter().map(|p| p.name.name.clone()).collect()),
                 body: match &f.body {
                     Some(body) => Body::Block(body),
                     None => return trap(span, format!("`{name}` has no body")),
                 },
-                captured: Vec::new(),
+                captured: Arc::new(Vec::new()),
                 is_async: f.is_async,
                 home: self.current,
             });
@@ -822,11 +1334,7 @@ impl<'a> Interp<'a> {
         if let Some((def, variant)) = self.table.unqualified_variant(name) {
             let index = self.variant_index(def, &variant.name);
             if variant.payload.is_empty() {
-                return Ok(Value::Enum {
-                    def,
-                    variant: index,
-                    payload: Vec::new(),
-                });
+                return Ok(Value::enumeration(def, index, Vec::new()));
             }
             return Ok(Value::VariantCtor {
                 def,
@@ -853,11 +1361,7 @@ impl<'a> Interp<'a> {
         };
         let index = self.variant_index(def, variant_name);
         if variant.payload.is_empty() {
-            Ok(Value::Enum {
-                def,
-                variant: index,
-                payload: Vec::new(),
-            })
+            Ok(Value::enumeration(def, index, Vec::new()))
         } else {
             Ok(Value::VariantCtor {
                 def,
@@ -869,7 +1373,7 @@ impl<'a> Interp<'a> {
 
     fn field_of(&self, value: Value<'a>, field: &str, span: Span) -> Eval<'a, Value<'a>> {
         match value {
-            Value::Struct { def, mut fields } => {
+            Value::Struct { def, fields } => {
                 let DefKind::Struct {
                     fields: declared, ..
                 } = &self.table.def(def).kind
@@ -877,7 +1381,8 @@ impl<'a> Interp<'a> {
                     return trap(span, "not a struct");
                 };
                 match declared.iter().position(|f| f.name == field) {
-                    Some(index) => Ok(fields.remove(index)),
+                    // D1: reading a field yields an independent value.
+                    Some(index) => Ok(owned(fields).remove(index)),
                     None => trap(span, format!("no field `{field}`")),
                 }
             }
@@ -909,7 +1414,7 @@ impl<'a> Interp<'a> {
                     for arg in args {
                         self.eval(&arg.value, env)?;
                     }
-                    return Ok(Value::Map(Vec::new()));
+                    return Ok(Value::map(Vec::new()));
                 }
                 self.path_value(path, callee.span, env)?
             }
@@ -949,6 +1454,7 @@ impl<'a> Interp<'a> {
         args: Vec<Value<'a>>,
         span: Span,
     ) -> Eval<'a, Value<'a>> {
+        self.safe_point()?;
         match callee {
             Value::Fn {
                 params,
@@ -961,8 +1467,8 @@ impl<'a> Interp<'a> {
                     return trap(span, "wrong number of arguments");
                 }
                 let mut env = Env::new();
-                for (name, value) in captured {
-                    env.bind(&name, value);
+                for (name, value) in captured.iter() {
+                    env.bind(name, value.clone());
                 }
                 env.scopes.push(Vec::new());
                 for (param, value) in params.iter().zip(args) {
@@ -981,7 +1487,7 @@ impl<'a> Interp<'a> {
                     Err(other) => return Err(other),
                 };
                 if is_async {
-                    Ok(Value::Task(Box::new(value)))
+                    Ok(Value::Task(Arc::new(value)))
                 } else {
                     Ok(value)
                 }
@@ -994,11 +1500,7 @@ impl<'a> Interp<'a> {
                 if args.len() != arity {
                     return trap(span, "wrong number of constructor arguments");
                 }
-                Ok(Value::Enum {
-                    def,
-                    variant,
-                    payload: args,
-                })
+                Ok(Value::enumeration(def, variant, args))
             }
             _ => trap(span, "this value is not callable"),
         }
@@ -1075,26 +1577,33 @@ impl<'a> Interp<'a> {
                 evaluated.push(self.eval(&arg.value, env)?);
             }
             let slot = self.resolve_place(receiver, env)?;
+            // `resolve_place` already uniquified every node on the way here
+            // (design/0017 §4); `make_mut` finishes the job at the leaf. A
+            // shared node is copied before it is written, so a value read out
+            // of this container earlier stays exactly as it was (D1).
             return match (&mut *slot, method.name.as_str()) {
                 (Value::List(items), "push") => {
                     let Some(item) = evaluated.into_iter().next() else {
                         return trap(span, "push takes a value");
                     };
-                    items.push(item);
+                    Arc::make_mut(items).push(item);
                     Ok(Value::Unit)
                 }
-                (Value::List(items), "pop") => Ok(self.option_of(items.pop())),
+                (Value::List(items), "pop") => {
+                    let popped = Arc::make_mut(items).pop();
+                    Ok(self.option_of(popped))
+                }
                 (Value::List(items), "replace") => {
                     let mut taken = evaluated.into_iter();
                     let (Some(Value::Int(index)), Some(value)) = (taken.next(), taken.next())
                     else {
                         return trap(span, "replace takes an index and a value");
                     };
-                    // Out of range leaves the list untouched (0007 §3).
-                    let old = usize::try_from(index)
-                        .ok()
-                        .filter(|i| *i < items.len())
-                        .map(|i| std::mem::replace(&mut items[i], value));
+                    // Out of range leaves the list untouched (0007 §3) — and
+                    // must not copy it either, so the bounds test comes first.
+                    let target = usize::try_from(index).ok().filter(|i| *i < items.len());
+                    let old =
+                        target.map(|i| std::mem::replace(&mut Arc::make_mut(items)[i], value));
                     Ok(self.option_of(old))
                 }
                 (Value::Map(entries), "insert") => {
@@ -1113,11 +1622,12 @@ impl<'a> Interp<'a> {
                     }
                     match existing {
                         Some(index) => {
-                            let old = std::mem::replace(&mut entries[index].1, value);
+                            let old =
+                                std::mem::replace(&mut Arc::make_mut(entries)[index].1, value);
                             Ok(self.option_of(Some(old)))
                         }
                         None => {
-                            entries.push((key, value));
+                            Arc::make_mut(entries).push((key, value));
                             Ok(self.option_of(None))
                         }
                     }
@@ -1134,8 +1644,10 @@ impl<'a> Interp<'a> {
                         }
                     }
                     // Vec::remove shifts, so the survivors keep their order;
-                    // a later re-insert of the key lands at the end.
-                    Ok(self.option_of(found.map(|index| entries.remove(index).1)))
+                    // a later re-insert of the key lands at the end. A miss
+                    // writes nothing, so it does not copy either.
+                    let removed = found.map(|index| Arc::make_mut(entries).remove(index).1);
+                    Ok(self.option_of(removed))
                 }
                 _ => trap(
                     span,
@@ -1156,24 +1668,18 @@ impl<'a> Interp<'a> {
                     return trap(span, "checked_add takes an Int");
                 };
                 Ok(match a.checked_add(*b) {
-                    Some(sum) => Value::Enum {
-                        def: self.table.option,
-                        variant: some_index(),
-                        payload: vec![Value::Int(sum)],
-                    },
-                    None => Value::Enum {
-                        def: self.table.option,
-                        variant: none_index(),
-                        payload: Vec::new(),
-                    },
+                    Some(sum) => {
+                        Value::enumeration(self.table.option, some_index(), vec![Value::Int(sum)])
+                    }
+                    None => Value::enumeration(self.table.option, none_index(), Vec::new()),
                 })
             }
-            (Value::Int(a), "to_text") => Ok(Value::Str(a.to_string())),
+            (Value::Int(a), "to_text") => Ok(Value::str(a.to_string())),
             (Value::Str(a), "concat") => {
                 let Some(Value::Str(b)) = evaluated.first() else {
                     return trap(span, "concat takes a String");
                 };
-                Ok(Value::Str(format!("{a}{b}")))
+                Ok(Value::str(format!("{a}{b}")))
             }
             // `len` counts Unicode scalar values, never bytes (D2).
             (Value::Str(a), "len") => Ok(Value::Int(a.chars().count() as i64)),
@@ -1185,15 +1691,15 @@ impl<'a> Interp<'a> {
                 // input exactly, empty pieces included. The empty separator
                 // is the `chars` replacement — one piece per scalar.
                 let pieces: Vec<Value> = if sep.is_empty() {
-                    a.chars().map(|c| Value::Str(c.to_string())).collect()
+                    a.chars().map(|c| Value::str(c.to_string())).collect()
                 } else {
                     a.split(sep.as_str())
-                        .map(|piece| Value::Str(piece.to_string()))
+                        .map(|piece| Value::str(piece.to_string()))
                         .collect()
                 };
-                Ok(Value::List(pieces))
+                Ok(Value::list(pieces))
             }
-            (Value::Str(a), "trim") => Ok(Value::Str(
+            (Value::Str(a), "trim") => Ok(Value::str(
                 a.trim_matches(|c: char| matches!(c, ' ' | '\t' | '\r' | '\n'))
                     .to_string(),
             )),
@@ -1203,22 +1709,20 @@ impl<'a> Interp<'a> {
                 // an Err value, never a trap.
                 let trimmed = a.trim_matches(|c: char| matches!(c, ' ' | '\t' | '\r' | '\n'));
                 Ok(match trimmed.parse::<i64>() {
-                    Ok(value) => Value::Enum {
-                        def: self.table.result,
-                        variant: ok_index(),
-                        payload: vec![Value::Int(value)],
-                    },
+                    Ok(value) => {
+                        Value::enumeration(self.table.result, ok_index(), vec![Value::Int(value)])
+                    }
                     Err(error) => {
                         let message = match error.kind() {
                             std::num::IntErrorKind::PosOverflow
                             | std::num::IntErrorKind::NegOverflow => "out of Int range",
                             _ => "not an integer",
                         };
-                        Value::Enum {
-                            def: self.table.result,
-                            variant: err_index(),
-                            payload: vec![Value::ErrorValue(message.to_string())],
-                        }
+                        Value::enumeration(
+                            self.table.result,
+                            err_index(),
+                            vec![Value::error_value(message)],
+                        )
                     }
                 })
             }
@@ -1245,24 +1749,24 @@ impl<'a> Interp<'a> {
                     return trap(span, "map takes a closure");
                 };
                 let mut out = Vec::with_capacity(items.len());
-                for item in items {
+                for item in items.iter() {
                     out.push(self.apply(f.clone(), vec![item.clone()], span)?);
                 }
-                Ok(Value::List(out))
+                Ok(Value::list(out))
             }
             (Value::List(items), "filter") => {
                 let Some(f) = evaluated.into_iter().next() else {
                     return trap(span, "filter takes a closure");
                 };
                 let mut out = Vec::new();
-                for item in items {
+                for item in items.iter() {
                     match self.apply(f.clone(), vec![item.clone()], span)? {
                         Value::Bool(true) => out.push(item.clone()),
                         Value::Bool(false) => {}
                         _ => return trap(span, "`filter` needs its closure to return a Bool"),
                     }
                 }
-                Ok(Value::List(out))
+                Ok(Value::list(out))
             }
             (Value::List(items), "fold") => {
                 // Left fold: `fold(init: 0, f: |acc, x| ..)` — the named
@@ -1272,7 +1776,7 @@ impl<'a> Interp<'a> {
                     return trap(span, "fold takes an initial value and a closure");
                 };
                 let mut acc = init;
-                for item in items {
+                for item in items.iter() {
                     acc = self.apply(f.clone(), vec![acc, item.clone()], span)?;
                 }
                 Ok(acc)
@@ -1283,7 +1787,7 @@ impl<'a> Interp<'a> {
                 let Some(f) = evaluated.into_iter().next() else {
                     return trap(span, "find takes a closure");
                 };
-                for item in items {
+                for item in items.iter() {
                     match self.apply(f.clone(), vec![item.clone()], span)? {
                         Value::Bool(true) => return Ok(self.option_of(Some(item.clone()))),
                         Value::Bool(false) => {}
@@ -1309,7 +1813,7 @@ impl<'a> Interp<'a> {
                     return trap(span, "contains takes a value");
                 };
                 let mut found = false;
-                for item in items {
+                for item in items.iter() {
                     if values_equal(item, needle, span)? {
                         found = true;
                         break;
@@ -1320,7 +1824,7 @@ impl<'a> Interp<'a> {
             (Value::List(items), "sorted") => {
                 // Insertion keeps the sort stable and lets a comparison trap
                 // propagate, which `sort_by` cannot.
-                let mut sorted = items.clone();
+                let mut sorted = items.as_ref().clone();
                 let mut i = 1;
                 while i < sorted.len() {
                     let mut j = i;
@@ -1334,15 +1838,15 @@ impl<'a> Interp<'a> {
                     }
                     i += 1;
                 }
-                Ok(Value::List(sorted))
+                Ok(Value::list(sorted))
             }
             (Value::List(items), "concat") => {
                 let Some(Value::List(other)) = evaluated.first() else {
                     return trap(span, "concat takes a List");
                 };
-                let mut joined = items.clone();
+                let mut joined = items.as_ref().clone();
                 joined.extend(other.iter().cloned());
-                Ok(Value::List(joined))
+                Ok(Value::list(joined))
             }
             (Value::List(items), "join") => {
                 let Some(Value::Str(sep)) = evaluated.first() else {
@@ -1350,7 +1854,7 @@ impl<'a> Interp<'a> {
                 };
                 let rendered: Vec<String> =
                     items.iter().map(|item| self.value_text(item)).collect();
-                Ok(Value::Str(rendered.join(sep)))
+                Ok(Value::str(rendered.join(sep.as_str())))
             }
             (Value::Map(entries), "len") => Ok(Value::Int(entries.len() as i64)),
             (Value::Map(entries), "is_empty") => Ok(Value::Bool(entries.is_empty())),
@@ -1359,7 +1863,7 @@ impl<'a> Interp<'a> {
                     return trap(span, "get takes a key");
                 };
                 let mut hit = None;
-                for (stored, value) in entries {
+                for (stored, value) in entries.iter() {
                     if values_equal(stored, key, span)? {
                         // D1: the read is a copy of the value.
                         hit = Some(value.clone());
@@ -1373,7 +1877,7 @@ impl<'a> Interp<'a> {
                     return trap(span, "has_key takes a key");
                 };
                 let mut found = false;
-                for (stored, _) in entries {
+                for (stored, _) in entries.iter() {
                     if values_equal(stored, key, span)? {
                         found = true;
                         break;
@@ -1383,7 +1887,7 @@ impl<'a> Interp<'a> {
             }
             // Insertion-order snapshot: later mutation of the map must not
             // reach into a list already handed out (0007 §3).
-            (Value::Map(entries), "keys") => Ok(Value::List(
+            (Value::Map(entries), "keys") => Ok(Value::list(
                 entries.iter().map(|(key, _)| key.clone()).collect(),
             )),
             (Value::Enum { def, variant, .. }, "to_result") if *def == self.table.option => {
@@ -1401,11 +1905,7 @@ impl<'a> Interp<'a> {
                         payload,
                     }
                 } else {
-                    Value::Enum {
-                        def: self.table.result,
-                        variant: err_index(),
-                        payload: vec![error],
-                    }
+                    Value::enumeration(self.table.result, err_index(), vec![error])
                 })
             }
             (Value::Capability("Io"), "write") => {
@@ -1413,11 +1913,11 @@ impl<'a> Interp<'a> {
                     return trap(span, "write takes a String");
                 };
                 self.stdout.extend_from_slice(text.as_bytes());
-                Ok(Value::Enum {
-                    def: self.table.result,
-                    variant: ok_index(),
-                    payload: vec![Value::Unit],
-                })
+                Ok(Value::enumeration(
+                    self.table.result,
+                    ok_index(),
+                    vec![Value::Unit],
+                ))
             }
             _ => trap(
                 span,
@@ -1429,16 +1929,8 @@ impl<'a> Interp<'a> {
     /// `Some(value)` / `None` from a Rust `Option`.
     fn option_of(&self, value: Option<Value<'a>>) -> Value<'a> {
         match value {
-            Some(value) => Value::Enum {
-                def: self.table.option,
-                variant: some_index(),
-                payload: vec![value],
-            },
-            None => Value::Enum {
-                def: self.table.option,
-                variant: none_index(),
-                payload: Vec::new(),
-            },
+            Some(value) => Value::enumeration(self.table.option, some_index(), vec![value]),
+            None => Value::enumeration(self.table.option, none_index(), Vec::new()),
         }
     }
 
@@ -1450,7 +1942,7 @@ impl<'a> Interp<'a> {
             Value::Int(v) => v.to_string(),
             Value::Float(v) => v.to_string(),
             Value::Bool(v) => v.to_string(),
-            Value::Str(v) => v.clone(),
+            Value::Str(v) => v.as_ref().clone(),
             Value::Char(v) => v.to_string(),
             Value::Unit => "unit".to_string(),
             Value::List(items) => {
@@ -1476,7 +1968,7 @@ impl<'a> Interp<'a> {
                 };
                 let parts: Vec<String> = declared
                     .iter()
-                    .zip(fields)
+                    .zip(fields.iter())
                     .map(|(field, value)| format!("{}: {}", field.name, self.value_text(value)))
                     .collect();
                 format!("{name} {{ {} }}", parts.join(", "))
@@ -1503,7 +1995,7 @@ impl<'a> Interp<'a> {
             }
             Value::Fn { .. } | Value::VariantCtor { .. } => "<fn>".to_string(),
             Value::Capability(name) => format!("<{name}>"),
-            Value::Task(_) => "<task>".to_string(),
+            Value::Task(_) | Value::Pending { .. } => "<task>".to_string(),
         }
     }
 
@@ -1660,6 +2152,15 @@ impl<'a> Interp<'a> {
         Ok(())
     }
 
+    /// Resolve an assignment target to the slot it names.
+    ///
+    /// The recursion is the copy-on-write contract (design/0017 §4): a
+    /// binding in the environment is already unshared, and every aggregate
+    /// node the path descends through is uniquified with `Arc::make_mut`
+    /// *before* the descent continues. Uniquifying only the outer node and
+    /// then writing through a shared inner one is precisely the bug the RFC
+    /// names — the write would be visible through a value somebody else
+    /// already read out (D1).
     fn resolve_place<'e>(
         &self,
         target: &'a ast::Expr,
@@ -1686,7 +2187,7 @@ impl<'a> Interp<'a> {
                     return trap(target.span, "not a struct");
                 };
                 match declared.iter().position(|f| f.name == name.name) {
-                    Some(index) => Ok(&mut fields[index]),
+                    Some(index) => Ok(&mut Arc::make_mut(fields)[index]),
                     None => trap(target.span, format!("no field `{}`", name.name)),
                 }
             }
@@ -1842,7 +2343,7 @@ fn values_equal<'a>(a: &Value<'a>, b: &Value<'a>, span: Span) -> Eval<'a, bool> 
             if xs.len() != ys.len() {
                 return Ok(false);
             }
-            for (x, y) in xs.iter().zip(ys) {
+            for (x, y) in xs.iter().zip(ys.iter()) {
                 if !values_equal(x, y, span)? {
                     return Ok(false);
                 }
@@ -1856,9 +2357,9 @@ fn values_equal<'a>(a: &Value<'a>, b: &Value<'a>, span: Span) -> Eval<'a, bool> 
             if xs.len() != ys.len() {
                 return Ok(false);
             }
-            for (key, value) in xs {
+            for (key, value) in xs.iter() {
                 let mut matched = false;
-                for (other_key, other_value) in ys {
+                for (other_key, other_value) in ys.iter() {
                     if values_equal(key, other_key, span)? {
                         matched = values_equal(value, other_value, span)?;
                         break;
@@ -1884,7 +2385,7 @@ fn values_equal<'a>(a: &Value<'a>, b: &Value<'a>, span: Span) -> Eval<'a, bool> 
             if d1 != d2 || f1.len() != f2.len() {
                 return Ok(false);
             }
-            for (x, y) in f1.iter().zip(f2) {
+            for (x, y) in f1.iter().zip(f2.iter()) {
                 if !values_equal(x, y, span)? {
                     return Ok(false);
                 }
@@ -1906,7 +2407,7 @@ fn values_equal<'a>(a: &Value<'a>, b: &Value<'a>, span: Span) -> Eval<'a, bool> 
             if d1 != d2 || v1 != v2 || p1.len() != p2.len() {
                 return Ok(false);
             }
-            for (x, y) in p1.iter().zip(p2) {
+            for (x, y) in p1.iter().zip(p2.iter()) {
                 if !values_equal(x, y, span)? {
                     return Ok(false);
                 }

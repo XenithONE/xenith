@@ -525,6 +525,130 @@ fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
     assert_eq!(stdout_of(source), "2,1");
 }
 
+// ---------------------------------------------------- nested value copies
+//
+// design/0017 §4: the aggregate arms of `Value` share storage behind an
+// `Arc` and copy on write. The sharing is invisible only if a write
+// uniquifies **the whole path** it walks. These are the counterexamples the
+// RFC names: take an inner aggregate out of an outer one, write to the
+// inner, and the outer must not have moved. An implementation that copies
+// the outermost node and then writes through a still-shared inner node
+// passes `lists_are_values_so_a_binding_copies` above and fails here.
+
+/// Length of the first element of a list of lists — a read, so it can never
+/// be the thing that mutates.
+const HEAD_LEN: &str = r#"fn head_len(xs: List<List<Int>>) -> Int {
+    match xs.get(index: 0) {
+        Some(head) => head.len(),
+        None => 0,
+    }
+}
+"#;
+
+#[test]
+fn writing_to_a_list_taken_out_of_a_list_leaves_the_outer_list_alone() {
+    let source = format!(
+        "{HEAD_LEN}
+fn main(io: Io) -> Result<Unit, Error> uses {{Io.write}} {{
+    var outer = [[1, 2]];
+    match outer.get(index: 0) {{
+        Some(head) => {{
+            var inner = head;
+            inner.push(item: 3);
+            io.write(text: inner.len().to_text())?;
+        }}
+        None => {{}}
+    }}
+    io.write(text: \",\")?;
+    io.write(text: head_len(xs: outer).to_text())?;
+    return Ok(unit);
+}}
+"
+    );
+    // The taken copy grew to 3; the element still inside `outer` is 2.
+    assert_eq!(stdout_of(&source), "3,2");
+}
+
+#[test]
+fn the_same_holds_one_level_deeper() {
+    let source = format!(
+        "{HEAD_LEN}
+fn main(io: Io) -> Result<Unit, Error> uses {{Io.write}} {{
+    var outer = [[[1]]];
+    match outer.get(index: 0) {{
+        Some(taken) => {{
+            var middle = taken;
+            match middle.get(index: 0) {{
+                Some(deep) => {{
+                    var inner = deep;
+                    inner.push(item: 2);
+                    io.write(text: inner.len().to_text())?;
+                }}
+                None => {{}}
+            }}
+            io.write(text: \",\")?;
+            io.write(text: head_len(xs: middle).to_text())?;
+        }}
+        None => {{}}
+    }}
+    return Ok(unit);
+}}
+"
+    );
+    // The innermost copy grew to 2; the list two levels up never moved.
+    assert_eq!(stdout_of(&source), "2,1");
+}
+
+#[test]
+fn writing_through_a_nested_struct_path_does_not_reach_the_other_copy() {
+    // The write path descends binding -> struct -> struct -> list. Every
+    // node on it must be uniquified before the next step, or `a` sees `b`'s
+    // push.
+    let source = r#"
+struct Inner {
+    var items: List<Int>,
+}
+
+struct Outer {
+    var inner: Inner,
+}
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    var a = Outer { inner: Inner { items: [1] } };
+    var b = a;
+    b.inner.items.push(item: 2);
+    io.write(text: a.inner.items.join(sep: "-"))?;
+    io.write(text: "|")?;
+    io.write(text: b.inner.items.join(sep: "-"))?;
+    return Ok(unit);
+}
+"#;
+    assert_eq!(stdout_of(source), "1|1-2");
+}
+
+#[test]
+fn writing_to_a_map_inside_a_struct_does_not_reach_the_other_copy() {
+    let source = r#"
+struct Ledger {
+    var totals: Map<String, Int>,
+}
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    var seed: Map<String, Int> = empty_map();
+    seed.insert(key: "a", value: 1);
+    var first = Ledger { totals: seed };
+    var second = first;
+    second.totals.insert(key: "b", value: 2);
+    second.totals.remove(key: "a");
+    io.write(text: first.totals.len().to_text())?;
+    io.write(text: ",")?;
+    io.write(text: second.totals.len().to_text())?;
+    return Ok(unit);
+}
+"#;
+    assert_eq!(stdout_of(source), "1,1");
+}
+
 #[test]
 fn list_equality_is_structural() {
     let source = r#"

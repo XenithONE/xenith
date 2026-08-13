@@ -1,0 +1,4 @@
+tests/fixtures/diag/xn6011_effect_in_flight.xn:8:9: error[XN6011]: this call uses {Io.write} while the task `j` is still in flight; await `j` first; a task computes a plan — effects run in the parent, after await
+8 |         io.write(text: "working")?;
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^
+  run `xenith explain XN6011` for the rule

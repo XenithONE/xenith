@@ -959,6 +959,248 @@ fn f(xs: List<Int>) -> Int uses {Task.spawn} {
     assert!(codes.contains(&"XN6010".to_string()), "{codes:?}");
 }
 
+// ===================================================================
+// XN6011: no effect while a task is in flight (design/0017 §1)
+// ===================================================================
+//
+// The window is from the first `spawn` in a scope to the consumption of
+// every task it created. Inside it the parent performs no capability
+// operation and calls nothing with a non-empty `uses` set. The rule reuses
+// the JoinState dataflow above: `Live` is in flight, `Consumed` is not.
+
+#[test]
+fn a_capability_operation_between_spawn_and_await_is_xn6011() {
+    let source = r#"
+fn plan(n: Int) -> Int {
+    n
+}
+
+fn f(io: Io) -> Result<Unit, Error> uses {Io.write, Task.spawn} {
+    scope {
+        let j = spawn plan(n: 1);
+        io.write(text: "early")?;
+        io.write(text: j.await.to_text())?;
+    }
+    return Ok(unit);
+}
+"#;
+    let found = diagnostics_of(source);
+    assert_eq!(found.len(), 1, "{found:#?}");
+    let (code, message) = &found[0];
+    assert_eq!(code, "XN6011");
+    assert!(
+        message.contains('j'),
+        "the waiting task is named: {message}"
+    );
+    assert!(
+        message.contains(TASK_TEACH),
+        "the teach is the existing canonical sentence, not a new one: {message}"
+    );
+}
+
+#[test]
+fn calling_a_fn_with_a_non_empty_uses_set_in_flight_is_xn6011() {
+    let source = r#"
+fn plan(n: Int) -> Int {
+    n
+}
+
+fn shout(io: Io) -> Result<Unit, Error> uses {Io.write} {
+    io.write(text: "x")
+}
+
+fn f(io: Io) -> Result<Unit, Error> uses {Io.write, Task.spawn} {
+    scope {
+        let j = spawn plan(n: 1);
+        shout(io: io)?;
+        io.write(text: j.await.to_text())?;
+    }
+    return Ok(unit);
+}
+"#;
+    assert_eq!(codes_of(source), ["XN6011"]);
+}
+
+#[test]
+fn effects_after_every_await_are_legal() {
+    // The blessed shape of design/0017 §1: two children in flight together,
+    // both awaited, then the parent acts — inside the same scope.
+    let source = r#"
+fn plan(n: Int) -> Int {
+    n
+}
+
+fn f(io: Io) -> Result<Unit, Error> uses {Io.write, Task.spawn} {
+    scope {
+        let a = spawn plan(n: 1);
+        let b = spawn plan(n: 2);
+        let sum = a.await + b.await;
+        io.write(text: sum.to_text())?;
+    }
+    return Ok(unit);
+}
+"#;
+    assert!(codes_of(source).is_empty(), "{:?}", codes_of(source));
+}
+
+#[test]
+fn effects_before_the_first_spawn_are_legal() {
+    let source = r#"
+fn plan(n: Int) -> Int {
+    n
+}
+
+fn f(io: Io) -> Result<Unit, Error> uses {Io.write, Task.spawn} {
+    scope {
+        io.write(text: "before")?;
+        let j = spawn plan(n: 1);
+        io.write(text: j.await.to_text())?;
+    }
+    return Ok(unit);
+}
+"#;
+    assert!(codes_of(source).is_empty(), "{:?}", codes_of(source));
+}
+
+#[test]
+fn a_second_spawn_while_the_first_flies_is_not_refused() {
+    // `Task.spawn` is an effect, but the one effect the rule cannot refuse:
+    // fan-out is the shape the whole design exists for.
+    let source = r#"
+fn plan(n: Int) -> Int {
+    n
+}
+
+fn f() -> Int uses {Task.spawn} {
+    scope {
+        let a = spawn plan(n: 1);
+        let b = spawn plan(n: 2);
+        a.await + b.await
+    }
+}
+"#;
+    assert!(codes_of(source).is_empty(), "{:?}", codes_of(source));
+}
+
+#[test]
+fn a_statement_form_spawn_keeps_the_scope_in_flight_to_its_closing_brace() {
+    // It binds no handle, so only the scope's exit joins it (design/0017 §3).
+    let source = r#"
+fn ping() {
+    let x = 1;
+}
+
+fn f(io: Io) -> Result<Unit, Error> uses {Io.write, Task.spawn} {
+    scope {
+        spawn ping();
+        io.write(text: "nope")?;
+    }
+    return Ok(unit);
+}
+"#;
+    let found = diagnostics_of(source);
+    assert_eq!(found.len(), 1, "{found:#?}");
+    assert_eq!(found[0].0, "XN6011");
+    assert!(
+        found[0].1.contains("after the scope"),
+        "the repair for the statement form is to move past the scope: {}",
+        found[0].1
+    );
+}
+
+#[test]
+fn an_effect_after_the_scope_closes_is_legal() {
+    let source = r#"
+fn ping() {
+    let x = 1;
+}
+
+fn f(io: Io) -> Result<Unit, Error> uses {Io.write, Task.spawn} {
+    scope {
+        spawn ping();
+    }
+    io.write(text: "fine")?;
+    return Ok(unit);
+}
+"#;
+    assert!(codes_of(source).is_empty(), "{:?}", codes_of(source));
+}
+
+#[test]
+fn an_outer_flight_reaches_into_a_nested_scope() {
+    let source = r#"
+fn plan(n: Int) -> Int {
+    n
+}
+
+fn f(io: Io) -> Result<Unit, Error> uses {Io.write, Task.spawn} {
+    scope {
+        let outer = spawn plan(n: 1);
+        let inner_total = scope {
+            let inner = spawn plan(n: 2);
+            let v = inner.await;
+            io.write(text: "oops")?;
+            v
+        };
+        io.write(text: (outer.await + inner_total).to_text())?;
+    }
+    return Ok(unit);
+}
+"#;
+    let found = diagnostics_of(source);
+    assert_eq!(found.len(), 1, "{found:#?}");
+    assert_eq!(found[0].0, "XN6011");
+    assert!(
+        found[0].1.contains("outer"),
+        "the still-flying task is the outer one: {}",
+        found[0].1
+    );
+}
+
+#[test]
+fn one_flight_region_reports_once() {
+    // design/0009: one mistake, one diagnostic. Three writes in the same
+    // window are one misunderstanding.
+    let source = r#"
+fn plan(n: Int) -> Int {
+    n
+}
+
+fn f(io: Io) -> Result<Unit, Error> uses {Io.write, Task.spawn} {
+    scope {
+        let j = spawn plan(n: 1);
+        io.write(text: "a")?;
+        io.write(text: "b")?;
+        io.write(text: "c")?;
+        io.write(text: j.await.to_text())?;
+    }
+    return Ok(unit);
+}
+"#;
+    assert_eq!(codes_of(source), ["XN6011"]);
+}
+
+#[test]
+fn an_undeclared_effect_in_flight_reports_only_the_flight_rule() {
+    // The repair is to move the effect, not to widen `uses` — so XN4001
+    // stays quiet behind XN6011.
+    let source = r#"
+fn plan(n: Int) -> Int {
+    n
+}
+
+fn f(io: Io) -> Result<Unit, Error> uses {Task.spawn} {
+    scope {
+        let j = spawn plan(n: 1);
+        io.write(text: "early")?;
+        let v = j.await;
+    }
+    return Ok(unit);
+}
+"#;
+    assert_eq!(codes_of(source), ["XN6011"]);
+}
+
 // ----- the XN1008 carve-out: .await elsewhere stays banned -----
 
 #[test]
@@ -986,7 +1228,7 @@ fn async_fn_stays_refused() {
 fn every_new_code_has_an_explanation() {
     for id in [
         "XN6001", "XN6002", "XN6003", "XN6004", "XN6005", "XN6006", "XN6007", "XN6008", "XN6009",
-        "XN6010",
+        "XN6010", "XN6011",
     ] {
         let code = xenith_diag::DiagCode::from_id(id)
             .unwrap_or_else(|| panic!("{id} must exist as a stable code"));

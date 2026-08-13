@@ -1,0 +1,19 @@
+[
+  {
+    "diagnostics": [
+      {
+        "code": "XN6011",
+        "column": 9,
+        "line": 8,
+        "message": "this call uses {Io.write} while the task `j` is still in flight; await `j` first",
+        "severity": "error",
+        "span": {
+          "end": 187,
+          "start": 162
+        }
+      }
+    ],
+    "file": "tests/fixtures/diag/xn6011_effect_in_flight.xn",
+    "schema_version": 1
+  }
+]

@@ -123,9 +123,10 @@ Same program, same input, same behaviour — byte for byte:
   deterministic.
 
 Determinism is load-bearing: benchmark tasks are judged on exact stdout, and a language that
-can pass or fail a test by luck cannot be measured (design/0011). Task structure (§7) does not
-dent it: children are pure, so their interleaving is unobservable and the guarantee holds
-unconditionally.
+can pass or fail a test by luck cannot be measured (design/0011). Children run in parallel
+(§8) without denting it, because the parent is silent while they fly — but that is a rule
+with a name and a cost, not a free consequence of purity, and §8 states exactly what the
+guarantee does and does not cover.
 
 ## 7. Task structure
 
@@ -144,13 +145,10 @@ concurrency claim attached. Three forms:
   captured or annotated, and a non-Unit result still live at the scope's normal exit is
   refused. A Unit child may be fired as a statement: `spawn ping();`.
 
-**Execution is eager**: the arguments are evaluated at the spawn point — normal order,
-exactly once — and the child runs to completion right there. The handle is a ready box;
-`.await` moves the result out. A trap inside the child surfaces at the spawn statement,
-naming the child. On an early exit (`?`, `return`, a trap) a ready, unconsumed result is
-discarded — the child was pure, so nothing observable is lost. Because children are pure,
-the order in which a future implementation might actually run them is unobservable: the §6
-byte-determinism guarantee holds unconditionally, with no carve-out to remember.
+The arguments are evaluated at the spawn point — normal order, exactly once — and the child
+starts there. The handle is a ready box; `.await` moves the result out. A trap inside the
+child surfaces at the spawn statement, naming the child. On an early exit (`?`, `return`, a
+trap) an unconsumed result is discarded — the child was pure, so nothing observable is lost.
 
 ```xenith
 fn square(n: Int) -> Int {
@@ -178,7 +176,59 @@ $ xenith run tasks.xn
 ```
 
 A child may fail purely — return `Result` and let the parent propagate with `j.await?`, as
-above. The diagnostics own the rest of the contract: `XN6001`–`XN6010` refuse spawns outside
-scopes, effectful or non-CaptureSafe children, escaped handles, and every await count other
-than exactly-once. `scope`, `spawn` and `.await` are banned inside closure bodies
-([06](06-closures.md)); `async fn` remains outside the language.
+above. The diagnostics own the rest of the contract: `XN6001`–`XN6011` refuse spawns outside
+scopes, effectful or non-CaptureSafe children, escaped handles, every await count other than
+exactly-once, and effects performed while a task is in flight (§8). `scope`, `spawn` and
+`.await` are banned inside closure bodies ([06](06-closures.md)); `async fn` remains outside
+the language.
+
+## 8. Children run in parallel
+
+**Children may run at the same time, on other threads** (design/0017). `spawn` starts one;
+nothing about it is observable through the handle, and no program can ask whether a child has
+finished.
+
+The one rule that makes this cost nothing is **XN6011**: from the first `spawn` in a scope
+until every task it created has been consumed, the parent performs no capability operation
+and calls no function with a non-empty `uses` set. The window is silent, so there is nothing
+for a child's timing to interleave with:
+
+```xenith
+fn plan(n: Int) -> Int {
+    n * 2
+}
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write, Task.spawn} {
+    scope {
+        let a = spawn plan(n: 1);
+        let b = spawn plan(n: 2);
+        let total = a.await + b.await;
+        io.write(text: total.to_text())?;
+    }
+    return Ok(unit);
+}
+```
+
+Moving that `io.write` above the awaits is `XN6011`.
+
+The statement form `spawn f(..);` binds no handle, so the scope's closing brace is what joins
+it: an effect that must follow one goes after the scope.
+
+Traps and divergence surface at the join, and **outcomes commit in spawn order** — the order
+in which a single-threaded run would have decided them. A trapping child 1 is reported even
+if child 2 trapped first in wall-clock time; a diverging child 1 hangs the program even
+though child 2 already finished; a fine child 1 followed by a trapping child 2 reports child
+2's trap. A child's trap outranks anything the parent went on to do, because the child's fate
+was sealed at its spawn statement. Once a trap commits, the remaining children are stopped —
+so a trapping child beside a diverging sibling still reaches exit 101 rather than waiting
+forever. This is not a cancellation feature: no program can request it.
+
+The result is that **stdout, exit codes and diagnostics are exactly what a sequential run
+produces** — the §6 guarantee is intact, and the compiler tests it by running every task
+program through both executors and comparing the bytes.
+
+What parallelism does change is **outside the determinism promise**: peak memory, the number
+of OS threads, wall-clock time, and host exhaustion (out-of-memory, stack overflow, a thread
+the host refuses to create). A program near a resource limit may fail under one executor and
+not the other; nothing in §6 ever covered those, and design/0017 says so rather than leaving
+it to be discovered.

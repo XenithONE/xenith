@@ -1,0 +1,12 @@
+fn plan(n: Int) -> Int {
+    n * 2
+}
+
+fn main(io: Io) -> Result<Unit, Error> uses {Io.write, Task.spawn} {
+    scope {
+        let j = spawn plan(n: 21);
+        io.write(text: "working")?;
+        io.write(text: j.await.to_text())?;
+    }
+    return Ok(unit);
+}

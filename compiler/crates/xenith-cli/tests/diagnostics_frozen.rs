@@ -168,7 +168,9 @@ fn taught_output_is_deterministic_across_runs() {
 // contracts as everywhere: off reproduces the untaught text byte for byte,
 // and teaching adds exactly the sentence.
 
-const TASK_NOTE_TAUGHT: &[&str] = &["xn6002_spawn_effectful"];
+// design/0017 added `xn6011_effect_in_flight` additively: the goldens above
+// are untouched, and the new code joins the same two contracts.
+const TASK_NOTE_TAUGHT: &[&str] = &["xn6002_spawn_effectful", "xn6011_effect_in_flight"];
 
 const TASK_SENTENCE: &str = "; a task computes a plan — effects run in the parent, after await";
 

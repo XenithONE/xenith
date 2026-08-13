@@ -184,7 +184,7 @@ a closure — write a `while` loop in the enclosing named `fn`, which declares t
 ## Tasks
 
 `scope { ... }` opens a task region — the only place `spawn` may appear. `spawn plan(n: 21)`
-calls a named fn as a child and runs it to completion on the spot; the child must be pure (an
+calls a named fn as a child and starts it there; the child must be pure (an
 empty `uses` set, every parameter CaptureSafe — no capabilities cross the boundary). Bind the
 handle bare and consume it with `.await`, exactly once on every path:
 `let j = spawn plan(n: 21);` then `j.await` — or `j.await?` when the child returns `Result`.
@@ -192,6 +192,8 @@ The handle does nothing else: no copy, no store, no return, no passing, and a no
 must be awaited before the scope ends. A Unit child fires as a statement: `spawn ping();`.
 Spawning is an effect — the enclosing fn declares `uses {Task.spawn}`. A task computes a
 plan — effects run in the parent, after await.
+No effects while tasks are in flight: between a `spawn` and the `.await` that consumes it the
+parent may not write or call anything with a non-empty `uses` — await first, then act.
 
 ## Holes
 

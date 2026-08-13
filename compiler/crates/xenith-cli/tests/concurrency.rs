@@ -10,6 +10,17 @@
 use std::path::PathBuf;
 use std::process::Command;
 
+#[path = "support/task_corpus.rs"]
+mod task_corpus;
+
+/// The program sources live in `support/task_corpus.rs`, shared with the
+/// differential harness (`executor_equivalence.rs`). Sharing them is what
+/// makes "the harness runs every conformance program" true by construction
+/// rather than by inspection (design/0017 §5).
+fn program(name: &str) -> &'static str {
+    task_corpus::source(name)
+}
+
 /// A scratch directory unique to one test, outside any xenith project.
 fn scratch(name: &str) -> PathBuf {
     let dir = std::env::temp_dir()
@@ -58,24 +69,7 @@ fn line_col_of(source: &str, needle: &str) -> (usize, usize) {
 
 #[test]
 fn two_child_fan_out_computes_and_prints() {
-    let source = r#"fn square(n: Int) -> Int {
-    n * n
-}
-
-fn cube(n: Int) -> Int {
-    n * n * n
-}
-
-fn main(io: Io) -> Result<Unit, Error> uses {Io.write, Task.spawn} {
-    let total = scope {
-        let a = spawn square(n: 4);
-        let b = spawn cube(n: 3);
-        a.await + b.await
-    };
-    io.write(text: total.to_text())?;
-    return Ok(unit);
-}
-"#;
+    let source = program("fan_out");
     let (exit, stdout, stderr) = run("fan_out", source);
     assert_eq!(exit, 0, "stderr: {stderr}");
     assert_eq!(stdout, "43", "16 + 27");
@@ -83,19 +77,7 @@ fn main(io: Io) -> Result<Unit, Error> uses {Io.write, Task.spawn} {
 
 #[test]
 fn a_result_child_propagates_err_through_await_try() {
-    let source = r#"fn parse(text: String) -> Result<Int, Error> {
-    text.try_to_int()
-}
-
-fn main(io: Io) -> Result<Unit, Error> uses {Io.write, Task.spawn} {
-    scope {
-        let j = spawn parse(text: "not-a-number");
-        let v = j.await?;
-        io.write(text: v.to_text())?;
-    }
-    return Ok(unit);
-}
-"#;
+    let source = program("result_err");
     let (exit, stdout, _) = run("result_err", source);
     assert_eq!(exit, 1, "main returned the child's Err");
     assert_eq!(stdout, "", "the write after the failed await never ran");
@@ -103,19 +85,7 @@ fn main(io: Io) -> Result<Unit, Error> uses {Io.write, Task.spawn} {
 
 #[test]
 fn a_result_child_propagates_ok_through_await_try() {
-    let source = r#"fn parse(text: String) -> Result<Int, Error> {
-    text.try_to_int()
-}
-
-fn main(io: Io) -> Result<Unit, Error> uses {Io.write, Task.spawn} {
-    scope {
-        let j = spawn parse(text: "42");
-        let v = j.await?;
-        io.write(text: v.to_text())?;
-    }
-    return Ok(unit);
-}
-"#;
+    let source = program("result_ok");
     let (exit, stdout, stderr) = run("result_ok", source);
     assert_eq!(exit, 0, "stderr: {stderr}");
     assert_eq!(stdout, "42");
@@ -123,23 +93,7 @@ fn main(io: Io) -> Result<Unit, Error> uses {Io.write, Task.spawn} {
 
 #[test]
 fn nested_scopes_run_inside_out() {
-    let source = r#"fn work(n: Int) -> Int {
-    n + 1
-}
-
-fn main(io: Io) -> Result<Unit, Error> uses {Io.write, Task.spawn} {
-    let total = scope {
-        let outer = spawn work(n: 10);
-        let inner_total = scope {
-            let inner = spawn work(n: 100);
-            inner.await
-        };
-        outer.await + inner_total
-    };
-    io.write(text: total.to_text())?;
-    return Ok(unit);
-}
-"#;
+    let source = program("nested");
     let (exit, stdout, stderr) = run("nested", source);
     assert_eq!(exit, 0, "stderr: {stderr}");
     assert_eq!(stdout, "112", "11 + 101");
@@ -147,18 +101,7 @@ fn main(io: Io) -> Result<Unit, Error> uses {Io.write, Task.spawn} {
 
 #[test]
 fn statement_form_spawn_of_a_unit_callee_runs() {
-    let source = r#"fn ping() {
-    let x = 1;
-}
-
-fn main(io: Io) -> Result<Unit, Error> uses {Io.write, Task.spawn} {
-    scope {
-        spawn ping();
-    }
-    io.write(text: "done")?;
-    return Ok(unit);
-}
-"#;
+    let source = program("statement_form");
     let (exit, stdout, stderr) = run("statement_form", source);
     assert_eq!(exit, 0, "stderr: {stderr}");
     assert_eq!(stdout, "done");
@@ -168,34 +111,65 @@ fn main(io: Io) -> Result<Unit, Error> uses {Io.write, Task.spawn} {
 // EXECUTION — eager completion at the spawn point
 // ===================================================================
 
+// REPLACED (design/0017 §2). This slot used to hold
+// `a_trap_in_the_child_fires_at_the_spawn_statement_not_at_await`: a program
+// with `io.write(text: "between ")?;` sitting between the spawn and the
+// await, asserting that stdout stopped at "before " and so proving the child
+// had already run at the spawn point.
+//
+// That program is now **refused** by XN6011 — an effect while a task is in
+// flight — and the two tests below take its place: the refusal itself, and
+// the legal shape (effects after every await, still inside the scope) which
+// still runs. The replacement is recorded rather than silently dropped: it
+// is not a loss of coverage but the point of 0017. The old test measured
+// *when* a child's trap became visible, and the whole design is that no
+// program can construct that observation any more. What survives — the trap
+// surfaces, names the child, exits 101 — is asserted below.
 #[test]
-fn a_trap_in_the_child_fires_at_the_spawn_statement_not_at_await() {
-    let source = r#"fn boom() -> Int {
-    1 / 0
+fn an_effect_between_spawn_and_await_is_refused_as_xn6011() {
+    let source = program("flight_effect_refusal");
+    let (exit, stdout, _) = run("flight_effect", source);
+    assert_eq!(exit, 2, "a file with diagnostics is refused, not run");
+    assert!(
+        stdout.contains("error[XN6011]"),
+        "the in-flight rule is what refuses it:\n{stdout}"
+    );
+    // The refusal points at the effect, not at the spawn: the spawn is fine,
+    // the write is what cannot be there.
+    let (line, column) = line_col_of(source, "io.write(text: \"between \")");
+    assert!(
+        stdout.contains(&format!(":{line}:{column}")),
+        "the refusal points at the effect ({line}:{column}):\n{stdout}"
+    );
+    assert!(
+        stdout.contains("a task computes a plan — effects run in the parent, after await"),
+        "the canonical sentence is the teach, unchanged:\n{stdout}"
+    );
 }
 
-fn main(io: Io) -> Result<Unit, Error> uses {Io.write, Task.spawn} {
-    io.write(text: "before ")?;
-    scope {
-        let j = spawn boom();
-        io.write(text: "between ")?;
-        let x = j.await;
-        io.write(text: x.to_text())?;
-    }
-    return Ok(unit);
+#[test]
+fn effects_after_every_await_inside_the_scope_are_legal_and_run() {
+    // The shape design/0017 §1 blesses: spawn, spawn, await both, then act —
+    // and the acting happens inside the scope, which is legal because the
+    // flight is over.
+    let source = program("flight_over");
+    let (exit, stdout, stderr) = run("flight_over", source);
+    assert_eq!(exit, 0, "stderr: {stderr}");
+    assert_eq!(stdout, "before 6 after");
 }
-"#;
-    let (exit, stdout, stderr) = run("eager_trap", source);
+
+#[test]
+fn a_child_trap_surfaces_naming_the_child_and_exits_101() {
+    // What the replaced test was really guarding, minus the observation
+    // XN6011 now makes unconstructible: a trapping child stops the program,
+    // the trap names the child, and the stdout written before the scope is
+    // all there is.
+    let source = program("child_trap");
+    let (exit, stdout, stderr) = run("child_trap", source);
     assert_eq!(exit, 101, "a trap fired");
     assert_eq!(
         stdout, "before ",
-        "the child ran at the spawn point, so nothing between spawn and await executed"
-    );
-    // The trap is attributed to the spawn site, carrying the child context.
-    let (line, column) = line_col_of(source, "spawn boom()");
-    assert!(
-        stderr.contains(&format!(":{line}:{column}")),
-        "the trap points at the spawn statement ({line}:{column}):\n{stderr}"
+        "nothing after the scope opened was written"
     );
     assert!(
         stderr.contains("boom") && stderr.contains("division by zero"),
@@ -205,22 +179,7 @@ fn main(io: Io) -> Result<Unit, Error> uses {Io.write, Task.spawn} {
 
 #[test]
 fn spawn_arguments_evaluate_exactly_once_in_normal_order() {
-    let source = r#"fn add(a: Int, b: Int) -> Int {
-    a + b
-}
-
-fn main(io: Io) -> Result<Unit, Error> uses {Io.write, Task.spawn} {
-    var count = 0;
-    scope {
-        let j = spawn add(a: { count = count + 1; count }, b: { count = count + 1; count * 10 });
-        let v = j.await;
-        io.write(text: v.to_text())?;
-        io.write(text: " ")?;
-        io.write(text: count.to_text())?;
-    }
-    return Ok(unit);
-}
-"#;
+    let source = program("arg_order");
     let (exit, stdout, stderr) = run("arg_order", source);
     assert_eq!(exit, 0, "stderr: {stderr}");
     // a sees count = 1, b sees count = 2 and contributes 20: 21 total.
@@ -231,19 +190,7 @@ fn main(io: Io) -> Result<Unit, Error> uses {Io.write, Task.spawn} {
 
 #[test]
 fn a_trapping_argument_traps_at_its_own_position_before_the_child_exists() {
-    let source = r#"fn add(a: Int, b: Int) -> Int {
-    a + b
-}
-
-fn main(io: Io) -> Result<Unit, Error> uses {Io.write, Task.spawn} {
-    scope {
-        let j = spawn add(a: 1 / 0, b: 2 / 0);
-        let v = j.await;
-        io.write(text: v.to_text())?;
-    }
-    return Ok(unit);
-}
-"#;
+    let source = program("arg_trap");
     let (exit, _, stderr) = run("arg_trap", source);
     assert_eq!(exit, 101);
     let (line, column) = line_col_of(source, "1 / 0");
@@ -263,24 +210,7 @@ fn main(io: Io) -> Result<Unit, Error> uses {Io.write, Task.spawn} {
 
 #[test]
 fn an_early_question_mark_exit_discards_the_ready_result() {
-    let source = r#"fn work(n: Int) -> Int {
-    n * 2
-}
-
-fn fail() -> Result<Int, Error> {
-    "x".try_to_int()
-}
-
-fn main(io: Io) -> Result<Unit, Error> uses {Io.write, Task.spawn} {
-    scope {
-        let j = spawn work(n: 21);
-        let g = fail()?;
-        io.write(text: j.await.to_text())?;
-        io.write(text: g.to_text())?;
-    }
-    return Ok(unit);
-}
-"#;
+    let source = program("early_discard");
     let (exit, stdout, stderr) = run("early_discard", source);
     assert_eq!(exit, 1, "main returned the Err from `fail()?`");
     assert_eq!(stdout, "", "the ready result was discarded, not printed");
@@ -296,16 +226,7 @@ fn main(io: Io) -> Result<Unit, Error> uses {Io.write, Task.spawn} {
 
 #[test]
 fn spawn_and_scope_still_run_as_ordinary_names() {
-    let source = r#"fn main(io: Io) -> Result<Unit, Error> uses {Io.write} {
-    let spawn = 40;
-    let scope = 2;
-    let total = spawn + scope;
-    if scope > 0 {
-        io.write(text: total.to_text())?;
-    }
-    return Ok(unit);
-}
-"#;
+    let source = program("compat_names");
     let (exit, stdout, stderr) = run("compat_names", source);
     assert_eq!(exit, 0, "stderr: {stderr}");
     assert_eq!(stdout, "42");
@@ -374,7 +295,8 @@ fn formatting_the_task_forms_is_idempotent() {
 fn every_new_code_is_explained_by_the_binary() {
     for code in [
         "XN6001", "XN6002", "XN6003", "XN6004", "XN6005", "XN6006", "XN6007", "XN6008", "XN6009",
-        "XN6010",
+        "XN6010", // design/0017 §1, added to the same family and the same gate.
+        "XN6011",
     ] {
         let output = Command::new(env!("CARGO_BIN_EXE_xenith"))
             .args(["explain", code])

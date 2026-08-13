@@ -233,6 +233,8 @@ pub enum DiagCode {
     SpawnStatementNotUnit,
     /// XN6010 — `scope` / `spawn` / `.await` inside a closure body.
     TaskInClosure,
+    /// XN6011 — a capability effect in the parent while a task is in flight.
+    EffectWhileTasksInFlight,
 
     /// XN7001 — a source file cannot name a module (bad segment, symlink).
     InvalidModulePath,
@@ -312,6 +314,7 @@ impl DiagCode {
         DiagCode::JoinUnawaited,
         DiagCode::SpawnStatementNotUnit,
         DiagCode::TaskInClosure,
+        DiagCode::EffectWhileTasksInFlight,
         DiagCode::InvalidModulePath,
         DiagCode::ModuleCaseCollision,
         DiagCode::ModuleItemClash,
@@ -381,6 +384,7 @@ impl DiagCode {
             DiagCode::JoinUnawaited => "XN6008",
             DiagCode::SpawnStatementNotUnit => "XN6009",
             DiagCode::TaskInClosure => "XN6010",
+            DiagCode::EffectWhileTasksInFlight => "XN6011",
             DiagCode::InvalidModulePath => "XN7001",
             DiagCode::ModuleCaseCollision => "XN7002",
             DiagCode::ModuleItemClash => "XN7003",
@@ -975,6 +979,31 @@ impl DiagCode {
                  compute data for it.\n\n\
                  A task computes a plan — effects run in the parent, after await."
             }
+            DiagCode::EffectWhileTasksInFlight => {
+                "A task spawned in this scope has not been consumed yet, so the \
+                 parent cannot perform an effect here.\n\n\
+                 Between the first `spawn` in a scope and the point where every \
+                 handle it created has been awaited, the children may be running \
+                 — really running, on other threads (design/0017). If the parent \
+                 wrote to stdout in that window, what stdout held when a child \
+                 trapped would depend on how far the parent had got, and the \
+                 program's output would stop being a function of its source. So \
+                 the window is silent: no capability operation, and no call to a \
+                 function with a non-empty `uses` set.\n\n\
+                 Await first, then act:\n\n  \
+                 scope {\n      \
+                 let a = spawn plan(n: 1);\n      \
+                 let b = spawn plan(n: 2);\n      \
+                 let total = a.await + b.await;\n      \
+                 io.write(text: total.to_text())?;\n  \
+                 }\n\n\
+                 The statement form `spawn f(..);` is joined by the scope's \
+                 closing brace, so an effect that has to follow one goes after \
+                 the scope.\n\n\
+                 This is the same rule the task teach has always stated, now \
+                 checked: a task computes a plan — effects run in the parent, \
+                 after await."
+            }
             DiagCode::NonExhaustiveMatch => {
                 "This `match` does not cover every value its scrutinee can hold.\n\n\
                  Every possible value must land on some arm. A wildcard `_` or a \
@@ -1521,6 +1550,7 @@ mod tests {
                 | DiagCode::JoinUnawaited
                 | DiagCode::SpawnStatementNotUnit
                 | DiagCode::TaskInClosure
+                | DiagCode::EffectWhileTasksInFlight
                 | DiagCode::InvalidModulePath
                 | DiagCode::ModuleCaseCollision
                 | DiagCode::ModuleItemClash
@@ -1531,8 +1561,8 @@ mod tests {
                 | DiagCode::CrossModuleAssignment => seen += 1,
             }
         }
-        assert_eq!(seen, 64, "update DiagCode::ALL when adding a variant");
-        assert_eq!(DiagCode::ALL.len(), 64);
+        assert_eq!(seen, 65, "update DiagCode::ALL when adding a variant");
+        assert_eq!(DiagCode::ALL.len(), 65);
     }
 
     #[test]

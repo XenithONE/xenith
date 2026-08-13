@@ -17,4 +17,4 @@
 
 pub mod interp;
 
-pub use interp::{Outcome, run, run_project};
+pub use interp::{Executor, Outcome, run, run_project, run_project_with, run_with};

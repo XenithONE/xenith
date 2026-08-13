@@ -54,9 +54,10 @@ tiebreak and the draft follows the compiler.
   ([05](05-modules-and-projects.md)).
 - **Closures** — capability-effect-zero function values in call-argument position, with the
   `map` / `filter` / `fold` / `find` combinators ([06](06-closures.md)).
-- **Task structure** — `scope { … }` / `spawn f(args)` / `j.await`: pure children run to
-  completion at the spawn point, consumed exactly once, gated by the `Task.spawn` effect;
-  no concurrency claim attached ([04 §7](04-evaluation.md#7-task-structure)).
+- **Tasks** — `scope { … }` / `spawn f(args)` / `j.await`: pure children, consumed exactly
+  once, gated by the `Task.spawn` effect ([04 §7](04-evaluation.md#7-task-structure)) — and
+  they **run in parallel**, on real threads, with outcomes committed in spawn order and the
+  parent silent while they fly ([04 §8](04-evaluation.md#8-children-run-in-parallel)).
 - **Prelude** — `List` / `Map` / `String` / `Int` / `Option` / `Io` method surface, fixed
   small ([07](07-std-prelude.md)).
 - **Diagnostics and tooling** — stable codes, machine-applicable fixes, teaching blocks with
@@ -71,17 +72,19 @@ parser accepts several of these forms so that a half-edited file still yields a 
 repair from, and the checker then refuses them — accepting syntax is not shipping a feature,
 and passing one through half-checked would let an effect escape its declaration.
 
-**Concurrency (design/0004, narrowed by design/0015).** The task boundary shipped
-(design/0015): `scope` / `spawn` / `.await`, pure children, the `Task.spawn` effect, and the
-`XN6xxx` diagnostic family enforcing it — with no concurrency claim attached. What remains
-adopted but unshipped from design/0004: actual concurrent execution and its executors
-(`IoExecutor`, `FrameExecutor`); `Transfer` / `ShareSafe` marker properties with
-compiler-only derivation; capability transfer across the task boundary; `Shared<T>` with
-`share()`, `Mutex`, atomics, channels; lock guards that cannot cross suspension points; the
-memory-model text. Reserved footprint still visible in 0.0: the keywords `async` / `await` /
-`move`, the type names `Shared<T>` and `Task<T>` (they resolve; nothing constructs them),
-and the `is` identity operator (checks only against `Shared`, so no well-typed program
-reaches it).
+**Concurrency (design/0004, narrowed by design/0015 and design/0017).** The task boundary
+shipped (design/0015): `scope` / `spawn` / `.await`, pure children, the `Task.spawn` effect,
+and the `XN6xxx` diagnostic family enforcing it. **Parallel execution shipped**
+(design/0017): children run on real threads, outcomes commit in spawn order, and `XN6011`
+keeps the parent silent while they fly, so stdout and exit codes are what a sequential run
+would produce ([04 §8](04-evaluation.md#8-children-run-in-parallel)). What remains adopted
+but unshipped from design/0004: the named executors (`IoExecutor`, `FrameExecutor`);
+`Transfer` / `ShareSafe` marker properties with compiler-only derivation; capability transfer
+across the task boundary; `Shared<T>` with `share()`, `Mutex`, atomics, channels; a
+cancellation API; lock guards that cannot cross suspension points; the memory-model text.
+Reserved footprint still visible in 0.0: the keywords `async` / `await` / `move`, the type
+names `Shared<T>` and `Task<T>` (they resolve; nothing constructs them), and the `is`
+identity operator (checks only against `Shared`, so no well-typed program reaches it).
 
 **Refused today under `XN1008`:**
 
