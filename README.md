@@ -146,8 +146,9 @@ committed to the repository rather than produced in CI.
 Design decisions and the reasoning behind them — including reversals — live in [`design/`](design/).
 
 - [`0001-why-xenith.md`](design/0001-why-xenith.md) — goals, non-goals, and the original draft
-- [`0002-design-review.md`](design/0002-design-review.md) — an external review by four models that
-  overturned the original north star, with the counterexample that disproved the first purity rule
+- [`0002-design-review.md`](design/0002-design-review.md) — a multi-model adversarial review
+  (four LLMs attacking a pre-registered draft — not human peer review) that overturned the
+  original north star, with the counterexample that disproved the first purity rule
 - `0003`–`0014` — the semantic kernel, the concurrency decision, the minimal std, diagnostics
   that teach, the module system, two measurement RFCs and their verdicts, project truth, and
   closures — one adopted file per decision, review wreckage recorded in each
