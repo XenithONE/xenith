@@ -1,0 +1,9 @@
+campaign: 0019 replay
+date: 2026-08-15
+codex-cli 0.147.0
+grok 1.0.3 (1a29d5bc12)
+agy 1.1.12
+opencode 1.18.16
+cursor-agent 2026.08.11-e8db854
+typescript 5.9.3
+node v24.15.0

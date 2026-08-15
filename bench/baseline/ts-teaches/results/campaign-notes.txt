@@ -1,0 +1,1 @@
+cleaned at 2026-08-15T15:42:28Z — 3 cells (smoke 2 + 1) ran before cleanup
