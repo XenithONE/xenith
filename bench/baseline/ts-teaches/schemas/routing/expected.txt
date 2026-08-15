@@ -1,0 +1,3 @@
+origin=north gate
+stops=2
+distance=49

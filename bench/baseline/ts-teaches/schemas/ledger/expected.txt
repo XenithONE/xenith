@@ -1,0 +1,3 @@
+currency=JPY
+entries=2
+balance=420
